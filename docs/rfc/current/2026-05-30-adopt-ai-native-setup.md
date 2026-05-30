@@ -1,0 +1,22 @@
+# Adopt the AI-native project setup
+
+- **Status:** Accepted
+- **Date:** 2026-05-30
+- **Author:** ai-project-setup team
+
+## Context
+
+Starting a new project, we want AI and human contributors working from the same
+contract from day one, with conventions enforced mechanically rather than by
+memory.
+
+## Decision
+
+Adopt this scaffold: a canonical `AGENTS.md` (with per-tool pointers), a docs +
+RFC structure, linters and pre-commit hooks, CI on every push, and the four execution principles as the standard
+for every change.
+
+## Consequences
+
+Contributors have one place to look for conventions. Drift is caught by tooling.
+The cost is keeping `AGENTS.md` and the docs current as the project evolves.

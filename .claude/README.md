@@ -1,0 +1,6 @@
+# Agents & commands
+
+- `agents/` — Claude Code subagents (focused, tool-scoped personas).
+- `commands/` — slash commands for repeatable workflows.
+
+Keep each agent narrow. The shared contract lives in the root `AGENTS.md`.

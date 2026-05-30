@@ -1,0 +1,40 @@
+default_install_hook_types: [pre-commit, pre-push]
+
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.6.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-toml
+      - id: check-merge-conflict
+      - id: check-added-large-files
+        args: [--maxkb=4096]
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.6.9
+    hooks:
+      - id: ruff
+        args: [--fix]
+      - id: ruff-format
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.13.0
+    hooks:
+      - id: mypy
+  - repo: local
+    hooks:
+      - id: rfc-status
+        name: rfc status -> folder sync
+        entry: python tools/checks/sync_rfc_status.py
+        language: system
+        pass_filenames: false
+        files: ^docs/rfc/.*\.md$
+  - repo: local
+    hooks:
+      - id: python-tests
+        name: Python tests (pre-push)
+        entry: pytest
+        language: system
+        pass_filenames: false
+        always_run: true
+        stages: [pre-push]
