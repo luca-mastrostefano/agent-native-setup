@@ -119,8 +119,7 @@ def _from_flags(args: argparse.Namespace, out: Path, detected: list[str] | None)
     )
 
 
-def build(config: WizardConfig, *, force: bool = False) -> Scaffolder:
-    sc = Scaffolder(config.target, force=force)
+def build(config: WizardConfig, sc: Scaffolder) -> Scaffolder:
     config.target.mkdir(parents=True, exist_ok=True)
     ai_context.generate(config, sc)
     if config.include_agents:
@@ -131,10 +130,12 @@ def build(config: WizardConfig, *, force: bool = False) -> Scaffolder:
         quality.generate(config, sc)
     if config.include_ci:
         ci.generate(config, sc)
-    if config.init_git and not (config.target / ".git").exists():
+    git_dir = config.target / ".git"
+    if config.init_git and not git_dir.exists():
         try:
             subprocess.run(["git", "init", "-q"], cwd=config.target, check=True)
             sc.created.append(".git/ (initialized)")
+            sc.track_new(git_dir, existed=False)
         except (OSError, subprocess.CalledProcessError):
             pass
     return sc
@@ -178,7 +179,13 @@ def main(argv: list[str] | None = None) -> int:
         )
         return 2
 
-    sc = build(config, force=args.force)
+    sc = Scaffolder(config.target, force=args.force)
+    try:
+        build(config, sc)
+    except KeyboardInterrupt:
+        removed = sc.rollback()
+        console.print(f"\n[yellow]Interrupted — rolled back {removed} newly created item(s).[/]")
+        return 130
     _summary(config, sc)
     return 0
 

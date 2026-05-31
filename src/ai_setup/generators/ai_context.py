@@ -6,9 +6,11 @@ Copilot files are thin pointers back to it so the contract never forks.
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from ai_setup.config import WizardConfig
 from ai_setup.languages import get
-from ai_setup.scaffold import Scaffolder
+from ai_setup.scaffold import Scaffolder, render
 
 AGENTS_MD = """\
 # {{ name }} — Agent Contract
@@ -144,6 +146,13 @@ surgical changes, goal-driven execution) and the documented command surface.
 """
 
 
+def _live_text(path: Path) -> str:
+    """Return the stripped content of a real (non-symlink) file, else ``""``."""
+    if path.is_symlink() or not path.is_file():
+        return ""
+    return path.read_text(encoding="utf-8").strip()
+
+
 def generate(config: WizardConfig, sc: Scaffolder) -> None:
     # The Taskfile is the canonical command surface; point the contract at it.
     langs = get(config.languages)
@@ -164,8 +173,7 @@ def generate(config: WizardConfig, sc: Scaffolder) -> None:
         quality_commands.append(("full local gate", "task quality"))
         if config.include_docs:
             quality_commands.append(("sync RFCs to their Status folder", "task rfc-sync"))
-    sc.render_write(
-        "AGENTS.md",
+    rendered = render(
         AGENTS_MD,
         name=config.project_name,
         description=config.description,
@@ -174,6 +182,26 @@ def generate(config: WizardConfig, sc: Scaffolder) -> None:
         ci=config.include_ci and config.use_github_actions,
         quality_commands=quality_commands,
     )
+
+    # Never clobber a pre-existing contract. Fold any non-empty AGENTS.md — and
+    # the real CLAUDE.md we're about to replace with a symlink — below ours.
+    agents_path = config.target / "AGENTS.md"
+    claude_path = config.target / "CLAUDE.md"
+    claude_targeted = "claude" in config.ai_tools
+    sources = [agents_path] + ([claude_path] if claude_targeted else [])
+    preserved = [(p.name, text) for p in sources if (text := _live_text(p))]
+    if preserved:
+        agents_existed = agents_path.is_file()
+        blocks = [rendered.rstrip()]
+        for label, text in preserved:
+            blocks.append(f"---\n\n<!-- Preserved from your original {label} -->\n\n{text}")
+        agents_path.parent.mkdir(parents=True, exist_ok=True)
+        agents_path.write_text("\n\n".join(blocks) + "\n", encoding="utf-8")
+        names = ", ".join(label for label, _ in preserved)
+        sc.created.append(f"AGENTS.md (merged existing {names})")
+        sc.track_new(agents_path, existed=agents_existed)
+    else:
+        sc.write("AGENTS.md", rendered)
 
     # README is the human entry point the contract links to; never clobber an
     # existing one, even with --force.
@@ -186,7 +214,11 @@ def generate(config: WizardConfig, sc: Scaffolder) -> None:
         quality=config.include_quality,
     )
 
-    if "claude" in config.ai_tools:
+    if claude_targeted:
+        # The real CLAUDE.md (if any) is now folded into AGENTS.md; drop it so the
+        # symlink can take its place.
+        if any(label == "CLAUDE.md" for label, _ in preserved):
+            claude_path.unlink()
         sc.symlink("CLAUDE.md", "AGENTS.md")
     if "cursor" in config.ai_tools:
         sc.write(".cursor/rules/agent-contract.mdc", CURSOR_RULE)
