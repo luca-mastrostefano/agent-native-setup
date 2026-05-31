@@ -1,4 +1,4 @@
-default_install_hook_types: [pre-commit, pre-push]
+default_install_hook_types: [pre-commit, commit-msg, pre-push]
 
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
@@ -29,6 +29,11 @@ repos:
         language: system
         pass_filenames: false
         files: ^docs/rfc/.*\.md$
+      - id: rfc-needed
+        name: RFC needed for structural changes
+        entry: python tools/checks/rfc_needed.py
+        language: system
+        stages: [commit-msg]  # the commit message file is passed as the argument
   - repo: local
     hooks:
       - id: python-tests
