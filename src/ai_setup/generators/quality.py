@@ -10,7 +10,7 @@ from ai_setup.scaffold import Scaffolder
 
 BASE_HOOKS = """\
 - repo: https://github.com/pre-commit/pre-commit-hooks
-  rev: v4.6.0
+  rev: v5.0.0
   hooks:
     - id: trailing-whitespace
     - id: end-of-file-fixer
@@ -19,6 +19,14 @@ BASE_HOOKS = """\
     - id: check-merge-conflict
     - id: check-added-large-files
       args: [--maxkb=4096]
+"""
+
+# Secrets scanning, language-agnostic — runs on every commit.
+GITLEAKS_HOOK = """\
+- repo: https://github.com/gitleaks/gitleaks
+  rev: v8.24.2
+  hooks:
+    - id: gitleaks
 """
 
 # Mechanical enforcement: a changed RFC's Status drives which folder it lives in.
@@ -33,7 +41,36 @@ RFC_STATUS_HOOK = """\
       files: ^docs/rfc/.*\\.md$
 """
 
+# commit-msg gates for RFC + architecture-doc discipline. Triggers key on the
+# pyproject/src layout, so these ship only for Python projects (see docs.generate).
+COMMIT_MSG_HOOKS = """\
+- repo: local
+  hooks:
+    - id: rfc-needed
+      name: RFC needed for structural changes
+      entry: python tools/checks/rfc_needed.py
+      language: system
+      stages: [commit-msg]
+    - id: docs-sync
+      name: architecture docs for new components
+      entry: python tools/checks/docs_sync.py
+      language: system
+      stages: [commit-msg]
+"""
+
 BASE_GITIGNORE = [".DS_Store", ".env", ".env.local", "*.log"]
+
+# Scaffolded only for existing repos: lets a one-time formatter sweep stay out of
+# `git blame`. See the "Adopting on an existing codebase" section in contributing.md.
+BLAME_IGNORE_REVS = """\
+# Commits git blame (and GitHub's blame view) should skip — for bulk, no-logic
+# changes like a one-time formatter sweep across pre-existing code:
+#
+#   1. task format
+#   2. git commit -am "style: apply formatters across the codebase"
+#   3. add the resulting commit SHA on its own line below
+#   4. git config blame.ignoreRevsFile .git-blame-ignore-revs   (once, locally)
+"""
 
 
 def _test_hook(lang: Language) -> str:
@@ -55,13 +92,18 @@ def _test_hook(lang: Language) -> str:
 
 
 def _pre_commit_config(config: WizardConfig, langs: list[Language]) -> str:
-    blocks = [BASE_HOOKS]
+    # The RFC/docs commit-msg gates only make sense with docs and a Python layout.
+    commit_msg = config.include_docs and any(lang.key == "python" for lang in langs)
+    blocks = [BASE_HOOKS] + ([GITLEAKS_HOOK] if config.include_security else [])
     blocks += [lang.pre_commit_block for lang in langs if lang.pre_commit_block]
     if config.include_docs:
         blocks.append(RFC_STATUS_HOOK)
+    if commit_msg:
+        blocks.append(COMMIT_MSG_HOOKS)
     blocks += [h for h in (_test_hook(lang) for lang in langs) if h]
     indented = "".join(textwrap.indent(b, "  ") for b in blocks)
-    return f"default_install_hook_types: [pre-commit, pre-push]\n\nrepos:\n{indented}"
+    stages = ["pre-commit", "commit-msg", "pre-push"] if commit_msg else ["pre-commit", "pre-push"]
+    return f"default_install_hook_types: [{', '.join(stages)}]\n\nrepos:\n{indented}"
 
 
 def _taskfile(config: WizardConfig, langs: list[Language], hooks: bool) -> str:
@@ -115,3 +157,6 @@ def generate(config: WizardConfig, sc: Scaffolder) -> None:
     sc.write(".gitignore", "\n".join(gitignore) + "\n")
 
     sc.write("Taskfile.yml", _taskfile(config, langs, config.git_hooks))
+
+    if config.existing_project:
+        sc.write(".git-blame-ignore-revs", BLAME_IGNORE_REVS)

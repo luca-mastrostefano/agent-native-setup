@@ -28,9 +28,13 @@ class WizardConfig:
     include_docs: bool = True
     include_quality: bool = True
     include_ci: bool = True
+    include_security: bool = True  # secrets (gitleaks) + dependency/vuln scanning
     use_github_actions: bool = True
     git_hooks: bool = True
     init_git: bool = True
+    # True when scaffolding into a repo that already has source for the selected
+    # languages; flips the quality gate to changed-files-only (legacy grandfathering).
+    existing_project: bool = False
 
     @property
     def slug(self) -> str:

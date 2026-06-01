@@ -113,6 +113,20 @@ max_width = 100
 edition = "2021"
 """
 
+HTMLHINTRC = """\
+{
+  "tagname-lowercase": true,
+  "attr-lowercase": true,
+  "attr-value-double-quotes": true,
+  "tag-pair": true,
+  "spec-char-escape": true,
+  "id-unique": true,
+  "src-not-empty": true,
+  "attr-no-duplication": true,
+  "doctype-first": false
+}
+"""
+
 
 @dataclass
 class Language:
@@ -124,6 +138,12 @@ class Language:
     pre_commit_block: str = ""
     # YAML `steps:` entries (no leading indent), added to the CI quality job
     ci_steps: str = ""
+    # CI `steps:` for an existing repo: lint only files changed vs $DIFF_BASE
+    # (set by a prior step) so legacy code is grandfathered. Falls back to ci_steps.
+    ci_ratchet_steps: str = ""
+    # CI `steps:` for the dependency/vuln scan, run in a separate `checks` job
+    # (non-blocking on existing repos). Whole-project; no greenfield/ratchet split.
+    ci_security_steps: str = ""
     gitignore: list[str] = field(default_factory=list)
     # (label, shell command) pairs surfaced in the task runner / README
     quality_commands: list[tuple[str, str]] = field(default_factory=list)
@@ -142,13 +162,13 @@ REGISTRY: dict[str, Language] = {
         },
         pre_commit_block="""\
 - repo: https://github.com/astral-sh/ruff-pre-commit
-  rev: v0.6.9
+  rev: v0.15.15
   hooks:
     - id: ruff
       args: [--fix]
     - id: ruff-format
 - repo: https://github.com/pre-commit/mirrors-mypy
-  rev: v1.13.0
+  rev: v1.18.2
   hooks:
     - id: mypy
 """,
@@ -159,6 +179,25 @@ REGISTRY: dict[str, Language] = {
 - run: pipx install ruff
 - run: ruff check .
 - run: ruff format --check .
+- run: python -m pip install -e . pytest
+- run: pytest
+""",
+        ci_ratchet_steps="""\
+- uses: actions/setup-python@v5
+  with:
+    python-version: "3.12"
+- run: pipx install ruff
+- name: ruff (changed files)
+  run: |
+    files=$(git diff --name-only "$DIFF_BASE" HEAD -- '*.py')
+    [ -z "$files" ] && { echo "no Python changes"; exit 0; }
+    ruff check $files
+    ruff format --check $files
+""",
+        ci_security_steps="""\
+- uses: pypa/gh-action-pip-audit@v1
+  with:
+    inputs: .
 """,
         gitignore=[
             "__pycache__/",
@@ -205,6 +244,26 @@ REGISTRY: dict[str, Language] = {
 - run: npm ci || npm install
 - run: npx prettier --check .
 - run: npx eslint .
+- run: npm test --if-present
+""",
+        ci_ratchet_steps="""\
+- uses: actions/setup-node@v4
+  with:
+    node-version: "20"
+- run: npm ci || npm install
+- name: prettier + eslint (changed files)
+  run: |
+    files=$(git diff --name-only "$DIFF_BASE" HEAD -- '*.js' '*.jsx' '*.ts' '*.tsx' '*.mjs' '*.cjs')
+    [ -z "$files" ] && { echo "no JS/TS changes"; exit 0; }
+    npx prettier --check $files
+    npx eslint $files
+""",
+        ci_security_steps="""\
+- uses: actions/setup-node@v4
+  with:
+    node-version: "20"
+- run: npm ci || npm install
+- run: npm audit --audit-level=high
 """,
         gitignore=["node_modules/", "dist/", ".next/", "*.tsbuildinfo"],
         quality_commands=[
@@ -241,6 +300,24 @@ REGISTRY: dict[str, Language] = {
     go-version: "1.22"
 - uses: golangci/golangci-lint-action@v6
 - run: test -z "$(gofmt -l .)"
+- run: go test ./...
+""",
+        ci_ratchet_steps="""\
+- uses: actions/setup-go@v5
+  with:
+    go-version: "1.22"
+- uses: golangci/golangci-lint-action@v6
+  with:
+    args: --new-from-rev=${{ github.event.pull_request.base.sha }}
+- name: gofmt (changed files)
+  run: |
+    files=$(git diff --name-only "$DIFF_BASE" HEAD -- '*.go')
+    [ -z "$files" ] && { echo "no Go changes"; exit 0; }
+    unformatted=$(gofmt -l $files)
+    [ -z "$unformatted" ] || { echo "gofmt needed:"; echo "$unformatted"; exit 1; }
+""",
+        ci_security_steps="""\
+- uses: golang/govulncheck-action@v1
 """,
         gitignore=["bin/", "*.test", "vendor/"],
         quality_commands=[
@@ -277,6 +354,26 @@ REGISTRY: dict[str, Language] = {
     components: clippy, rustfmt
 - run: cargo fmt --check
 - run: cargo clippy -- -D warnings
+- run: cargo test
+""",
+        ci_ratchet_steps="""\
+- uses: dtolnay/rust-toolchain@stable
+  with:
+    components: clippy, rustfmt
+- name: rustfmt (changed files)
+  run: |
+    files=$(git diff --name-only "$DIFF_BASE" HEAD -- '*.rs')
+    [ -z "$files" ] && { echo "no Rust changes"; exit 0; }
+    rustfmt --check --edition 2021 $files
+# clippy has no changed-files mode; report on legacy without blocking the gate.
+- name: clippy (whole crate, non-blocking)
+  continue-on-error: true
+  run: cargo clippy -- -D warnings
+""",
+        ci_security_steps="""\
+- uses: rustsec/audit-check@v2
+  with:
+    token: ${{ secrets.GITHUB_TOKEN }}
 """,
         gitignore=["target/", "Cargo.lock"],
         quality_commands=[
@@ -287,6 +384,54 @@ REGISTRY: dict[str, Language] = {
         ],
         detect_files=["Cargo.toml"],
         detect_exts=[".rs"],
+    ),
+    "html": Language(
+        key="html",
+        label="HTML",
+        config_files={".htmlhintrc": HTMLHINTRC},
+        # htmlhint installs via pre-commit's node backend; lychee's hook downloads
+        # its own prebuilt binary. Neither needs a tool pre-installed on the machine.
+        pre_commit_block="""\
+- repo: https://github.com/Lucas-C/pre-commit-hooks-nodejs
+  rev: v1.1.2
+  hooks:
+    - id: htmlhint
+- repo: https://github.com/lycheeverse/lychee.git
+  rev: v0.15.1
+  hooks:
+    - id: lychee
+      args: [--offline, --no-progress]
+""",
+        ci_steps="""\
+- uses: actions/setup-node@v4
+  with:
+    node-version: "20"
+- run: npx --yes htmlhint "**/*.html"
+- uses: lycheeverse/lychee-action@v2
+  with:
+    args: --offline --no-progress .
+    fail: true
+""",
+        ci_ratchet_steps="""\
+- uses: actions/setup-node@v4
+  with:
+    node-version: "20"
+- name: Collect changed HTML
+  id: html
+  run: |
+    files=$(git diff --name-only "$DIFF_BASE" HEAD -- '*.html' '*.htm' | tr '\\n' ' ')
+    echo "files=$files" >> "$GITHUB_OUTPUT"
+- name: htmlhint (changed files)
+  if: steps.html.outputs.files != ''
+  run: npx --yes htmlhint ${{ steps.html.outputs.files }}
+- uses: lycheeverse/lychee-action@v2
+  if: steps.html.outputs.files != ''
+  with:
+    args: --offline --no-progress ${{ steps.html.outputs.files }}
+    fail: true
+""",
+        quality_commands=[("lint", 'npx --yes htmlhint "**/*.html"')],
+        detect_exts=[".html", ".htm"],
     ),
 }
 

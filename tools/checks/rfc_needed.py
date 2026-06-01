@@ -8,8 +8,7 @@ commit *or* a logged waiver in the commit message:
     RFC-Not-Needed: <reason>
 
 It never writes or moves RFCs — authoring stays with the contributor and
-`sync_rfc_status.py` handles moves. See
-`docs/rfc/current/2026-05-31-enforce-rfc-on-new-dependency.md`.
+`sync_rfc_status.py` handles moves. The RFC that introduced it lives in `docs/rfc/`.
 """
 
 from __future__ import annotations

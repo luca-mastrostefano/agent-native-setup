@@ -1,0 +1,84 @@
+"""Remind the author to update the architecture overview when a new component lands.
+
+`AGENTS.md`'s Context pillar relies on `docs/architecture/` staying accurate as the
+system grows. A diff can't tell when an *edit* makes prose stale, but it can catch
+the one structural moment that almost always should: a brand-new top-level package
+under `src/`. This `commit-msg` hook fires on that signal and is satisfied by
+*either* a `docs/architecture/` change staged in the same commit *or* a logged
+waiver in the commit message:
+
+    Docs-Not-Needed: <reason>
+
+It never writes docs — keeping the overview studyable stays with the author. The
+RFC that introduced it lives in `docs/rfc/`.
+"""
+
+from __future__ import annotations
+
+import re
+import subprocess
+import sys
+from pathlib import Path
+
+WAIVER_RE = re.compile(r"^\s*Docs-Not-Needed:\s*(\S.*?)\s*$", re.IGNORECASE | re.MULTILINE)
+
+
+def _git(*args: str) -> str | None:
+    """Run a git command; return stdout, or None if it fails."""
+    try:
+        out = subprocess.run(["git", *args], check=True, capture_output=True, text=True)
+    except (OSError, subprocess.CalledProcessError):
+        return None
+    return out.stdout
+
+
+def _staged() -> list[tuple[str, str]]:
+    """(status, path) for each staged change; path is the post-rename name."""
+    out = _git("diff", "--cached", "--name-status") or ""
+    changes: list[tuple[str, str]] = []
+    for line in out.splitlines():
+        fields = line.split("\t")
+        if len(fields) >= 2:
+            changes.append((fields[0][0], fields[-1]))
+    return changes
+
+
+def find_triggers(changes: list[tuple[str, str]]) -> list[str]:
+    """Human-readable list of the structural triggers this commit hit."""
+    triggers: list[str] = []
+    for status, path in changes:
+        parts = Path(path).parts
+        if status == "A" and len(parts) == 3 and parts[0] == "src" and parts[2] == "__init__.py":
+            triggers.append(f"new top-level src package ({parts[1]})")
+    return triggers
+
+
+def is_satisfied(changes: list[tuple[str, str]], message: str) -> bool:
+    touched_arch = any(
+        path.startswith("docs/architecture/") for status, path in changes if status != "D"
+    )
+    return touched_arch or bool(WAIVER_RE.search(message))
+
+
+def main(argv: list[str]) -> int:
+    message = Path(argv[0]).read_text(encoding="utf-8") if argv else ""
+    changes = _staged()
+    triggers = find_triggers(changes)
+    if not triggers or is_satisfied(changes, message):
+        return 0
+
+    bullet = "\n".join(f"  - {t}" for t in triggers)
+    print(
+        "Docs check: this commit adds a new component but updates no architecture doc.\n\n"
+        f"Triggered by:\n{bullet}\n\n"
+        "Do one of:\n"
+        "  - update docs/architecture/overview.md to describe it, or\n"
+        "  - record why the docs don't need it with a commit-message trailer:\n"
+        "        Docs-Not-Needed: <reason>",
+        file=sys.stderr,
+    )
+    return 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main(sys.argv[1:]))

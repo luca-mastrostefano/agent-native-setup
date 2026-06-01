@@ -34,6 +34,11 @@ repos:
         entry: python tools/checks/rfc_needed.py
         language: system
         stages: [commit-msg]  # the commit message file is passed as the argument
+      - id: docs-sync
+        name: architecture docs for new components
+        entry: python tools/checks/docs_sync.py
+        language: system
+        stages: [commit-msg]  # the commit message file is passed as the argument
   - repo: local
     hooks:
       - id: python-tests

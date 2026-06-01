@@ -34,13 +34,21 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     p.add_argument("--no-docs", dest="docs", action="store_false")
     p.add_argument("--no-quality", dest="quality", action="store_false")
     p.add_argument("--no-ci", dest="ci", action="store_false")
+    p.add_argument("--no-security", dest="security", action="store_false")
     p.add_argument("--no-github-actions", dest="github_actions", action="store_false")
     p.add_argument("--no-hooks", dest="hooks", action="store_false")
     p.add_argument("--no-git", dest="git", action="store_false")
     p.add_argument("-y", "--yes", action="store_true", help="non-interactive; use flags/defaults")
     p.add_argument("--force", action="store_true", help="overwrite existing files")
     p.set_defaults(
-        agents=True, docs=True, quality=True, ci=True, github_actions=True, hooks=True, git=True
+        agents=True,
+        docs=True,
+        quality=True,
+        ci=True,
+        security=True,
+        github_actions=True,
+        hooks=True,
+        git=True,
     )
     return p.parse_args(argv)
 
@@ -84,6 +92,9 @@ def _interactive(args: argparse.Namespace, out: Path, detected: list[str] | None
     hooks = (
         "quality" in parts and questionary.confirm("Install pre-commit hooks?", default=True).ask()
     )
+    security = ("quality" in parts or "ci" in parts) and questionary.confirm(
+        "Add security scanning (secrets + dependency audit)?", default=True
+    ).ask()
     init_git = questionary.confirm("Run `git init`?", default=True).ask()
 
     return WizardConfig(
@@ -96,6 +107,7 @@ def _interactive(args: argparse.Namespace, out: Path, detected: list[str] | None
         include_docs="docs" in parts,
         include_quality="quality" in parts,
         include_ci="ci" in parts,
+        include_security=bool(security),
         use_github_actions=bool(use_ga),
         git_hooks=bool(hooks),
         init_git=bool(init_git),
@@ -113,6 +125,7 @@ def _from_flags(args: argparse.Namespace, out: Path, detected: list[str] | None)
         include_docs=args.docs,
         include_quality=args.quality,
         include_ci=args.ci,
+        include_security=args.security,
         use_github_actions=args.github_actions,
         git_hooks=args.hooks,
         init_git=args.git,
@@ -163,8 +176,9 @@ def main(argv: list[str] | None = None) -> int:
     args = parse_args(sys.argv[1:] if argv is None else argv)
     out = Path(args.output).expanduser()
 
-    # When languages aren't given, detect them from an existing project's files.
-    detected = detect_languages(out) if args.languages is None else None
+    # Source already in the target — drives language auto-select and legacy handling.
+    in_target = set(detect_languages(out))
+    detected = sorted(in_target) if args.languages is None else None
     if detected:
         console.print(f"[cyan]Detected language(s):[/] {', '.join(detected)}")
 
@@ -178,6 +192,15 @@ def main(argv: list[str] | None = None) -> int:
             f"Choose from: {', '.join(LANG_KEYS)}"
         )
         return 2
+
+    # Scaffolding over existing source for a selected language → grandfather it.
+    config.existing_project = bool(set(config.languages) & in_target)
+    if config.existing_project and config.include_quality:
+        console.print(
+            "[yellow]Existing code detected.[/] The quality gate will check only files "
+            "changed in a pull request, so your current code is grandfathered. To clean "
+            "it all in one pass later, see docs/contributing.md."
+        )
 
     sc = Scaffolder(config.target, force=args.force)
     try:

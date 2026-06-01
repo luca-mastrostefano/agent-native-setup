@@ -33,7 +33,10 @@ against the four principles in the root `AGENTS.md`:
 3. Surgical changes — does every changed line trace to the task? Flag drive-by
    refactors and reformatting.
 4. Goal-driven — is the change verified by a test or check?
-
+{% if include_docs %}
+5. Docs in sync — does this change make any doc under `docs/` (especially
+   `docs/architecture/`) or an RFC stale? If so, flag the specific file.
+{% endif %}
 Report findings ordered by severity. Be specific: cite `file:line`. Prefer a
 few high-confidence issues over a long list. If it's clean, say so plainly.
 """
@@ -81,7 +84,9 @@ def generate(config: WizardConfig, sc: Scaffolder) -> None:
     if "claude" not in config.ai_tools:
         return
     sc.write(".claude/README.md", AGENTS_README)
-    sc.write(".claude/agents/code-reviewer.md", CODE_REVIEWER)
+    sc.render_write(
+        ".claude/agents/code-reviewer.md", CODE_REVIEWER, include_docs=config.include_docs
+    )
     sc.write(".claude/agents/planner.md", PLANNER)
     sc.write(".claude/commands/review.md", REVIEW_COMMAND)
     if config.include_docs:
