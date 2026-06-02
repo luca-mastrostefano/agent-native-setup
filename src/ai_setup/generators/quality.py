@@ -72,6 +72,42 @@ BLAME_IGNORE_REVS = """\
 #   4. git config blame.ignoreRevsFile .git-blame-ignore-revs   (once, locally)
 """
 
+# Editor-agnostic formatting baseline (applies before linters even run).
+EDITORCONFIG = """\
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+indent_style = space
+indent_size = 4
+
+[*.{yml,yaml,json,md,js,jsx,ts,tsx,html,css}]
+indent_size = 2
+
+[Makefile]
+indent_style = tab
+"""
+
+# Normalize line endings in the repo (native on checkout) — avoids Windows CRLF churn.
+GITATTRIBUTES = "* text=auto\n"
+
+SECURITY_MD = """\
+# Security Policy
+
+## Reporting a vulnerability
+
+Report security issues privately to the maintainers rather than opening a public
+issue, and allow time for a fix before any disclosure.
+
+## Automated scanning
+
+This repository scans for committed secrets with gitleaks (pre-commit and CI) and
+audits dependencies for known vulnerabilities in CI.
+"""
+
 
 def _test_hook(lang: Language) -> str:
     """A pre-push hook that runs a language's full test suite."""
@@ -203,6 +239,10 @@ def generate(config: WizardConfig, sc: Scaffolder) -> None:
 
     gitignore = BASE_GITIGNORE + [line for lang in langs for line in lang.gitignore]
     sc.write(".gitignore", "\n".join(gitignore) + "\n")
+    sc.write(".editorconfig", EDITORCONFIG)
+    sc.write(".gitattributes", GITATTRIBUTES)
+    if config.include_security:
+        sc.write("SECURITY.md", SECURITY_MD)
 
     # Defer to an existing Taskfile/Makefile rather than imposing (or clobbering) one.
     if not config.existing_runner:

@@ -144,6 +144,8 @@ class Language:
     # CI `steps:` for the dependency/vuln scan, run in a separate `checks` job
     # (non-blocking on existing repos). Whole-project; no greenfield/ratchet split.
     ci_security_steps: str = ""
+    # Dependabot package-ecosystem for this language ("" if none / not applicable).
+    dependabot_ecosystem: str = ""
     gitignore: list[str] = field(default_factory=list)
     # (label, shell command) pairs surfaced in the task runner / README
     quality_commands: list[tuple[str, str]] = field(default_factory=list)
@@ -213,6 +215,7 @@ REGISTRY: dict[str, Language] = {
             ("typecheck", "mypy ."),
             ("test", "pytest"),
         ],
+        dependabot_ecosystem="pip",
         detect_files=["pyproject.toml", "setup.py", "setup.cfg", "requirements*.txt", "Pipfile"],
         detect_exts=[".py"],
     ),
@@ -272,6 +275,7 @@ REGISTRY: dict[str, Language] = {
             ("typecheck", "npx tsc --noEmit"),
             ("test", "npm test --if-present"),
         ],
+        dependabot_ecosystem="npm",
         detect_files=["package.json", "tsconfig.json"],
         detect_exts=[".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs"],
     ),
@@ -326,6 +330,7 @@ REGISTRY: dict[str, Language] = {
             ("typecheck", "go vet ./..."),
             ("test", "go test ./..."),
         ],
+        dependabot_ecosystem="gomod",
         detect_files=["go.mod"],
         detect_exts=[".go"],
     ),
@@ -382,6 +387,7 @@ REGISTRY: dict[str, Language] = {
             ("typecheck", "cargo check"),
             ("test", "cargo test"),
         ],
+        dependabot_ecosystem="cargo",
         detect_files=["Cargo.toml"],
         detect_exts=[".rs"],
     ),

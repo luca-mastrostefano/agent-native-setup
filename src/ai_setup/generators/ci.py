@@ -15,6 +15,9 @@ on:
     branches: [main]
   pull_request:
 
+permissions:
+  contents: read
+
 jobs:
   quality:
     runs-on: ubuntu-latest
@@ -28,6 +31,9 @@ QUALITY_WORKFLOW_HEAD_RATCHET = """\
 name: quality
 on:
   pull_request:
+
+permissions:
+  contents: read
 
 jobs:
   quality:
@@ -85,6 +91,39 @@ jobs:
 """
 
 
+PULL_REQUEST_TEMPLATE = """\
+## What & why
+
+<!-- What does this change, and why? Link the RFC if one applies. -->
+
+## Checklist
+
+- [ ] Traces directly to the task — no drive-by changes (see `AGENTS.md`)
+- [ ] Verified by a test or an explicit check
+- [ ] Ran the quality gate locally
+- [ ] Docs/RFCs updated if behavior or architecture changed
+"""
+
+
+def _dependabot(langs: list) -> str:
+    """A dependabot config: GitHub Actions plus each selected language's ecosystem."""
+    ecosystems = ["github-actions"]
+    for lang in langs:
+        if lang.dependabot_ecosystem and lang.dependabot_ecosystem not in ecosystems:
+            ecosystems.append(lang.dependabot_ecosystem)
+    updates = "".join(
+        f'  - package-ecosystem: "{eco}"\n'
+        '    directory: "/"\n'
+        "    schedule:\n"
+        '      interval: "weekly"\n'
+        "    groups:\n"
+        "      dependencies:\n"
+        '        patterns: ["*"]\n'
+        for eco in ecosystems
+    )
+    return f"version: 2\nupdates:\n{updates}"
+
+
 def _checks_job(config: WizardConfig, langs: list) -> str:
     """The security `checks` job: per-language vuln scans + gitleaks secrets scan."""
     blocks = [lang.ci_security_steps for lang in langs if lang.ci_security_steps]
@@ -109,6 +148,9 @@ def generate(config: WizardConfig, sc: Scaffolder) -> None:
         steps = '      - run: echo "no language tooling configured"\n'
     checks = _checks_job(config, langs) if config.include_security else ""
     sc.write(".github/workflows/quality.yml", head + steps + checks)
+
+    sc.write(".github/dependabot.yml", _dependabot(langs))
+    sc.write(".github/PULL_REQUEST_TEMPLATE.md", PULL_REQUEST_TEMPLATE)
 
     if "claude" in config.ai_tools:
         sc.write(".github/workflows/claude.yml", CLAUDE_WORKFLOW)
