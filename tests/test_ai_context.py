@@ -27,6 +27,12 @@ def test_fresh_write_has_no_preserved_block(tmp_path: Path) -> None:
     assert "Preserved from your original" not in body
 
 
+def test_contract_states_testing_expectation(tmp_path: Path) -> None:
+    body = _run(tmp_path).read_text(encoding="utf-8")
+    assert "ships with the test that proves it" in body
+    assert "Regression" in body  # bug -> reproducing test, named explicitly
+
+
 def test_merges_existing_agents_md(tmp_path: Path) -> None:
     (tmp_path / "AGENTS.md").write_text("# House rules\n\nAlways rebase.\n")
     body = _run(tmp_path).read_text(encoding="utf-8")

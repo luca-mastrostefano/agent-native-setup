@@ -90,6 +90,14 @@ For multi-step tasks, state a brief plan:
 
 Strong success criteria let you loop independently. Weak criteria ("make it work") require constant clarification.
 
+**Every change ships with the test that proves it** — pick the right level, don't
+mechanically add all three:
+- **Unit** — logic and edge cases (the default).
+- **Integration** — when the change crosses a module, a public contract, or an external boundary.
+- **Regression** — for every bug, write the failing test that reproduces it *first*, then fix.
+
+If something genuinely can't be tested, say why rather than skipping silently.
+
 ## When to write an RFC
 
 Write an RFC in `docs/rfc/current/` before: changing architecture or a public
