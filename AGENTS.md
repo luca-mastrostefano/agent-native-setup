@@ -113,4 +113,7 @@ template in `docs/rfc/TEMPLATE.md`. Lifecycle: `current/ → done/ → supersede
   way the existing ones are (a pre-commit hook, a CI step, and a command-surface entry)
   rather than leaving it unguarded.
 - **Feedback loops** — agents in `.claude/agents/`, tests,
-  and reviews close the loop so quality compounds.
+  and reviews close the loop so quality compounds. After changing a workflow in
+  `.github/workflows/`, confirm it passed on GitHub (`gh run watch`; if `gh` isn't set
+  up, ask the maintainer to check the repo's Actions tab) — local checks can't tell an
+  action is missing or out of date.

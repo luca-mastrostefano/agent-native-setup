@@ -67,3 +67,15 @@ def test_no_github_actions_omits_github_files(tmp_path: Path) -> None:
     root = _build(tmp_path, languages=["python"], use_github_actions=False)
     assert not (root / ".github/dependabot.yml").exists()
     assert not (root / ".github/PULL_REQUEST_TEMPLATE.md").exists()
+
+
+def test_actionlint_hook_only_with_github_actions(tmp_path: Path) -> None:
+    with_ga = (_build(tmp_path / "ga", languages=["python"]) / ".pre-commit-config.yaml").read_text(
+        encoding="utf-8"
+    )
+    without_ga = (
+        _build(tmp_path / "no_ga", languages=["python"], use_github_actions=False)
+        / ".pre-commit-config.yaml"
+    ).read_text(encoding="utf-8")
+    assert "actionlint" in with_ga
+    assert "actionlint" not in without_ga

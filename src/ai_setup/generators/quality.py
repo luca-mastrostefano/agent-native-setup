@@ -29,6 +29,17 @@ GITLEAKS_HOOK = """\
     - id: gitleaks
 """
 
+# Lints the generated workflows; only added when GitHub Actions are scaffolded. Runs
+# only on .github/workflows/ changes. actionlint-py self-installs via pre-commit's
+# Python backend (no Go/Docker).
+ACTIONLINT_HOOK = """\
+- repo: https://github.com/Mateusz-Grzelinski/actionlint-py
+  rev: v1.7.12.24
+  hooks:
+    - id: actionlint
+      files: ^\\.github/workflows/
+"""
+
 # Mechanical enforcement: a changed RFC's Status drives which folder it lives in.
 RFC_STATUS_HOOK = """\
 - repo: local
@@ -131,6 +142,8 @@ def _pre_commit_config(config: WizardConfig, langs: list[Language]) -> str:
     # The RFC/docs commit-msg gates only make sense with docs and a Python layout.
     commit_msg = config.include_docs and any(lang.key == "python" for lang in langs)
     blocks = [BASE_HOOKS] + ([GITLEAKS_HOOK] if config.include_security else [])
+    if config.include_ci and config.use_github_actions:
+        blocks.append(ACTIONLINT_HOOK)  # lint the workflows we generate
     blocks += [lang.pre_commit_block for lang in langs if lang.pre_commit_block]
     if config.include_docs:
         blocks.append(RFC_STATUS_HOOK)
