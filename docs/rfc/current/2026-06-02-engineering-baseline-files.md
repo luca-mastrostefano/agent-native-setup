@@ -28,6 +28,10 @@ this repo.
    language (`pip`/`npm`/`gomod`/`cargo`) plus `github-actions`, weekly, grouped.
    Keeps deps + Actions fresh (addresses the pin-staleness we hit) and complements the
    vuln scanning. (Dependabot can't update `.pre-commit-config` hooks — backlogged.)
+   **Legacy-aware:** for an existing repo, routine version updates are disabled
+   (`open-pull-requests-limit: 0`, security-only) so Dependabot doesn't flood a stale
+   project with bump PRs on day one — same grandfathering as the CI ratchet; a fresh
+   repo gets full version updates, and a comment explains how to opt up.
 4. **Least-privilege CI permissions** — add `permissions: { contents: read }` to the
    generated `quality.yml`. (`claude.yml` keeps the write scope it needs.)
 5. **`.github/PULL_REQUEST_TEMPLATE.md`** — when CI + GitHub Actions. A short checklist:

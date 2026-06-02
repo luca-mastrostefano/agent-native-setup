@@ -35,6 +35,9 @@ class WizardConfig:
     # True when scaffolding into a repo that already has source for the selected
     # languages; flips the quality gate to changed-files-only (legacy grandfathering).
     existing_project: bool = False
+    # How the gate applies to an existing repo's code (effective "full" when fresh):
+    # "progressive" (changed files only) | "full" (whole repo now) | "none" (informational).
+    adoption: str = "progressive"
     # Task runner the command surface speaks: "make" (zero-install default) | "task".
     runner: str = "make"
     # True when the target already had a Taskfile/Makefile: defer to it, don't

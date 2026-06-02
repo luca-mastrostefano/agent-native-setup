@@ -30,6 +30,18 @@ def test_dependabot_has_actions_and_language_ecosystems(tmp_path: Path) -> None:
     assert "gomod" in db
 
 
+def test_dependabot_security_only_for_existing_repo(tmp_path: Path) -> None:
+    fresh = (_build(tmp_path / "fresh", languages=["python"]) / ".github/dependabot.yml").read_text(
+        encoding="utf-8"
+    )
+    legacy = (
+        _build(tmp_path / "legacy", languages=["python"], existing_project=True)
+        / ".github/dependabot.yml"
+    ).read_text(encoding="utf-8")
+    assert "open-pull-requests-limit: 0" not in fresh  # fresh repo: full version updates
+    assert "open-pull-requests-limit: 0" in legacy  # existing repo: security-only, no flood
+
+
 def test_pr_template_present(tmp_path: Path) -> None:
     assert (_build(tmp_path, languages=["python"]) / ".github/PULL_REQUEST_TEMPLATE.md").exists()
 

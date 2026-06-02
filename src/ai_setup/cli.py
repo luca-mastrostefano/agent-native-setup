@@ -42,6 +42,12 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         default="make",
         help="runner for a fresh repo (default: make; an existing one is auto-detected)",
     )
+    p.add_argument(
+        "--adopt",
+        choices=["progressive", "full", "none"],
+        default="progressive",
+        help="how the gate applies to an EXISTING repo's code (default: progressive)",
+    )
     p.add_argument("--no-github-actions", dest="github_actions", action="store_false")
     p.add_argument("--no-hooks", dest="hooks", action="store_false")
     p.add_argument("--no-git", dest="git", action="store_false")
@@ -61,7 +67,11 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
 
 
 def _interactive(
-    args: argparse.Namespace, out: Path, detected: list[str] | None, prompt_runner: bool
+    args: argparse.Namespace,
+    out: Path,
+    detected: list[str] | None,
+    prompt_runner: bool,
+    in_target: set[str],
 ) -> WizardConfig:
     import questionary
 
@@ -130,6 +140,25 @@ def _interactive(
                 ),
             ],
         ).unsafe_ask()
+    adoption = args.adopt
+    if bool(set(languages or []) & in_target) and ("quality" in parts or "ci" in parts):
+        adoption = questionary.select(
+            "Existing code detected — how should the quality gate apply to it?",
+            choices=[
+                questionary.Choice(
+                    "Progressively — only files changed in a PR (recommended, mature repo)",
+                    value="progressive",
+                ),
+                questionary.Choice(
+                    "Fully — enforce on the whole repo now (good for a small/new repo)",
+                    value="full",
+                ),
+                questionary.Choice(
+                    "None — scaffold the config but don't enforce on existing code yet",
+                    value="none",
+                ),
+            ],
+        ).unsafe_ask()
     if (out / ".git").exists():
         console.print("[cyan]Already a git repository[/] — skipping git init.")
         init_git = False
@@ -148,6 +177,7 @@ def _interactive(
         include_ci="ci" in parts,
         include_security=bool(security),
         runner=runner or "make",
+        adoption=adoption or "progressive",
         use_github_actions=bool(use_ga),
         git_hooks=bool(hooks),
         init_git=bool(init_git),
@@ -167,6 +197,7 @@ def _from_flags(args: argparse.Namespace, out: Path, detected: list[str] | None)
         include_ci=args.ci,
         include_security=args.security,
         runner=args.runner,
+        adoption=args.adopt,
         use_github_actions=args.github_actions,
         git_hooks=args.hooks,
         init_git=args.git,
@@ -233,7 +264,7 @@ def main(argv: list[str] | None = None) -> int:
     interactive = not args.yes and sys.stdin.isatty()
     try:
         config = (
-            _interactive(args, out, detected, prompt_runner=not existing_runner)
+            _interactive(args, out, detected, not existing_runner, in_target)
             if interactive
             else _from_flags(args, out, detected)
         )
@@ -261,9 +292,8 @@ def main(argv: list[str] | None = None) -> int:
     config.existing_project = bool(set(config.languages) & in_target)
     if config.existing_project and config.include_quality:
         console.print(
-            "[yellow]Existing code detected.[/] The quality gate will check only files "
-            "changed in a pull request, so your current code is grandfathered. To clean "
-            "it all in one pass later, see docs/contributing.md."
+            f"[yellow]Existing code detected[/] — adoption strategy: [bold]{config.adoption}[/]. "
+            "See docs/contributing.md."
         )
 
     sc = Scaffolder(config.target, force=args.force)
