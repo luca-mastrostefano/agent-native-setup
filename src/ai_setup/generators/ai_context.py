@@ -28,6 +28,7 @@ AGENTS_MD = """\
 {% if docs %}| Architecture & decisions | `docs/architecture/` |
 | Active proposals | `docs/rfc/current/` |
 | How to contribute | `docs/contributing.md` |
+{% endif %}{% if security %}| Security policy | [`SECURITY.md`](./SECURITY.md) |
 {% endif %}
 
 ## Command surface
@@ -237,6 +238,7 @@ def generate(config: WizardConfig, sc: Scaffolder) -> None:
         docs=config.include_docs,
         agents=config.include_agents,
         ci=config.include_ci and config.use_github_actions,
+        security=config.include_security,
         quality_commands=quality_commands,
         surface_note=surface_note,
         capture_line=capture_line if quality_commands else "",

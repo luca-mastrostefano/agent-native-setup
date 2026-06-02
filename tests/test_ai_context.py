@@ -43,6 +43,11 @@ def test_contract_verify_ci_run_when_ci(tmp_path: Path) -> None:
     assert "gh run watch" in _run(tmp_path).read_text(encoding="utf-8")
 
 
+def test_nav_links_security_policy_when_scaffolded(tmp_path: Path) -> None:
+    # _run defaults to security on -> the Navigation table points at SECURITY.md.
+    assert "SECURITY.md" in _run(tmp_path).read_text(encoding="utf-8")
+
+
 def test_merges_existing_agents_md(tmp_path: Path) -> None:
     (tmp_path / "AGENTS.md").write_text("# House rules\n\nAlways rebase.\n")
     body = _run(tmp_path).read_text(encoding="utf-8")

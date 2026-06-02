@@ -13,6 +13,7 @@ This file is the **single source of truth** for both human and AI contributors.
 | Architecture & decisions | `docs/architecture/` |
 | Active proposals | `docs/rfc/current/` |
 | How to contribute | `docs/contributing.md` |
+| Security policy | [`SECURITY.md`](./SECURITY.md) |
 
 ## Command surface
 
