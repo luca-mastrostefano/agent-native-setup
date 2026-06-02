@@ -75,8 +75,19 @@ def _interactive(
 ) -> WizardConfig:
     import questionary
 
-    name = args.name or questionary.text("Project name:", default=out.name).unsafe_ask()
-    description = args.description or questionary.text("One-line description:").unsafe_ask()
+    name = (
+        args.name
+        or questionary.text(
+            "Project name (titles AGENTS.md/README; used as the package name):",
+            default=out.name,
+        ).unsafe_ask()
+    )
+    description = (
+        args.description
+        or questionary.text(
+            "One-line description (shown in the README and AGENTS.md header):"
+        ).unsafe_ask()
+    )
     languages = (
         args.languages
         if args.languages is not None
@@ -98,7 +109,7 @@ def _interactive(
         args.tools
         if args.tools is not None
         else questionary.checkbox(
-            "AI assistants to target:",
+            "AI assistants to target (each gets a config pointing at AGENTS.md):",
             instruction=_MULTISELECT_HINT,
             choices=[questionary.Choice(t, value=t, checked=True) for t in AI_TOOLS],
         ).unsafe_ask()
@@ -120,11 +131,17 @@ def _interactive(
     )
     use_ga = (
         "ci" in parts
-        and questionary.confirm("Add GitHub Actions workflows?", default=True).unsafe_ask()
+        and questionary.confirm(
+            "Add GitHub Actions workflows? (CI quality + security gate on push/PR)",
+            default=True,
+        ).unsafe_ask()
     )
     hooks = (
         "quality" in parts
-        and questionary.confirm("Install pre-commit hooks?", default=True).unsafe_ask()
+        and questionary.confirm(
+            "Install pre-commit hooks? (run linters/format/secret-scan before each commit)",
+            default=True,
+        ).unsafe_ask()
     )
     security = ("quality" in parts or "ci" in parts) and questionary.confirm(
         "Add security scanning (secrets + dependency audit)?", default=True
@@ -132,7 +149,7 @@ def _interactive(
     runner = args.runner
     if prompt_runner and "quality" in parts:
         runner = questionary.select(
-            "Task runner (none detected):",
+            "Task runner for the command surface (none detected):",
             choices=[
                 questionary.Choice("Make  [no extra dependencies]", value="make"),
                 questionary.Choice(
@@ -163,7 +180,9 @@ def _interactive(
         console.print("[cyan]Already a git repository[/] — skipping git init.")
         init_git = False
     else:
-        init_git = questionary.confirm("Run `git init`?", default=True).unsafe_ask()
+        init_git = questionary.confirm(
+            "Run `git init`? (initialize a git repository here)", default=True
+        ).unsafe_ask()
 
     return WizardConfig(
         project_name=name,
