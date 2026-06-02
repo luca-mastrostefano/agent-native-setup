@@ -108,9 +108,9 @@ template in `docs/rfc/TEMPLATE.md`. Lifecycle: `current/ → done/ → supersede
 
 - **Context** — this contract, `docs/`, and RFCs keep intent discoverable.
 - **Mechanical enforcement** — linters, hooks, and CI catch
-  violations automatically. Error messages should tell you how to fix them. If the repo
-  uses a language this setup doesn't already cover, wire up its linter, formatter, and
-  tests the same way (a pre-commit hook, a CI step, and a command-surface entry) rather
-  than leaving it unguarded.
+  violations automatically. Error messages should tell you how to fix them. If a
+  language in the repo isn't yet wired up for linting, formatting, and tests, add it the
+  way the existing ones are (a pre-commit hook, a CI step, and a command-surface entry)
+  rather than leaving it unguarded.
 - **Feedback loops** — agents in `.claude/agents/`, tests,
   and reviews close the loop so quality compounds.

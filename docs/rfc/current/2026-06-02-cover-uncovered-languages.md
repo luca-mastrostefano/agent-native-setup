@@ -15,10 +15,12 @@ can, because the agent working in the repo sees the real stack.
 
 ## Decision
 
-Extend the contract's **Mechanical enforcement** bullet to instruct: if the repo uses a
-language the setup doesn't already cover, wire up its linter, formatter, and tests the
-same way the covered ones are — a pre-commit hook, a CI step, and a command-surface
-entry — rather than leaving it unguarded. In a *generated* project the agent edits the
+Extend the contract's **Mechanical enforcement** bullet to instruct: if a language in
+the repo isn't yet wired up for linting, formatting, and tests, add it the way the
+existing ones are — a pre-commit hook, a CI step, and a command-surface entry — rather
+than leaving it unguarded. The wording is framed by what's *observable in the repo* (a
+language with no tooling), not by "what the wizard covered," which the downstream agent
+can't know. In a *generated* project the agent edits the
 project's own `.pre-commit-config.yaml` / CI / runner (not the wizard's registry, which
 it doesn't have). Dogfood the wording into this repo's own `AGENTS.md`.
 

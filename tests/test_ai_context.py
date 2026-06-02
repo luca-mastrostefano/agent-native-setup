@@ -35,7 +35,7 @@ def test_contract_states_testing_expectation(tmp_path: Path) -> None:
 
 def test_contract_covers_uncovered_languages(tmp_path: Path) -> None:
     body = _run(tmp_path).read_text(encoding="utf-8")
-    assert "doesn't already cover" in body  # instruct the agent to wire up the real stack
+    assert "isn't yet wired up" in body  # framed by repo state, not "what the setup did"
 
 
 def test_merges_existing_agents_md(tmp_path: Path) -> None:
