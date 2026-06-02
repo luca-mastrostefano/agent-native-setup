@@ -248,9 +248,27 @@ def _summary(config: WizardConfig, sc: Scaffolder) -> None:
         console.print(f"  • {s}")
 
 
+def _intro() -> None:
+    console.print(
+        Panel.fit(
+            "[bold]ai-setup[/] scaffolds an [bold]AI-native[/] project setup:\n"
+            "  • a canonical [bold]AGENTS.md[/] contract for human + AI contributors\n"
+            "  • docs + RFCs and a [bold].claude/[/] agents & commands library\n"
+            "  • linters, pre-commit hooks, secret + dependency scanning, and CI\n\n"
+            "[dim]Non-destructive — existing files are never overwritten. "
+            "A few quick questions follow; press Ctrl+C to cancel.[/]",
+            title="What this will do",
+            border_style="cyan",
+        )
+    )
+
+
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(sys.argv[1:] if argv is None else argv)
     out = Path(args.output).expanduser()
+    interactive = not args.yes and sys.stdin.isatty()
+    if interactive:
+        _intro()
 
     # Source already in the target — drives language auto-select and legacy handling.
     in_target = set(detect_languages(out))
@@ -261,7 +279,6 @@ def main(argv: list[str] | None = None) -> int:
     # Respect an existing runner; for a fresh repo the prompt/flag chooses (default Make).
     runner_detected, existing_runner = detect_runner(out)
 
-    interactive = not args.yes and sys.stdin.isatty()
     try:
         config = (
             _interactive(args, out, detected, not existing_runner, in_target)
