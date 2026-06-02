@@ -33,6 +33,11 @@ def test_contract_states_testing_expectation(tmp_path: Path) -> None:
     assert "Regression" in body  # bug -> reproducing test, named explicitly
 
 
+def test_contract_covers_uncovered_languages(tmp_path: Path) -> None:
+    body = _run(tmp_path).read_text(encoding="utf-8")
+    assert "doesn't already cover" in body  # instruct the agent to wire up the real stack
+
+
 def test_merges_existing_agents_md(tmp_path: Path) -> None:
     (tmp_path / "AGENTS.md").write_text("# House rules\n\nAlways rebase.\n")
     body = _run(tmp_path).read_text(encoding="utf-8")

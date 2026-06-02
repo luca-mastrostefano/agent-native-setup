@@ -116,7 +116,10 @@ template in `docs/rfc/TEMPLATE.md`. Lifecycle: `current/ → done/ → supersede
 
 - **Context** — this contract, `docs/`, and RFCs keep intent discoverable.
 - **Mechanical enforcement** — linters, hooks{% if ci %}, and CI{% endif %} catch
-  violations automatically. Error messages should tell you how to fix them.
+  violations automatically. Error messages should tell you how to fix them. If the repo
+  uses a language this setup doesn't already cover, wire up its linter, formatter, and
+  tests the same way (a pre-commit hook{% if ci %}, a CI step{% endif %}, and a
+  command-surface entry) rather than leaving it unguarded.
 - **Feedback loops** — {% if agents %}agents in `.claude/agents/`, {% endif %}tests,
   and reviews close the loop so quality compounds.
 """
