@@ -9,9 +9,9 @@ description = "Wizard that scaffolds an AI-native project setup (AGENTS.md/CLAUD
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
-    "questionary>=2.0",
-    "jinja2>=3.1",
-    "rich>=13.0",
+    "questionary>=2.1.1",
+    "jinja2>=3.1.6",
+    "rich>=15.0.0",
 ]
 
 [project.scripts]
