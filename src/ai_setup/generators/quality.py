@@ -66,7 +66,7 @@ BLAME_IGNORE_REVS = """\
 # Commits git blame (and GitHub's blame view) should skip — for bulk, no-logic
 # changes like a one-time formatter sweep across pre-existing code:
 #
-#   1. task format
+#   1. run your formatter across the repo (see the command surface)
 #   2. git commit -am "style: apply formatters across the codebase"
 #   3. add the resulting commit SHA on its own line below
 #   4. git config blame.ignoreRevsFile .git-blame-ignore-revs   (once, locally)
@@ -143,6 +143,54 @@ def _taskfile(config: WizardConfig, langs: list[Language], hooks: bool) -> str:
     return "\n".join(lines) + "\n"
 
 
+def _makefile(config: WizardConfig, langs: list[Language], hooks: bool) -> str:
+    """A self-documenting Makefile (`make help`) — the zero-install default runner."""
+
+    def cmds_for(label: str) -> list[str]:
+        return [cmd for lang in langs for lbl, cmd in lang.quality_commands if lbl == label]
+
+    def target(name: str, desc: str, cmds: list[str], deps: str = "") -> list[str]:
+        head = f"{name}:{' ' + deps if deps else ''} ## {desc}"
+        return [head] + [f"\t{c}" for c in cmds] + [""]
+
+    typecheck = cmds_for("typecheck")
+    test = cmds_for("test")
+    phony = ["help"] + (["install"] if hooks else []) + ["lint", "format"]
+    if typecheck:
+        phony.append("typecheck")
+    if test:
+        phony.append("test")
+    phony.append("quality")
+    if config.include_docs:
+        phony.append("rfc-sync")
+
+    out = [f".PHONY: {' '.join(phony)}", ""]
+    out += [
+        "help: ## Show available targets",
+        "\t@grep -E '^[a-zA-Z0-9_.-]+:.*## ' $(MAKEFILE_LIST) | sed -E 's/:.*## /  /'",
+        "",
+    ]
+    if hooks:
+        out += target("install", "set up git hooks (once)", ["pre-commit install"])
+    out += target("lint", "run linters", cmds_for("lint") or ["true"])
+    out += target("format", "auto-format", cmds_for("format") or ["true"])
+    gate_deps = ["lint"]
+    if typecheck:
+        out += target("typecheck", "type-check", typecheck)
+        gate_deps.append("typecheck")
+    if test:
+        out += target("test", "run tests", test)
+        gate_deps.append("test")
+    out += target("quality", "full local gate", [], deps=" ".join(gate_deps))
+    if config.include_docs:
+        out += target(
+            "rfc-sync",
+            "move RFCs into the folder matching their Status",
+            ["python tools/checks/sync_rfc_status.py"],
+        )
+    return "\n".join(out).rstrip() + "\n"
+
+
 def generate(config: WizardConfig, sc: Scaffolder) -> None:
     langs = get(config.languages)
 
@@ -156,7 +204,12 @@ def generate(config: WizardConfig, sc: Scaffolder) -> None:
     gitignore = BASE_GITIGNORE + [line for lang in langs for line in lang.gitignore]
     sc.write(".gitignore", "\n".join(gitignore) + "\n")
 
-    sc.write("Taskfile.yml", _taskfile(config, langs, config.git_hooks))
+    # Defer to an existing Taskfile/Makefile rather than imposing (or clobbering) one.
+    if not config.existing_runner:
+        if config.runner == "task":
+            sc.write("Taskfile.yml", _taskfile(config, langs, config.git_hooks))
+        else:
+            sc.write("Makefile", _makefile(config, langs, config.git_hooks))
 
     if config.existing_project:
         sc.write(".git-blame-ignore-revs", BLAME_IGNORE_REVS)

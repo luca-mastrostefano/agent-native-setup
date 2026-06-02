@@ -12,11 +12,12 @@ from rich.panel import Panel
 
 from ai_setup.config import AI_TOOLS, WizardConfig
 from ai_setup.generators import agents, ai_context, ci, docs, quality
-from ai_setup.languages import REGISTRY, detect_languages
+from ai_setup.languages import REGISTRY, detect_languages, detect_runner
 from ai_setup.scaffold import Scaffolder
 
 console = Console()
 LANG_KEYS = list(REGISTRY)
+_MULTISELECT_HINT = "(↑/↓ move · space to select · enter to confirm)"
 
 
 def _csv(value: str) -> list[str]:
@@ -35,6 +36,12 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     p.add_argument("--no-quality", dest="quality", action="store_false")
     p.add_argument("--no-ci", dest="ci", action="store_false")
     p.add_argument("--no-security", dest="security", action="store_false")
+    p.add_argument(
+        "--runner",
+        choices=["make", "task"],
+        default="make",
+        help="runner for a fresh repo (default: make; an existing one is auto-detected)",
+    )
     p.add_argument("--no-github-actions", dest="github_actions", action="store_false")
     p.add_argument("--no-hooks", dest="hooks", action="store_false")
     p.add_argument("--no-git", dest="git", action="store_false")
@@ -53,49 +60,81 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     return p.parse_args(argv)
 
 
-def _interactive(args: argparse.Namespace, out: Path, detected: list[str] | None) -> WizardConfig:
+def _interactive(
+    args: argparse.Namespace, out: Path, detected: list[str] | None, prompt_runner: bool
+) -> WizardConfig:
     import questionary
 
-    name = args.name or questionary.text("Project name:", default=out.name).ask()
-    description = args.description or questionary.text("One-line description:").ask()
+    name = args.name or questionary.text("Project name:", default=out.name).unsafe_ask()
+    description = args.description or questionary.text("One-line description:").unsafe_ask()
     languages = (
         args.languages
         if args.languages is not None
         else questionary.checkbox(
             "Languages (linters scaffolded only for these):",
+            instruction=_MULTISELECT_HINT,
             choices=[
                 questionary.Choice(REGISTRY[k].label, value=k, checked=k in (detected or []))
                 for k in LANG_KEYS
             ],
-        ).ask()
+        ).unsafe_ask()
     )
+    if args.languages is None:  # echo the result — questionary's "done" hides what was picked
+        if languages:
+            console.print(f"[cyan]Languages:[/] {', '.join(languages)}")
+        else:
+            console.print("[yellow]No language selected[/] — linters/tests won't be scaffolded.")
     tools = (
         args.tools
         if args.tools is not None
         else questionary.checkbox(
             "AI assistants to target:",
+            instruction=_MULTISELECT_HINT,
             choices=[questionary.Choice(t, value=t, checked=True) for t in AI_TOOLS],
-        ).ask()
+        ).unsafe_ask()
     )
+    if args.tools is None:
+        console.print(f"[cyan]AI assistants:[/] {', '.join(tools) if tools else 'none'}")
     parts = questionary.checkbox(
         "Scaffold which parts?",
+        instruction=_MULTISELECT_HINT,
         choices=[
             questionary.Choice("Agents & commands", value="agents", checked=args.agents),
             questionary.Choice("Docs & RFCs", value="docs", checked=args.docs),
             questionary.Choice("Linters & quality", value="quality", checked=args.quality),
             questionary.Choice("CI (GitHub Actions)", value="ci", checked=args.ci),
         ],
-    ).ask()
+    ).unsafe_ask()
+    console.print(
+        f"[cyan]Scaffolding:[/] {', '.join(parts) if parts else 'nothing beyond the contract'}"
+    )
     use_ga = (
-        "ci" in parts and questionary.confirm("Add GitHub Actions workflows?", default=True).ask()
+        "ci" in parts
+        and questionary.confirm("Add GitHub Actions workflows?", default=True).unsafe_ask()
     )
     hooks = (
-        "quality" in parts and questionary.confirm("Install pre-commit hooks?", default=True).ask()
+        "quality" in parts
+        and questionary.confirm("Install pre-commit hooks?", default=True).unsafe_ask()
     )
     security = ("quality" in parts or "ci" in parts) and questionary.confirm(
         "Add security scanning (secrets + dependency audit)?", default=True
-    ).ask()
-    init_git = questionary.confirm("Run `git init`?", default=True).ask()
+    ).unsafe_ask()
+    runner = args.runner
+    if prompt_runner and "quality" in parts:
+        runner = questionary.select(
+            "Task runner (none detected):",
+            choices=[
+                questionary.Choice("Make  [no extra dependencies]", value="make"),
+                questionary.Choice(
+                    "Task  [not detected - needs install: taskfile.dev]", value="task"
+                ),
+            ],
+        ).unsafe_ask()
+    if (out / ".git").exists():
+        console.print("[cyan]Already a git repository[/] — skipping git init.")
+        init_git = False
+    else:
+        init_git = questionary.confirm("Run `git init`?", default=True).unsafe_ask()
 
     return WizardConfig(
         project_name=name,
@@ -108,6 +147,7 @@ def _interactive(args: argparse.Namespace, out: Path, detected: list[str] | None
         include_quality="quality" in parts,
         include_ci="ci" in parts,
         include_security=bool(security),
+        runner=runner or "make",
         use_github_actions=bool(use_ga),
         git_hooks=bool(hooks),
         init_git=bool(init_git),
@@ -126,6 +166,7 @@ def _from_flags(args: argparse.Namespace, out: Path, detected: list[str] | None)
         include_quality=args.quality,
         include_ci=args.ci,
         include_security=args.security,
+        runner=args.runner,
         use_github_actions=args.github_actions,
         git_hooks=args.hooks,
         init_git=args.git,
@@ -164,7 +205,11 @@ def _summary(config: WizardConfig, sc: Scaffolder) -> None:
         )
     steps = ["Read [bold]AGENTS.md[/] — the contract for all contributors."]
     if config.git_hooks:
-        steps.append("Run [bold]task install[/] to enable pre-commit hooks.")
+        install_cmd = "pre-commit install" if config.existing_runner else f"{config.runner} install"
+        steps.append(
+            f"Install [bold]pre-commit[/] (e.g. [bold]pipx install pre-commit[/]), then run "
+            f"[bold]{install_cmd}[/] to enable the git hooks."
+        )
     if config.include_ci and config.use_github_actions and "claude" in config.ai_tools:
         steps.append("Add an [bold]ANTHROPIC_API_KEY[/] secret to enable the @claude workflow.")
     console.print("\n[bold]Next steps:[/]")
@@ -182,8 +227,19 @@ def main(argv: list[str] | None = None) -> int:
     if detected:
         console.print(f"[cyan]Detected language(s):[/] {', '.join(detected)}")
 
+    # Respect an existing runner; for a fresh repo the prompt/flag chooses (default Make).
+    runner_detected, existing_runner = detect_runner(out)
+
     interactive = not args.yes and sys.stdin.isatty()
-    config = _interactive(args, out, detected) if interactive else _from_flags(args, out, detected)
+    try:
+        config = (
+            _interactive(args, out, detected, prompt_runner=not existing_runner)
+            if interactive
+            else _from_flags(args, out, detected)
+        )
+    except (KeyboardInterrupt, EOFError):
+        console.print("\n[yellow]Cancelled.[/]")
+        return 130
 
     unknown = set(config.languages) - set(LANG_KEYS)
     if unknown:
@@ -192,6 +248,14 @@ def main(argv: list[str] | None = None) -> int:
             f"Choose from: {', '.join(LANG_KEYS)}"
         )
         return 2
+
+    config.existing_runner = existing_runner
+    if existing_runner:
+        config.runner = runner_detected  # defer to what's already there
+        console.print(
+            f"[cyan]Detected task runner:[/] {runner_detected} — deferring to it "
+            "(no runner file generated)."
+        )
 
     # Scaffolding over existing source for a selected language → grandfather it.
     config.existing_project = bool(set(config.languages) & in_target)
@@ -205,9 +269,10 @@ def main(argv: list[str] | None = None) -> int:
     sc = Scaffolder(config.target, force=args.force)
     try:
         build(config, sc)
-    except KeyboardInterrupt:
-        removed = sc.rollback()
-        console.print(f"\n[yellow]Interrupted — rolled back {removed} newly created item(s).[/]")
+    except (KeyboardInterrupt, EOFError):
+        console.print("\n[yellow]Cancelled.[/]")
+        if removed := sc.rollback():
+            console.print(f"[yellow]Rolled back {removed} newly created item(s).[/]")
         return 130
     _summary(config, sc)
     return 0

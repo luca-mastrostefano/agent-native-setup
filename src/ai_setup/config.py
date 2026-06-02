@@ -35,6 +35,11 @@ class WizardConfig:
     # True when scaffolding into a repo that already has source for the selected
     # languages; flips the quality gate to changed-files-only (legacy grandfathering).
     existing_project: bool = False
+    # Task runner the command surface speaks: "make" (zero-install default) | "task".
+    runner: str = "make"
+    # True when the target already had a Taskfile/Makefile: defer to it, don't
+    # generate our own Taskfile and don't touch theirs.
+    existing_runner: bool = False
 
     @property
     def slug(self) -> str:

@@ -19,8 +19,8 @@ DOCS_README = """\
 - `contributing.md` — the dev loop.
 
 RFCs are named `YYYY-MM-DD-short-slug.md`. You don't move them by hand: edit the
-`Status:` line and run `task rfc-sync` (also wired as a pre-commit hook) to
-relocate the file to the matching folder via `git mv`, preserving history.
+`Status:` line and the `rfc-status` pre-commit hook relocates the file via `git mv`
+(or run `python tools/checks/sync_rfc_status.py`), preserving history.
 """
 
 IMPROVEMENTS = """\
@@ -47,7 +47,7 @@ line in an RFC drives where it belongs:
 
 When a status changes, this moves the file to the right folder (via `git mv`
 when possible) and exits non-zero so the move can be re-staged — mirroring how
-formatters behave in pre-commit. Run by the `rfc-status` hook and `task rfc-sync`.
+formatters behave in pre-commit. Run by the `rfc-status` pre-commit hook.
 """
 
 from __future__ import annotations
@@ -363,8 +363,9 @@ rewrite it all at once:
 - Local commits only format the files you touch (pre-commit runs on staged files).
 - CI lints only the files changed in a pull request, so existing code is
   grandfathered until you edit it.
-- To clean everything in one pass (optional): run `task format`, commit it on its
-  own, add that commit's SHA to `.git-blame-ignore-revs`, and run
+- To clean everything in one pass (optional): run your formatter across the repo
+  (see the command surface), commit it on its own, add that commit's SHA to
+  `.git-blame-ignore-revs`, and run
   `git config blame.ignoreRevsFile .git-blame-ignore-revs` so `git blame` skips it.
 - Non-formatting lint findings in legacy code aren't auto-fixed — resolve them as
   you touch the code, or scope rules in the linter config.

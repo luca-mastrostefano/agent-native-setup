@@ -462,6 +462,20 @@ def get(keys: list[str]) -> list[Language]:
     return [REGISTRY[k] for k in keys if k in REGISTRY]
 
 
+def detect_runner(root: Path) -> tuple[str, bool]:
+    """Which task runner the target already uses: (runner, existing).
+
+    ("task", True) for a Taskfile, ("make", True) for a Makefile, else ("make", False)
+    — the zero-install default, where the wizard generates its own Makefile.
+    """
+    root = Path(root)
+    if any((root / n).is_file() for n in ("Taskfile.yml", "Taskfile.yaml", "taskfile.yml")):
+        return "task", True
+    if any((root / n).is_file() for n in ("Makefile", "makefile", "GNUmakefile")):
+        return "make", True
+    return "make", False
+
+
 def detect_languages(root: Path) -> list[str]:
     """Return registry keys whose marker files or source extensions appear under ``root``.
 

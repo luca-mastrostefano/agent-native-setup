@@ -6,8 +6,33 @@ than a sprawling catalogue — add more as real workflows emerge.
 
 from __future__ import annotations
 
+import json
+
 from ai_setup.config import WizardConfig
 from ai_setup.scaffold import Scaffolder
+
+# Make has no built-in target lister; grep self-documenting `## ` targets, else names.
+_MAKE_LIST_GREP = (
+    "grep -E '^[A-Za-z0-9_.-]+:.*## ' Makefile | sed -E 's/:.*## /  /' "
+    "|| grep -E '^[A-Za-z0-9_.-]+:' Makefile | cut -d: -f1 | sort -u"
+)
+
+
+def _session_list_command(config: WizardConfig) -> str:
+    """Command the SessionStart hook runs to inject the live command surface.
+
+    Guards on the runner being installed so a missing tool prints a hint, not an error.
+    """
+    if config.runner == "task":
+        return (
+            "command -v task >/dev/null 2>&1 && task --list "
+            "|| echo 'task not found - install go-task: https://taskfile.dev'"
+        )
+    if config.existing_runner:  # unknown Makefile — grep targets (no make binary needed)
+        return _MAKE_LIST_GREP
+    # our generated Makefile is self-documenting via a `help` target
+    return "command -v make >/dev/null 2>&1 && make help || echo 'make not found on PATH'"
+
 
 AGENTS_README = """\
 # Agents & commands
@@ -91,3 +116,11 @@ def generate(config: WizardConfig, sc: Scaffolder) -> None:
     sc.write(".claude/commands/review.md", REVIEW_COMMAND)
     if config.include_docs:
         sc.write(".claude/commands/rfc.md", RFC_COMMAND)
+
+    # SessionStart hook: inject the live command surface into the agent's context.
+    if config.include_quality or config.existing_runner:
+        list_cmd = _session_list_command(config)
+        settings = {
+            "hooks": {"SessionStart": [{"hooks": [{"type": "command", "command": list_cmd}]}]}
+        }
+        sc.write(".claude/settings.json", json.dumps(settings, indent=2) + "\n")

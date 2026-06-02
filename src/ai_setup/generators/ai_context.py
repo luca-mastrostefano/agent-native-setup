@@ -35,6 +35,10 @@ AGENTS_MD = """\
 {% if quality_commands %}```bash
 {% for label, cmd in quality_commands %}{{ cmd }}{{ "  # " + label }}
 {% endfor %}```
+
+{{ surface_note }}
+
+{{ capture_line }}
 {% else %}_No quality tooling configured yet._
 {% endif %}
 
@@ -120,9 +124,11 @@ This repository follows an AI-native setup. **Start with
 [`AGENTS.md`](./AGENTS.md)** — the single source of truth for conventions, the
 command surface, and the four execution principles.
 
-{% if quality %}```bash
-task install   # set up git hooks (once)
-task quality   # run the full local gate
+{% if show_quickstart %}Requires [`pre-commit`](https://pre-commit.com){% if runner == "task" %} and [`task`](https://taskfile.dev){% endif %}.
+
+```bash
+{{ runner }} install   # set up git hooks (once)
+{{ runner }} quality   # run the full local gate
 ```
 {% endif %}"""
 
@@ -161,18 +167,55 @@ def generate(config: WizardConfig, sc: Scaffolder) -> None:
         return any(lbl == label for lang in langs for lbl, _ in lang.quality_commands)
 
     quality_commands: list[tuple[str, str]] = []
-    if config.include_quality:
+    surface_note = ""
+    if config.include_quality and config.existing_runner:
+        # Their runner is the source of truth — show the raw checks to ensure exist.
         if config.git_hooks:
-            quality_commands.append(("set up git hooks (once)", "task install"))
-        quality_commands.append(("run linters", "task lint"))
-        quality_commands.append(("auto-format", "task format"))
+            quality_commands.append(("set up git hooks (once)", "pre-commit install"))
+        seen: set[str] = set()
+        for label in ("lint", "format", "typecheck", "test"):
+            for lang in langs:
+                for lbl, cmd in lang.quality_commands:
+                    if lbl == label and cmd not in seen:
+                        seen.add(cmd)
+                        quality_commands.append((label, cmd))
+        runner_name = "Task" if config.runner == "task" else "Make"
+        discover = (
+            "task --list"
+            if config.runner == "task"
+            else "grep -E '^[A-Za-z0-9_.-]+:.*## ' Makefile"
+        )
+        surface_note = (
+            f"This repo already uses **{runner_name}** — its targets are the source of "
+            f"truth. Run `{discover}` to see them; the commands above are the standard "
+            f"checks this setup expects, so add any that aren't already targets."
+        )
+    elif config.include_quality:
+        verb = config.runner  # "make" (default) or "task"
+        if config.git_hooks:
+            quality_commands.append(("set up git hooks (once)", f"{verb} install"))
+        quality_commands.append(("run linters", f"{verb} lint"))
+        quality_commands.append(("auto-format", f"{verb} format"))
         if _has("typecheck"):
-            quality_commands.append(("type-check", "task typecheck"))
+            quality_commands.append(("type-check", f"{verb} typecheck"))
         if _has("test"):
-            quality_commands.append(("run tests", "task test"))
-        quality_commands.append(("full local gate", "task quality"))
+            quality_commands.append(("run tests", f"{verb} test"))
+        quality_commands.append(("full local gate", f"{verb} quality"))
         if config.include_docs:
-            quality_commands.append(("sync RFCs to their Status folder", "task rfc-sync"))
+            quality_commands.append(("sync RFCs to their Status folder", f"{verb} rfc-sync"))
+        surface_note = (
+            "Run `task --list` for the full, current set."
+            if verb == "task"
+            else "Run `make help` for the full, current set."
+        )
+
+    target_word = "`task`" if config.runner == "task" else "`make` target"
+    capture_line = (
+        "**When you work out a repeatable process — a build, check, migration, or fix "
+        f"sequence you'd otherwise rediscover — capture it as a {target_word} with a "
+        "one-line description, so the next contributor runs it deterministically instead "
+        "of leaving the knowledge in a chat or a throwaway script.**"
+    )
     rendered = render(
         AGENTS_MD,
         name=config.project_name,
@@ -181,6 +224,8 @@ def generate(config: WizardConfig, sc: Scaffolder) -> None:
         agents=config.include_agents,
         ci=config.include_ci and config.use_github_actions,
         quality_commands=quality_commands,
+        surface_note=surface_note,
+        capture_line=capture_line if quality_commands else "",
     )
 
     # Never clobber a pre-existing contract. Fold any non-empty AGENTS.md — and
@@ -211,7 +256,8 @@ def generate(config: WizardConfig, sc: Scaffolder) -> None:
         preserve=True,
         name=config.project_name,
         description=config.description,
-        quality=config.include_quality,
+        show_quickstart=config.include_quality and not config.existing_runner,
+        runner=config.runner,
     )
 
     if claude_targeted:

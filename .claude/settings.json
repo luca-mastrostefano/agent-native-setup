@@ -1,0 +1,14 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "command -v task >/dev/null 2>&1 && task --list || echo 'task not found - install go-task: https://taskfile.dev'"
+          }
+        ]
+      }
+    ]
+  }
+}

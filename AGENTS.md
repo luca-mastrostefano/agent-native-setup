@@ -26,6 +26,14 @@ task quality  # full local gate
 task rfc-sync  # sync RFCs to their Status folder
 ```
 
+Run `task --list` for the full, current set (also injected at session start via the
+`.claude/settings.json` `SessionStart` hook).
+
+**When you work out a repeatable process — a build, check, migration, or fix sequence
+you'd otherwise rediscover — capture it as a `task` with a one-line `desc:`, so the next
+contributor runs it deterministically instead of leaving the knowledge in a chat or a
+throwaway script.**
+
 ## 1. Think Before Coding
 
 **Don't assume. Don't hide confusion. Surface tradeoffs.**
