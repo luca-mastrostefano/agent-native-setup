@@ -104,7 +104,10 @@ def _interactive(
         if languages:
             console.print(f"[cyan]Languages:[/] {', '.join(languages)}")
         else:
-            console.print("[yellow]No language selected[/] — linters/tests won't be scaffolded.")
+            console.print(
+                ":warning:  [bold yellow]No language selected[/] — linters/tests won't "
+                "be scaffolded."
+            )
     tools = (
         args.tools
         if args.tools is not None
