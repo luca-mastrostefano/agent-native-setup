@@ -22,7 +22,7 @@ jobs:
   quality:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 """
 
 # Existing-repo variant: PR-only, with full history and a resolved diff base so the
@@ -39,7 +39,7 @@ jobs:
   quality:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 0
       - name: Resolve diff base
@@ -52,7 +52,7 @@ CHECKS_JOB_HEAD = """\
   checks:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 0
 """
@@ -61,7 +61,7 @@ CHECKS_JOB_HEAD_NONBLOCKING = """\
     runs-on: ubuntu-latest
     continue-on-error: true  # existing repo: report vulns/secrets, don't block
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 0
 """
@@ -84,7 +84,7 @@ jobs:
       pull-requests: write
       id-token: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: anthropics/claude-code-action@v1
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}

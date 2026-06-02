@@ -24,3 +24,8 @@ that needs a real decision into an RFC in `docs/rfc/current/`.
   changed-files ratchet job does not yet.
 - **Dependency-scan tuning** — the scaffolded vuln scans are sensible defaults; some
   (npm audit needs a lockfile, pip-audit a resolvable env) may need per-project tuning.
+- **Refresh the remaining CI action pins** — `actions/*` are on the Node-24 majors, but
+  `golangci-lint-action@v6` (bumping to v8 forces a golangci-lint **v2 config** migration
+  of `GOLANGCI_CONFIG`), and the third-party actions (`gitleaks-action`, `lychee-action`,
+  `rustsec/audit-check`, `claude-code-action`, `govulncheck-action`) should get a periodic
+  Node-24 / SHA-pin audit. Dependabot's `github-actions` ecosystem will surface these.

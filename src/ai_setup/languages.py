@@ -175,7 +175,7 @@ REGISTRY: dict[str, Language] = {
     - id: mypy
 """,
         ci_steps="""\
-- uses: actions/setup-python@v5
+- uses: actions/setup-python@v6
   with:
     python-version: "3.12"
 - run: pipx install ruff
@@ -185,7 +185,7 @@ REGISTRY: dict[str, Language] = {
 - run: pytest
 """,
         ci_ratchet_steps="""\
-- uses: actions/setup-python@v5
+- uses: actions/setup-python@v6
   with:
     python-version: "3.12"
 - run: pipx install ruff
@@ -197,7 +197,7 @@ REGISTRY: dict[str, Language] = {
     ruff format --check $files
 """,
         ci_security_steps="""\
-- uses: pypa/gh-action-pip-audit@v1
+- uses: pypa/gh-action-pip-audit@v1.1.0
   with:
     inputs: .
 """,
@@ -241,7 +241,7 @@ REGISTRY: dict[str, Language] = {
       files: \\.(js|jsx|ts|tsx)$
 """,
         ci_steps="""\
-- uses: actions/setup-node@v4
+- uses: actions/setup-node@v6
   with:
     node-version: "20"
 - run: npm ci || npm install
@@ -250,7 +250,7 @@ REGISTRY: dict[str, Language] = {
 - run: npm test --if-present
 """,
         ci_ratchet_steps="""\
-- uses: actions/setup-node@v4
+- uses: actions/setup-node@v6
   with:
     node-version: "20"
 - run: npm ci || npm install
@@ -262,7 +262,7 @@ REGISTRY: dict[str, Language] = {
     npx eslint $files
 """,
         ci_security_steps="""\
-- uses: actions/setup-node@v4
+- uses: actions/setup-node@v6
   with:
     node-version: "20"
 - run: npm ci || npm install
@@ -299,7 +299,7 @@ REGISTRY: dict[str, Language] = {
       types: [go]
 """,
         ci_steps="""\
-- uses: actions/setup-go@v5
+- uses: actions/setup-go@v6
   with:
     go-version: "1.22"
 - uses: golangci/golangci-lint-action@v6
@@ -307,7 +307,7 @@ REGISTRY: dict[str, Language] = {
 - run: go test ./...
 """,
         ci_ratchet_steps="""\
-- uses: actions/setup-go@v5
+- uses: actions/setup-go@v6
   with:
     go-version: "1.22"
 - uses: golangci/golangci-lint-action@v6
@@ -409,7 +409,7 @@ REGISTRY: dict[str, Language] = {
       args: [--offline, --no-progress]
 """,
         ci_steps="""\
-- uses: actions/setup-node@v4
+- uses: actions/setup-node@v6
   with:
     node-version: "20"
 - run: npx --yes htmlhint "**/*.html"
@@ -419,7 +419,7 @@ REGISTRY: dict[str, Language] = {
     fail: true
 """,
         ci_ratchet_steps="""\
-- uses: actions/setup-node@v4
+- uses: actions/setup-node@v6
   with:
     node-version: "20"
 - name: Collect changed HTML
