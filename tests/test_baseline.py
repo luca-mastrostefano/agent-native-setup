@@ -69,6 +69,28 @@ def test_no_github_actions_omits_github_files(tmp_path: Path) -> None:
     assert not (root / ".github/PULL_REQUEST_TEMPLATE.md").exists()
 
 
+def test_gitignore_ignores_claude_local_settings(tmp_path: Path) -> None:
+    gi = (_build(tmp_path, languages=["python"]) / ".gitignore").read_text(encoding="utf-8")
+    assert ".claude/settings.local.json" in gi  # claude is in the default ai_tools
+
+
+def test_existing_gitignore_never_overwritten_even_with_force(tmp_path: Path) -> None:
+    (tmp_path / ".gitignore").write_text("my-custom/\n")
+    config = WizardConfig(
+        project_name="demo", output_dir=tmp_path, init_git=False, languages=["python"]
+    )
+    cli.build(config, Scaffolder(config.target, force=True))  # force must not clobber it
+    assert (tmp_path / ".gitignore").read_text(encoding="utf-8") == "my-custom/\n"
+
+
+def test_node_and_html_set_up_node_once(tmp_path: Path) -> None:
+    wf = (_build(tmp_path, languages=["node", "html"]) / ".github/workflows/quality.yml").read_text(
+        encoding="utf-8"
+    )
+    quality_job = wf.split("  checks:")[0]  # the checks job sets up node separately
+    assert quality_job.count("actions/setup-node@") == 1  # deduped — not once per language
+
+
 def test_actionlint_hook_only_with_github_actions(tmp_path: Path) -> None:
     with_ga = (_build(tmp_path / "ga", languages=["python"]) / ".pre-commit-config.yaml").read_text(
         encoding="utf-8"

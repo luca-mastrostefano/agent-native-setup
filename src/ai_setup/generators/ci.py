@@ -105,6 +105,25 @@ PULL_REQUEST_TEMPLATE = """\
 """
 
 
+def _dedupe_steps(steps: str) -> str:
+    """Drop exact-duplicate steps so a shared toolchain (e.g. Node for node+html) is set up once."""
+    blocks: list[list[str]] = []
+    for line in steps.splitlines(keepends=True):
+        if line.startswith("      - ") or not blocks:
+            blocks.append([])
+        blocks[-1].append(line)
+    seen: set[str] = set()
+    kept: list[str] = []
+    for block in blocks:
+        text = "".join(block)
+        key = text.strip()
+        if key and key in seen:
+            continue
+        seen.add(key)
+        kept.append(text)
+    return "".join(kept)
+
+
 def _dependabot(langs: list, security_only: bool) -> str:
     """Dependabot config: GitHub Actions plus each selected language's ecosystem.
 
@@ -144,7 +163,7 @@ def _checks_job(langs: list, blocking: bool) -> str:
     blocks = [lang.ci_security_steps for lang in langs if lang.ci_security_steps]
     blocks.append(GITLEAKS_CI_STEP)
     head = CHECKS_JOB_HEAD if blocking else CHECKS_JOB_HEAD_NONBLOCKING
-    return head + "".join(textwrap.indent(b, "      ") for b in blocks)
+    return head + _dedupe_steps("".join(textwrap.indent(b, "      ") for b in blocks))
 
 
 def generate(config: WizardConfig, sc: Scaffolder) -> None:
@@ -166,7 +185,7 @@ def generate(config: WizardConfig, sc: Scaffolder) -> None:
                 "  quality:\n    runs-on: ubuntu-latest\n"
                 "    continue-on-error: true  # adoption=none: informational, never blocks\n",
             )
-    steps = "".join(textwrap.indent(b, "      ") for b in blocks if b)
+    steps = _dedupe_steps("".join(textwrap.indent(b, "      ") for b in blocks if b))
     if not steps:
         steps = '      - run: echo "no language tooling configured"\n'
     checks = _checks_job(langs, blocking=effective == "full") if config.include_security else ""

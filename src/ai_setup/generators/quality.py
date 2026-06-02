@@ -251,7 +251,10 @@ def generate(config: WizardConfig, sc: Scaffolder) -> None:
         sc.write(".pre-commit-config.yaml", _pre_commit_config(config, langs))
 
     gitignore = BASE_GITIGNORE + [line for lang in langs for line in lang.gitignore]
-    sc.write(".gitignore", "\n".join(gitignore) + "\n")
+    if "claude" in config.ai_tools:
+        gitignore.append(".claude/settings.local.json")  # Claude Code's per-user local settings
+    # preserve=True: never overwrite a repo's existing .gitignore, even with --force.
+    sc.write(".gitignore", "\n".join(gitignore) + "\n", preserve=True)
     sc.write(".editorconfig", EDITORCONFIG)
     sc.write(".gitattributes", GITATTRIBUTES)
     if config.include_security:

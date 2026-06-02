@@ -43,3 +43,6 @@ coverage.xml
 .idea/
 .vscode/
 *.swp
+
+# Claude Code per-user local settings (the shared .claude/settings.json is tracked)
+.claude/settings.local.json
