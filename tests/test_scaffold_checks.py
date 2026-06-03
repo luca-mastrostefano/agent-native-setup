@@ -68,7 +68,9 @@ def test_non_python_project_guards_shipped_python_with_ruff(tmp_path: Path) -> N
     assert "ruff-check" in pc and "^tools/.*\\.py$" in pc  # scoped pre-commit hook
     assert "ruff check tools/" in mk and "ruff format --check tools/" in mk  # local gate
     assert "ruff check tools/" in wf  # CI matches local
-    assert "__pycache__/" in (root / ".gitignore").read_text(encoding="utf-8")
+    gi = (root / ".gitignore").read_text(encoding="utf-8")
+    assert "__pycache__/" in gi  # unittest drops bytecode under tools/checks/
+    assert ".ruff_cache/" in gi  # the tools/ ruff hook drops a cache at the repo root
 
 
 def test_python_project_does_not_double_guard(tmp_path: Path) -> None:

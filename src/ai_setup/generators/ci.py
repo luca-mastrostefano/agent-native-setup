@@ -1,4 +1,4 @@
-"""Generates GitHub Actions: a quality gate and an optional @claude responder."""
+"""Generates GitHub Actions: the quality gate, a dependency/secret scan, and the PR template."""
 
 from __future__ import annotations
 
@@ -92,30 +92,6 @@ TOOLS_TESTS_CI = """\
     python-version: "3.12"
 - run: python -m unittest discover -s tools/checks
 """
-
-CLAUDE_WORKFLOW = """\
-name: claude
-on:
-  issue_comment:
-    types: [created]
-  pull_request_review_comment:
-    types: [created]
-
-jobs:
-  claude:
-    if: contains(github.event.comment.body, '@claude')
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-      pull-requests: write
-      id-token: write
-    steps:
-      - uses: actions/checkout@v6
-      - uses: anthropics/claude-code-action@v1
-        with:
-          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
-"""
-
 
 PULL_REQUEST_TEMPLATE = """\
 ## What & why
@@ -224,6 +200,3 @@ def generate(config: WizardConfig, sc: Scaffolder) -> None:
 
     sc.write(".github/dependabot.yml", _dependabot(langs, security_only=effective != "full"))
     sc.write(".github/PULL_REQUEST_TEMPLATE.md", PULL_REQUEST_TEMPLATE)
-
-    if "claude" in config.ai_tools:
-        sc.write(".github/workflows/claude.yml", CLAUDE_WORKFLOW)

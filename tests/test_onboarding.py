@@ -154,9 +154,44 @@ def test_setup_step_points_at_bootstrap_when_there_are_deps(tmp_path: Path) -> N
     assert "make bootstrap" not in py and "make install" in py
 
 
-def test_api_key_step_only_for_claude_with_ci(tmp_path: Path) -> None:
-    assert "ANTHROPIC_API_KEY" in _onboarding(tmp_path / "c", ai_tools=["claude"])
-    assert "ANTHROPIC_API_KEY" not in _onboarding(tmp_path / "x", ai_tools=["cursor"])
+def test_runbook_has_no_api_key_step(tmp_path: Path) -> None:
+    # The @claude CI bot is out of scope, so onboarding never asks for ANTHROPIC_API_KEY.
+    assert "ANTHROPIC_API_KEY" not in _onboarding(tmp_path, ai_tools=["claude"])
+
+
+def test_baseline_step_flags_python_command_surface_tools(tmp_path: Path) -> None:
+    # The command surface calls ruff/mypy/pytest directly; the scaffold doesn't install
+    # them, so the runbook must name them as prereqs (a real onboarding tripped on ruff).
+    py = _onboarding(tmp_path / "py")  # python project -> ruff, mypy, pytest
+    assert "`ruff`" in py and "`mypy`" in py and "`pytest`" in py
+    assert "on your PATH" in py
+    # node + docs ships only tools/checks (Python helpers), so just ruff is in the surface.
+    node = (_build(tmp_path / "n", languages=["node"]) / "ONBOARDING.md").read_text(
+        encoding="utf-8"
+    )
+    assert "`ruff`" in node and "`mypy`" not in node
+
+
+def test_cleanup_keeps_ci_watch_for_link_checked_docs(tmp_path: Path) -> None:
+    # With HTML/lychee in CI, the cleanup commit edits link-checked docs, so don't claim
+    # "no CI watch needed" — a dangling link could fail the build.
+    html = (_build(tmp_path / "h", languages=["html"]) / "ONBOARDING.md").read_text(
+        encoding="utf-8"
+    )
+    assert "no CI watch is needed" not in html
+    assert "no CI watch is needed" in _onboarding(tmp_path / "py")  # non-HTML keeps the speedup
+
+
+def test_cleanup_flags_claude_md_symlink_transiently(tmp_path: Path) -> None:
+    # CLAUDE.md symlinks to AGENTS.md; the self-deleting runbook flags it so the agent
+    # doesn't edit CLAUDE.md separately. Only when claude is targeted and a banner exists.
+    assert "`CLAUDE.md` symlinks to `AGENTS.md`" in _onboarding(
+        tmp_path / "c", ai_tools=["claude"], first_run_banner=True
+    )
+    assert "symlinks to" not in _onboarding(tmp_path / "nb", ai_tools=["claude"])  # no banner
+    assert "symlinks to" not in _onboarding(
+        tmp_path / "cur", ai_tools=["cursor"], first_run_banner=True
+    )
 
 
 def test_onboard_command_scaffolded_for_claude(tmp_path: Path) -> None:

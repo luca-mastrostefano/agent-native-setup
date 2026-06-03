@@ -153,7 +153,7 @@ This repository follows an AI-native setup. **Start with
 [`AGENTS.md`](./AGENTS.md)** — the single source of truth for conventions, the
 command surface, and the four execution principles.
 
-{% if show_quickstart %}Requires [`pre-commit`](https://pre-commit.com){% if runner == "task" %} and [`task`](https://taskfile.dev){% endif %}{% if needs_lychee %}; the HTML link-check hook also needs [`lychee`](https://lychee.cli.rs) on your PATH (`brew install lychee`, `cargo install lychee`, or a release binary){% endif %}.
+{% if show_quickstart %}Requires [`pre-commit`](https://pre-commit.com){% if runner == "task" %} and [`task`](https://taskfile.dev){% endif %}{% if needs_lychee %}; the HTML link-check hook also needs [`lychee`](https://lychee.cli.rs) on your PATH (`brew install lychee`, `cargo install lychee`, or a release binary){% endif %}{% if surface_tools %}; the command surface also calls {{ surface_tools }} directly, so put {{ surface_pron }} on your PATH (pipx/uv/pip){% endif %}.
 
 ```bash
 {{ runner }} install   # set up git hooks (once)
@@ -290,6 +290,13 @@ def generate(config: WizardConfig, sc: Scaffolder) -> None:
 
     # README is the human entry point the contract links to; never clobber an
     # existing one, even with --force.
+    # Python tools the command surface calls directly (see config.python_surface_tools) —
+    # declared as prerequisites so `make quality` doesn't fail on a clean machine.
+    py_surface = [f"`{t}`" for t in config.python_surface_tools]
+    if len(py_surface) <= 1:
+        surface_tools = py_surface[0] if py_surface else ""
+    else:
+        surface_tools = ", ".join(py_surface[:-1]) + ", and " + py_surface[-1]
     sc.render_write(
         "README.md",
         README_MD,
@@ -299,6 +306,8 @@ def generate(config: WizardConfig, sc: Scaffolder) -> None:
         show_quickstart=config.include_quality and not config.existing_runner,
         runner=config.runner,
         needs_lychee=config.git_hooks and "html" in config.languages,
+        surface_tools=surface_tools,
+        surface_pron="it" if len(py_surface) == 1 else "them",
     )
 
     if claude_targeted:

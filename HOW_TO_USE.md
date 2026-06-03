@@ -68,7 +68,7 @@ contributors.
 | `--tools claude,cursor,copilot` | Which AI assistants to wire up (default: all three). |
 | `--description "..."` | One-line project description used in `AGENTS.md`/`README.md`. |
 | `--no-agents` / `--no-docs` / `--no-quality` / `--no-ci` | Skip a part of the scaffold. |
-| `--no-github-actions` | Quality tooling without CI workflows (e.g. drop the `@claude` workflow). |
+| `--no-github-actions` | Quality tooling without the CI workflow. |
 | `--no-hooks` / `--no-git` | Skip pre-commit hooks / `git init`. |
 | `-y, --yes` | Non-interactive; use flags and defaults. |
 | `--force` | Overwrite existing files (`README.md` is still preserved). |
@@ -80,6 +80,3 @@ contributors.
   `.ts`/`.js` files. Use `--languages` to pin the set explicitly.
 - **CLAUDE.md** is created as a symlink to `AGENTS.md` so the contract never
   forks; Cursor and Copilot get thin pointer files back to it.
-- The generated `.github/workflows/claude.yml` is dormant until you push to
-  GitHub and add an `ANTHROPIC_API_KEY` repo secret — it lets contributors invoke
-  Claude by commenting `@claude` on a PR/issue. Delete the file if you don't want it.

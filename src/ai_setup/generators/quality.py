@@ -338,8 +338,8 @@ def generate(config: WizardConfig, sc: Scaffolder) -> None:
         sc.write(".pre-commit-config.yaml", _pre_commit_config(config, langs))
 
     gitignore = BASE_GITIGNORE + [line for lang in langs for line in lang.gitignore]
-    if config.ships_tools_python:  # tools/checks/*.py runs and drops bytecode
-        gitignore += ["__pycache__/", "*.pyc"]
+    if config.ships_tools_python:  # tools/checks/*.py: ruff + unittest drop caches/bytecode
+        gitignore += ["__pycache__/", "*.pyc", ".ruff_cache/"]
     if "claude" in config.ai_tools:
         gitignore.append(".claude/settings.local.json")  # Claude Code's per-user local settings
     # preserve=True: never overwrite a repo's existing .gitignore, even with --force.

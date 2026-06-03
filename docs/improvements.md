@@ -28,5 +28,5 @@ that needs a real decision into an RFC in `docs/rfc/current/`.
 - **Refresh the remaining CI action pins** — `actions/*` and `gitleaks-action@v3` are on
   Node-24, but `golangci-lint-action@v6` (bumping to v8 forces a golangci-lint **v2 config**
   migration of `GOLANGCI_CONFIG`), and the other third-party actions (`lychee-action`,
-  `rustsec/audit-check`, `claude-code-action`, `govulncheck-action`) should get a periodic
+  `rustsec/audit-check`, `govulncheck-action`) should get a periodic
   Node-24 / SHA-pin audit. Dependabot's `github-actions` ecosystem will surface these.

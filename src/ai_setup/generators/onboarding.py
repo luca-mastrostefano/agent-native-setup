@@ -131,7 +131,24 @@ def _steps(config: WizardConfig) -> list[str]:
             if config.existing_runner
             else ""
         )
-        steps.append(f"Run {gate} once to establish a clean baseline{tail}{surface}.")
+        # The command surface calls these Python tools directly (not via npm or the managed
+        # pre-commit hooks), so they must be on PATH for the gate to run — the scaffold
+        # doesn't install them.
+        py_tools = [f"`{t}`" for t in config.python_surface_tools]
+        if py_tools:
+            listed = (
+                py_tools[0]
+                if len(py_tools) == 1
+                else ", ".join(py_tools[:-1]) + ", and " + py_tools[-1]
+            )
+            it = "it" if len(py_tools) == 1 else "them"
+            tools_note = (
+                f" {gate} runs {listed} directly, so install {it} on your PATH first "
+                "(e.g. `pipx install`, `uv tool install`, or pip in a venv) — the scaffold doesn't."
+            )
+        else:
+            tools_note = ""
+        steps.append(f"Run {gate} once to establish a clean baseline{tail}{surface}.{tools_note}")
         if config.existing_project:
             steps.append(_adoption_step(config, gate, fmt))
     if config.include_docs:
@@ -170,19 +187,22 @@ def _steps(config: WizardConfig) -> list[str]:
             "maintainer to check the Actions tab) — local checks can't catch a missing "
             "action tag or a deprecated runner."
         )
-        if "claude" in config.ai_tools:
-            steps.append(
-                "Enable the @claude workflow: add an `ANTHROPIC_API_KEY` secret "
-                "(Settings → Secrets and variables → Actions). This one's on you, not the agent."
-            )
     # The first-run apparatus self-deletes: name every artifact that was actually
     # scaffolded so the agent clears all of them in one final commit, leaving only
     # the standing contract behind.
     removals = ["**Delete this file**"]
     if config.first_run_banner and config.ai_tools:  # the banner was injected
+        # CLAUDE.md is a symlink to AGENTS.md (claude targets), so editing AGENTS.md updates
+        # both — flag it here, in the transient runbook, so the agent doesn't try to handle
+        # CLAUDE.md separately. Deliberately kept out of the permanent contract.
+        symlink_note = (
+            "; `CLAUDE.md` symlinks to `AGENTS.md`, so edit `AGENTS.md` only — both update together"
+            if "claude" in config.ai_tools
+            else ""
+        )
         removals.append(
             "remove the first-run banner from `AGENTS.md` (the `ai-setup:first-run` "
-            "block at the top)"
+            f"block at the top{symlink_note})"
         )
     if config.include_agents and "claude" in config.ai_tools:  # the /onboard command exists
         removals.append("remove the `/onboard` command (`.claude/commands/onboard.md`)")
@@ -192,14 +212,18 @@ def _steps(config: WizardConfig) -> list[str]:
         cleanup = f"{removals[0]} and {removals[1]}"
     else:
         cleanup = ", ".join(removals[:-1]) + ", and " + removals[-1]
-    # The cleanup commit only removes setup scaffolding, so it can't break CI — tell the
-    # agent to push it without a second `gh run watch` (the one watch stays on step 8's
-    # first push). Only meaningful when there's CI/a push in the first place.
-    cleanup_tail = (
-        " and push — this last commit only removes setup scaffolding, so no CI watch is needed"
-        if has_ci
-        else ""
-    )
+    # The cleanup commit only removes setup scaffolding, so skip the second `gh run watch`
+    # (the one watch stays on step 8's first push). Exception: with the HTML link-check
+    # (lychee) in CI, this commit edits link-checked docs, so don't claim the watch is
+    # unnecessary there.
+    if not has_ci:
+        cleanup_tail = ""
+    elif "html" in config.languages:
+        cleanup_tail = " and push"
+    else:
+        cleanup_tail = (
+            " and push — this last commit only removes setup scaffolding, so no CI watch is needed"
+        )
     steps.append(
         f"{cleanup}, then commit{cleanup_tail} — setup is done and `AGENTS.md` carries "
         "the standing rules."

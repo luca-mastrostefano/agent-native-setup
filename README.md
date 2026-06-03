@@ -43,7 +43,7 @@ Pointed at a target repo, the wizard generates:
 - **Linters + pre-commit hooks** — per language, plus secrets scanning (gitleaks) and
   self-explaining enforcement hooks.
 - **CI** — a GitHub Actions quality gate (lint + tests) and a security job
-  (dependency + secret scanning), plus an optional `@claude` responder.
+  (dependency + secret scanning).
 
 It's **non-destructive**: existing files are never overwritten, and on a repo that
 already has code it **grandfathers the legacy code** — the gate checks only what a

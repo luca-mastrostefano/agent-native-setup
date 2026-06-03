@@ -33,7 +33,7 @@ this repo.
    project with bump PRs on day one — same grandfathering as the CI ratchet; a fresh
    repo gets full version updates, and a comment explains how to opt up.
 4. **Least-privilege CI permissions** — add `permissions: { contents: read }` to the
-   generated `quality.yml`. (`claude.yml` keeps the write scope it needs.)
+   generated `quality.yml`.
 5. **`.github/PULL_REQUEST_TEMPLATE.md`** — when CI + GitHub Actions. A short checklist:
    links the RFC, ran the quality gate, change is surgical/traces to the task, verified
    by a test.

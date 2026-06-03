@@ -59,5 +59,17 @@ class WizardConfig:
         return self.include_docs and "python" not in self.languages
 
     @property
+    def python_surface_tools(self) -> list[str]:
+        """Python tools the generated command surface calls directly — they must be on PATH
+        (the scaffold doesn't install them, unlike npm-provisioned or managed-hook tools).
+        ruff guards shipped helpers even without Python selected; mypy/pytest come with a
+        Python project."""
+        if "python" in self.languages:
+            return ["ruff", "mypy", "pytest"]
+        if self.ships_tools_python:
+            return ["ruff"]
+        return []
+
+    @property
     def target(self) -> Path:
         return self.output_dir.resolve()
