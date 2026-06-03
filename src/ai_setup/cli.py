@@ -262,7 +262,10 @@ def _summary(config: WizardConfig, sc: Scaffolder) -> None:
         # ONBOARDING.md owns the one-time setup (install hooks, baseline, secrets, docs);
         # point at it rather than duplicating those steps here.
         if config.include_agents and "claude" in config.ai_tools:
-            steps.append("Finish setup: run [bold]/onboard[/] — it walks through ONBOARDING.md.")
+            steps.append(
+                "Finish setup: in Claude Code, type [bold]/onboard[/] at the prompt "
+                "(walks through ONBOARDING.md)."
+            )
         else:
             steps.append(
                 "Finish setup: work through [bold]ONBOARDING.md[/] (or point your agent at it)."
