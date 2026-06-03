@@ -109,9 +109,14 @@ ONBOARD_COMMAND = """\
 description: Walk through first-run setup (ONBOARDING.md), then delete it
 ---
 
-Read `ONBOARDING.md` at the repo root and carry out each step in order. Stop to
-confirm with me on anything needing a human decision (adding secrets, repo-wide
-reformatting). When every step passes, delete `ONBOARDING.md`.
+Read `ONBOARDING.md` at the repo root and work through its steps. Per its note on
+working concurrently: kick the slow one-time installs off in the background up
+front, and fan out genuinely independent work to subagents (e.g. drafting the
+architecture doc while wiring an uncovered language) — but keep the
+baseline → commit → push → CI chain serial, and keep a single mutually-dependent
+change (like one language's lint/format/CI wiring) with one author so it can't
+drift. Stop to confirm with me on anything needing a human decision (adding
+secrets, repo-wide reformatting). When every step passes, delete `ONBOARDING.md`.
 """
 
 

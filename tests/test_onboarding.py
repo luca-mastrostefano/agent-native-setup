@@ -111,6 +111,24 @@ def test_onboard_command_scaffolded_for_claude(tmp_path: Path) -> None:
     assert "ONBOARDING.md" in cmd
 
 
+def test_runbook_suggests_concurrency(tmp_path: Path) -> None:
+    # The one-time costs (installs, CI) parallelize; the runbook says so while flagging
+    # the chain that must stay serial.
+    body = _onboarding(tmp_path)
+    assert "in the background" in body and "parallel" in body  # single words: survive wrapping
+    assert "chain in order" in body  # names the serial constraint (baseline->commit->push->CI)
+
+
+def test_onboard_command_suggests_parallel_work(tmp_path: Path) -> None:
+    # The Claude command can spawn subagents; tell it to, while keeping the dependent
+    # chain and mutually-dependent edits serial.
+    cmd = (_build(tmp_path, languages=["python"]) / ".claude/commands/onboard.md").read_text(
+        encoding="utf-8"
+    )
+    assert "subagents" in cmd
+    assert "serial" in cmd
+
+
 def test_onboard_command_absent_when_no_onboarding(tmp_path: Path) -> None:
     root = _build(tmp_path, languages=["python"], include_quality=False, include_ci=False)
     assert not (root / ".claude/commands/onboard.md").exists()

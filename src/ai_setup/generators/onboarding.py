@@ -23,6 +23,12 @@ one-time bootstrap. If you're an AI assistant starting here for the first time,
 do them now. The standing rules live in `AGENTS.md`; this file is only the
 bootstrap, so **delete it once every step is done.**
 
+> **Work the independent parts concurrently.** The big costs here are one-time —
+> building hook environments, installing deps, waiting on CI. If your assistant
+> can, start those installs in the background up front and run independent steps in
+> parallel; but keep the baseline → commit → push → CI chain in order, and pause
+> for the human-gated calls (adding secrets, repo-wide reformatting).
+
 """
 
 
