@@ -35,6 +35,18 @@ def test_not_generated_without_quality_or_ci(tmp_path: Path) -> None:
     assert not (root / "ONBOARDING.md").exists()
 
 
+def test_recon_step_scopes_the_reading(tmp_path: Path) -> None:
+    # Don't burn time pre-reading the whole repo — AGENTS.md + the runbook are enough.
+    assert "pre-read the whole repo" in _onboarding(tmp_path)
+
+
+def test_cleanup_commit_skips_a_second_ci_watch(tmp_path: Path) -> None:
+    # The final cleanup commit only deletes setup scaffolding; making the agent wait on CI
+    # for it is a wasted round-trip. The one CI watch stays on the first push (step 8).
+    assert "no CI watch is needed" in _onboarding(tmp_path / "ci")
+    assert "no CI watch is needed" not in _onboarding(tmp_path / "no_ci", include_ci=False)
+
+
 def test_runner_reflected_in_commands(tmp_path: Path) -> None:
     assert "make quality" in _onboarding(tmp_path / "m", runner="make")
     assert "task quality" in _onboarding(tmp_path / "t", runner="task")

@@ -75,7 +75,8 @@ def _steps(config: WizardConfig) -> list[str]:
 
     steps = [
         "Read **AGENTS.md** — the contract for all work here. Everything below assumes "
-        "you've read it.",
+        "you've read it. That plus this runbook is all you need to start — don't pre-read "
+        "the whole repo; open other files only when a step calls for them.",
     ]
     # Git hooks are optional (--no-hooks); the setup step is still worth showing when
     # there are deps to fetch (e.g. node's npm install / lockfile).
@@ -191,8 +192,17 @@ def _steps(config: WizardConfig) -> list[str]:
         cleanup = f"{removals[0]} and {removals[1]}"
     else:
         cleanup = ", ".join(removals[:-1]) + ", and " + removals[-1]
+    # The cleanup commit only removes setup scaffolding, so it can't break CI — tell the
+    # agent to push it without a second `gh run watch` (the one watch stays on step 8's
+    # first push). Only meaningful when there's CI/a push in the first place.
+    cleanup_tail = (
+        " and push — this last commit only removes setup scaffolding, so no CI watch is needed"
+        if has_ci
+        else ""
+    )
     steps.append(
-        f"{cleanup}, then commit — setup is done and `AGENTS.md` carries the standing rules."
+        f"{cleanup}, then commit{cleanup_tail} — setup is done and `AGENTS.md` carries "
+        "the standing rules."
     )
     return steps
 
