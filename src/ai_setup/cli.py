@@ -258,22 +258,26 @@ def _summary(config: WizardConfig, sc: Scaffolder) -> None:
             f"\n[yellow]Skipped {len(sc.skipped)} existing file(s)[/] (use --force to overwrite)"
         )
     steps = ["Read [bold]AGENTS.md[/] — the contract for all contributors."]
-    if config.include_quality or config.include_ci:  # ONBOARDING.md was scaffolded
+    if config.include_quality or config.include_ci:
+        # ONBOARDING.md owns the one-time setup (install hooks, baseline, secrets, docs);
+        # point at it rather than duplicating those steps here.
         if config.include_agents and "claude" in config.ai_tools:
-            steps.append("First agent run: type [bold]/onboard[/] (walks through ONBOARDING.md).")
+            steps.append("Finish setup: run [bold]/onboard[/] — it walks through ONBOARDING.md.")
         else:
-            steps.append("First agent run: point your agent at [bold]ONBOARDING.md[/].")
-    if config.git_hooks:
-        install_cmd = "pre-commit install" if config.existing_runner else f"{config.runner} install"
-        steps.append(
-            f"Install [bold]pre-commit[/] (e.g. [bold]pipx install pre-commit[/]), then run "
-            f"[bold]{install_cmd}[/] to enable the git hooks."
+            steps.append(
+                "Finish setup: work through [bold]ONBOARDING.md[/] (or point your agent at it)."
+            )
+    # A bordered panel (matching the intro) so the call to action isn't mistaken for
+    # trailing log output and scrolled past.
+    console.print()
+    console.print(
+        Panel.fit(
+            "\n".join(f"• {s}" for s in steps),
+            title="Next steps",
+            title_align="left",
+            border_style="cyan",
         )
-    if config.include_ci and config.use_github_actions and "claude" in config.ai_tools:
-        steps.append("Add an [bold]ANTHROPIC_API_KEY[/] secret to enable the @claude workflow.")
-    console.print("\n[bold]Next steps:[/]")
-    for s in steps:
-        console.print(f"  • {s}")
+    )
 
 
 def _intro() -> None:

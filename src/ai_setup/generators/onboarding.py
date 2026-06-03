@@ -70,7 +70,8 @@ def _steps(config: WizardConfig) -> list[str]:
     ]
     if config.git_hooks:
         steps.append(
-            f"Install the git hooks: run `{install_cmd}` so lint, format, and the secret "
+            "Install the git hooks: if `pre-commit` isn't on your PATH, `pipx install "
+            f"pre-commit` first, then run `{install_cmd}` so lint, format, and the secret "
             "scan run before every commit."
         )
     if config.include_quality:

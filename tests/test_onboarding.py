@@ -44,6 +44,12 @@ def test_install_uses_pre_commit_for_existing_runner(tmp_path: Path) -> None:
     assert "pre-commit install" in _onboarding(tmp_path, existing_runner=True)
 
 
+def test_install_step_notes_pre_commit_prerequisite(tmp_path: Path) -> None:
+    # `{runner} install` runs `pre-commit install`, which needs the binary present —
+    # the runbook must be self-sufficient about that (the summary no longer says it).
+    assert "pipx install" in _onboarding(tmp_path)
+
+
 def test_full_adoption_baselines_blame_ignore(tmp_path: Path) -> None:
     body = _onboarding(tmp_path, existing_project=True, adoption="full")
     assert ".git-blame-ignore-revs" in body
@@ -99,3 +105,14 @@ def test_summary_points_at_first_run(
     # Claude target -> the zero-friction /onboard; otherwise the file pointer.
     cli.main(["demo", "-o", str(tmp_path), "--no-git", "-y", *extra_args])
     assert expected in capsys.readouterr().out
+
+
+def test_summary_defers_to_onboarding_without_duplicating_steps(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # The runbook owns install + secrets; the summary must not re-list them.
+    cli.main(["demo", "-o", str(tmp_path), "--languages", "python", "--no-git", "-y"])
+    out = capsys.readouterr().out
+    assert "/onboard" in out
+    assert "pipx install" not in out  # install lives in ONBOARDING.md now
+    assert "ANTHROPIC_API_KEY" not in out  # so does the secret
