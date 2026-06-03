@@ -31,3 +31,8 @@ select = ["E", "F", "I", "W", "B", "RUF"]
 # Generators hold markdown/YAML templates as string literals; long content
 # lines (e.g. the verbatim execution principles) are intentional.
 "src/ai_setup/generators/*" = ["E501"]
+
+[tool.pytest.ini_options]
+# Scope pytest to tests/; the stdlib-unittest suite under tools/checks/ is run by
+# `python -m unittest discover` (the same runner we ship) from the `test` task.
+testpaths = ["tests"]

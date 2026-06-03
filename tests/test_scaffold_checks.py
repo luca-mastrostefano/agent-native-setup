@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import subprocess
+import sys
 from pathlib import Path
 
 from ai_setup import cli
@@ -100,6 +102,64 @@ def test_embedded_scripts_match_repo_files() -> None:
     """The wizard ships exactly the scripts this repo dogfoods and tests."""
     assert docs.RFC_NEEDED == (REPO_ROOT / "tools/checks/rfc_needed.py").read_text(encoding="utf-8")
     assert docs.DOCS_SYNC == (REPO_ROOT / "tools/checks/docs_sync.py").read_text(encoding="utf-8")
+    # sync_rfc_status's test is dogfooded byte-for-byte (this repo runs it via discover).
+    # The Python-only helper tests (rfc_needed/docs_sync) aren't kept in-repo — they'd
+    # share a basename with this repo's existing tests/ suites — so they're verified
+    # end-to-end instead by test_shipped_tests_pass_against_shipped_helpers.
+    assert docs.TEST_SYNC_RFC_STATUS == (
+        REPO_ROOT / "tools/checks/test_sync_rfc_status.py"
+    ).read_text(encoding="utf-8")
+
+
+def test_ships_tests_for_the_helpers_it_ships(tmp_path: Path) -> None:
+    # Non-Python project: only sync_rfc_status ships, so only its test ships.
+    node = _build(tmp_path / "node", languages=["node"])
+    assert (node / "tools/checks/test_sync_rfc_status.py").exists()
+    assert not (node / "tools/checks/test_rfc_needed.py").exists()
+    assert not (node / "tools/checks/test_docs_sync.py").exists()
+    # Python project: the commit-msg helpers ship too, so do their tests.
+    py = _build(tmp_path / "py", languages=["python"])
+    assert (py / "tools/checks/test_sync_rfc_status.py").exists()
+    assert (py / "tools/checks/test_rfc_needed.py").exists()
+    assert (py / "tools/checks/test_docs_sync.py").exists()
+
+
+def test_no_docs_omits_the_helper_tests(tmp_path: Path) -> None:
+    root = _build(tmp_path, languages=["python"], include_docs=False)
+    assert not (root / "tools/checks/test_sync_rfc_status.py").exists()
+
+
+def test_tools_tests_runner_wired_at_all_three_layers(tmp_path: Path) -> None:
+    # Even a non-Python project gets the runner — it needs only `python`, not pytest.
+    root = _build(tmp_path, languages=["node"])
+    runner = "python -m unittest discover -s tools/checks"
+    assert runner in (root / "Makefile").read_text(encoding="utf-8")  # command surface
+    pc = (root / ".pre-commit-config.yaml").read_text(encoding="utf-8")
+    assert "id: tools-checks-tests" in pc and runner in pc  # pre-push hook
+    wf = (root / ".github/workflows/quality.yml").read_text(encoding="utf-8")
+    assert runner in wf  # CI
+
+
+def test_tools_tests_runner_omitted_without_docs(tmp_path: Path) -> None:
+    root = _build(tmp_path, languages=["node"], include_docs=False)
+    runner = "python -m unittest discover -s tools/checks"
+    assert runner not in (root / "Makefile").read_text(encoding="utf-8")
+    assert runner not in (root / ".pre-commit-config.yaml").read_text(encoding="utf-8")
+    assert runner not in (root / ".github/workflows/quality.yml").read_text(encoding="utf-8")
+
+
+def test_shipped_tests_pass_against_shipped_helpers(tmp_path: Path) -> None:
+    # End to end: the scaffolded tests must pass against the scaffolded helpers, run the
+    # way a generated project runs them (python -m unittest discover, no pytest).
+    for langs in (["node"], ["python"]):
+        root = _build(tmp_path / langs[0], languages=langs)
+        result = subprocess.run(
+            [sys.executable, "-m", "unittest", "discover", "-s", "tools/checks"],
+            cwd=root,
+            capture_output=True,
+            text=True,
+        )
+        assert result.returncode == 0, f"{langs}: {result.stderr}"
 
 
 def test_sync_rfc_status_stays_under_default_line_length(tmp_path: Path) -> None:

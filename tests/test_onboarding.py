@@ -50,6 +50,14 @@ def test_install_step_notes_pre_commit_prerequisite(tmp_path: Path) -> None:
     assert "pipx install" in _onboarding(tmp_path)
 
 
+def test_install_step_offers_a_pipx_alternative(tmp_path: Path) -> None:
+    # Don't assume pipx is the only installer for pre-commit — it isn't always present
+    # (a real onboarding hit this). Offer pip as a fallback.
+    body = _onboarding(tmp_path)
+    assert "pipx install pre-commit" in body
+    assert "pip install pre-commit" in body
+
+
 def test_full_adoption_baselines_blame_ignore(tmp_path: Path) -> None:
     body = _onboarding(tmp_path, existing_project=True, adoption="full")
     assert ".git-blame-ignore-revs" in body
@@ -84,6 +92,19 @@ def test_runbook_has_commit_and_push_step(tmp_path: Path) -> None:
     assert "add a git remote first" in with_ci  # sets expectations for the push step
     assert "directly to `main`" in with_ci  # no branch/PR judgment call for the bootstrap
     assert "triggers CI" not in _onboarding(tmp_path / "no_ci", include_ci=False)
+
+
+def test_runbook_flags_the_main_push_approval_prompt(tmp_path: Path) -> None:
+    # The push targets `main`; an agent harness may classify that as needing approval,
+    # so the runbook flags it as expected — but only when there's a push (CI) at all.
+    assert "pause for your approval" in _onboarding(tmp_path / "ci")
+    assert "pause for your approval" not in _onboarding(tmp_path / "no_ci", include_ci=False)
+
+
+def test_architecture_step_is_greenfield_safe(tmp_path: Path) -> None:
+    # On a brand-new repo there's no product architecture to write; the step must say
+    # to leave it as TODOs rather than read as an action item (a real onboarding hit this).
+    assert "leave those sections as TODOs" in _onboarding(tmp_path)
 
 
 def test_wire_up_step_states_the_testing_bar(tmp_path: Path) -> None:

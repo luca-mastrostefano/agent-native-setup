@@ -57,3 +57,10 @@ repos:
         pass_filenames: false
         always_run: true
         stages: [pre-push]
+      - id: tools-checks-tests
+        name: tools/checks tests (pre-push)
+        entry: python -m unittest discover -s tools/checks
+        language: system
+        pass_filenames: false
+        always_run: true
+        stages: [pre-push]

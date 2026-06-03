@@ -84,7 +84,10 @@ def _steps(config: WizardConfig) -> list[str]:
         # only with git_hooks. (lychee's hook is language: system; the RFC/docs hooks run
         # `python tools/checks/*.py`.)
         if config.git_hooks:
-            pre = "if `pre-commit` isn't on your PATH, `pipx install pre-commit` first, then "
+            pre = (
+                "if `pre-commit` isn't on your PATH, install it first "
+                "(`pipx install pre-commit`, or `pip install pre-commit`), then "
+            )
             py_clause = (
                 " The RFC/docs hooks run `python` helpers, so `python` must be on your PATH too."
                 if config.include_docs
@@ -133,7 +136,8 @@ def _steps(config: WizardConfig) -> list[str]:
     if config.include_docs:
         steps.append(
             "Flesh out `docs/architecture/overview.md` — the tooling components are "
-            "pre-filled; add the product components and dependency rules as they land."
+            "pre-filled; add the product components and dependency rules as they land. "
+            "If there's no product code yet, leave those sections as TODOs and move on."
         )
     ci_clause = ", a CI step," if has_ci else ""
     steps.append(
@@ -147,9 +151,17 @@ def _steps(config: WizardConfig) -> list[str]:
         if has_ci
         else ""
     )
+    # The push targets `main` directly; an agent harness (e.g. Claude Code) may classify
+    # that as needing approval, so flag it as expected rather than a setup error.
+    harness_note = (
+        " An agent harness may pause for your approval on the direct-to-`main` push — "
+        "that's expected for the first commit."
+        if has_ci
+        else ""
+    )
     steps.append(
         "Commit the scaffold and your changes **directly to `main`** (the initial bootstrap, "
-        f"so no branch/PR is needed for the first commit){push_clause}."
+        f"so no branch/PR is needed for the first commit){push_clause}.{harness_note}"
     )
     if has_ci:
         steps.append(

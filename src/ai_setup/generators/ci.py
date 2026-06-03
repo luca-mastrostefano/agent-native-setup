@@ -83,6 +83,16 @@ TOOLS_RUFF_CI = """\
 - run: ruff format --check tools/
 """
 
+# Runs the stdlib-unittest tests shipped beside the tools/checks helpers. The setup-python
+# step is identical to the ruff guard's / Python's, so _dedupe_steps collapses it; only
+# the unittest run is added. Whenever helpers ship (include_docs), any language.
+TOOLS_TESTS_CI = """\
+- uses: actions/setup-python@v6
+  with:
+    python-version: "3.12"
+- run: python -m unittest discover -s tools/checks
+"""
+
 CLAUDE_WORKFLOW = """\
 name: claude
 on:
@@ -203,6 +213,8 @@ def generate(config: WizardConfig, sc: Scaffolder) -> None:
             )
     if config.ships_tools_python:  # guard the shipped tools/checks/*.py in CI too
         blocks.append(TOOLS_RUFF_CI)
+    if config.include_docs:  # run the shipped tools/checks tests in CI
+        blocks.append(TOOLS_TESTS_CI)
     steps = _dedupe_steps("".join(textwrap.indent(b, "      ") for b in blocks if b))
     if not steps:
         steps = '      - run: echo "no language tooling configured"\n'

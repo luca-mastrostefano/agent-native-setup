@@ -341,6 +341,165 @@ if __name__ == "__main__":
     raise SystemExit(main(sys.argv[1:]))
 '''
 
+# Stdlib-unittest tests shipped beside the helpers above, so the logic they carry isn't
+# scaffolded untested (AGENTS.md §4). Run by the `unittest discover` runner wired into
+# the command surface, a pre-push hook, and CI (quality.py / ci.py). unittest — not
+# pytest — so they run with only `python` on PATH, even when Python isn't a selected
+# language. Kept <=88 cols / default-ruff clean so the always-shipped sync test passes a
+# non-Python project's tools/ ruff guard. Dogfooded byte-for-byte (test_scaffold_checks).
+TEST_SYNC_RFC_STATUS = r'''"""Tests for the rfc-status folder-sync helper (stdlib unittest)."""
+
+import importlib.util
+import tempfile
+import unittest
+from pathlib import Path
+
+_HELPER = Path(__file__).resolve().parent / "sync_rfc_status.py"
+_spec = importlib.util.spec_from_file_location("sync_rfc_status", _HELPER)
+assert _spec and _spec.loader
+sync_rfc_status = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(sync_rfc_status)
+
+
+def _rfc(status: str) -> str:
+    return f"# Title\n\n- **Status:** {status}\n"
+
+
+class ParseStatus(unittest.TestCase):
+    def test_reads_status_keyword(self) -> None:
+        self.assertEqual(sync_rfc_status.parse_status(_rfc("Accepted")), "accepted")
+
+    def test_missing_status_is_none(self) -> None:
+        self.assertIsNone(sync_rfc_status.parse_status("# Title\n"))
+
+
+class TargetFolder(unittest.TestCase):
+    def test_known_statuses_map_to_folders(self) -> None:
+        self.assertEqual(sync_rfc_status.target_folder("proposed"), "current")
+        self.assertEqual(sync_rfc_status.target_folder("done"), "done")
+        self.assertEqual(sync_rfc_status.target_folder("superseded"), "superseded")
+
+    def test_unknown_status_is_none(self) -> None:
+        self.assertIsNone(sync_rfc_status.target_folder("draft"))
+
+
+class FindMoves(unittest.TestCase):
+    def test_flags_rfc_sitting_in_the_wrong_folder(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "current").mkdir()
+            (root / "done").mkdir()
+            (root / "current" / "a.md").write_text(_rfc("Done"))
+            (root / "current" / "b.md").write_text(_rfc("Accepted"))
+            moves = sync_rfc_status.find_moves(root)
+            expected = (root / "current" / "a.md", root / "done" / "a.md")
+            self.assertEqual(moves, [expected])
+
+
+if __name__ == "__main__":
+    unittest.main()
+'''
+
+TEST_RFC_NEEDED = r'''"""Tests for the rfc-needed commit-msg gate (stdlib unittest)."""
+
+import importlib.util
+import unittest
+from pathlib import Path
+
+_HELPER = Path(__file__).resolve().parent / "rfc_needed.py"
+_spec = importlib.util.spec_from_file_location("rfc_needed", _HELPER)
+assert _spec and _spec.loader
+rfc_needed = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(rfc_needed)
+
+
+class DepNames(unittest.TestCase):
+    def test_normalizes_and_strips_specifiers(self) -> None:
+        text = '[project]\ndependencies = ["Foo_Bar>=1.0", "baz[extra]~=2"]\n'
+        self.assertEqual(rfc_needed.dep_names(text), {"foo-bar", "baz"})
+
+
+class FindTriggers(unittest.TestCase):
+    def test_new_top_level_src_package_fires(self) -> None:
+        changes = [("A", "src/widget/__init__.py")]
+        self.assertEqual(
+            rfc_needed.find_triggers(changes),
+            ["new top-level src package (widget)"],
+        )
+
+    def test_subpackage_does_not_fire(self) -> None:
+        changes = [("A", "src/widget/sub/__init__.py")]
+        self.assertEqual(rfc_needed.find_triggers(changes), [])
+
+    def test_architecture_change_fires(self) -> None:
+        changes = [("M", "docs/architecture/overview.md")]
+        self.assertIn(
+            "change under docs/architecture/",
+            rfc_needed.find_triggers(changes),
+        )
+
+
+class IsSatisfied(unittest.TestCase):
+    def test_staged_rfc_satisfies(self) -> None:
+        changes = [("A", "docs/rfc/current/x.md")]
+        self.assertTrue(rfc_needed.is_satisfied(changes, "feat: x"))
+
+    def test_waiver_satisfies(self) -> None:
+        message = "feat: x\n\nRFC-Not-Needed: tooling-only"
+        self.assertTrue(rfc_needed.is_satisfied([], message))
+
+    def test_unsatisfied_without_rfc_or_waiver(self) -> None:
+        self.assertFalse(rfc_needed.is_satisfied([], "feat: x"))
+
+
+if __name__ == "__main__":
+    unittest.main()
+'''
+
+TEST_DOCS_SYNC = r'''"""Tests for the docs-sync commit-msg gate (stdlib unittest)."""
+
+import importlib.util
+import unittest
+from pathlib import Path
+
+_HELPER = Path(__file__).resolve().parent / "docs_sync.py"
+_spec = importlib.util.spec_from_file_location("docs_sync", _HELPER)
+assert _spec and _spec.loader
+docs_sync = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(docs_sync)
+
+
+class FindTriggers(unittest.TestCase):
+    def test_new_top_level_src_package_fires(self) -> None:
+        changes = [("A", "src/widget/__init__.py")]
+        self.assertEqual(
+            docs_sync.find_triggers(changes),
+            ["new top-level src package (widget)"],
+        )
+
+    def test_subpackage_does_not_fire(self) -> None:
+        changes = [("A", "src/widget/sub/__init__.py")]
+        self.assertEqual(docs_sync.find_triggers(changes), [])
+
+
+class IsSatisfied(unittest.TestCase):
+    def test_arch_change_satisfies(self) -> None:
+        changes = [("M", "docs/architecture/overview.md")]
+        self.assertTrue(docs_sync.is_satisfied(changes, "feat: x"))
+
+    def test_waiver_satisfies(self) -> None:
+        message = "feat: x\n\nDocs-Not-Needed: n/a"
+        self.assertTrue(docs_sync.is_satisfied([], message))
+
+    def test_unsatisfied_without_doc_or_waiver(self) -> None:
+        changes = [("A", "src/widget/__init__.py")]
+        self.assertFalse(docs_sync.is_satisfied(changes, "feat: x"))
+
+
+if __name__ == "__main__":
+    unittest.main()
+'''
+
 
 CONTRIBUTING = """\
 # Contributing
@@ -483,9 +642,12 @@ def generate(config: WizardConfig, sc: Scaffolder) -> None:
     sc.write("docs/improvements.md", IMPROVEMENTS)
     sc.write("docs/rfc/TEMPLATE.md", RFC_TEMPLATE)
     sc.write("tools/checks/sync_rfc_status.py", SYNC_RFC_STATUS)
+    sc.write("tools/checks/test_sync_rfc_status.py", TEST_SYNC_RFC_STATUS)
     if "python" in config.languages:  # triggers key on pyproject/src layout
         sc.write("tools/checks/rfc_needed.py", RFC_NEEDED)
+        sc.write("tools/checks/test_rfc_needed.py", TEST_RFC_NEEDED)
         sc.write("tools/checks/docs_sync.py", DOCS_SYNC)
+        sc.write("tools/checks/test_docs_sync.py", TEST_DOCS_SYNC)
     for stage in ("current", "done", "superseded"):
         sc.write(f"docs/rfc/{stage}/.gitkeep", "")
     extras = []

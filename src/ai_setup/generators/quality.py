@@ -143,6 +143,26 @@ _TOOLS_RUFF_CMDS = {
     "format-check": "ruff format --check tools/",
 }
 
+# Runs the stdlib-unittest tests shipped beside the tools/checks helpers (docs.py). One
+# command for the command surface, the pre-push hook, and CI; needs only `python`, so it
+# works even when Python isn't a selected language (no pytest to install).
+TOOLS_TESTS_CMD = "python -m unittest discover -s tools/checks"
+
+# Pre-push gate for those tests. The per-language _test_hook only covers a *language's*
+# suite, so a non-Python repo would otherwise push the helpers with nothing exercising
+# their logic.
+TOOLS_TESTS_HOOK = f"""\
+- repo: local
+  hooks:
+    - id: tools-checks-tests
+      name: tools/checks tests (pre-push)
+      entry: {TOOLS_TESTS_CMD}
+      language: system
+      pass_filenames: false
+      always_run: true
+      stages: [pre-push]
+"""
+
 
 def _test_hook(lang: Language) -> str:
     """A pre-push hook that runs a language's full test suite."""
@@ -176,6 +196,8 @@ def _pre_commit_config(config: WizardConfig, langs: list[Language]) -> str:
     if commit_msg:
         blocks.append(COMMIT_MSG_HOOKS)
     blocks += [h for h in (_test_hook(lang) for lang in langs) if h]
+    if config.include_docs:  # exercise the shipped tools/checks helpers before push
+        blocks.append(TOOLS_TESTS_HOOK)
     indented = "".join(textwrap.indent(b, "  ") for b in blocks)
     stages = ["pre-commit", "commit-msg", "pre-push"] if commit_msg else ["pre-commit", "pre-push"]
     return f"default_install_hook_types: [{', '.join(stages)}]\n\nrepos:\n{indented}"
@@ -186,6 +208,8 @@ def _taskfile(config: WizardConfig, langs: list[Language], hooks: bool) -> str:
         cmds = [cmd for lang in langs for lbl, cmd in lang.quality_commands if lbl == label]
         if config.ships_tools_python and label in _TOOLS_RUFF_CMDS:
             cmds.append(_TOOLS_RUFF_CMDS[label])
+        if config.include_docs and label == "test":
+            cmds.append(TOOLS_TESTS_CMD)
         return cmds
 
     def task(name: str, desc: str, cmds: list[str], deps: list[str] | None = None) -> list[str]:
@@ -241,6 +265,8 @@ def _makefile(config: WizardConfig, langs: list[Language], hooks: bool) -> str:
         cmds = [cmd for lang in langs for lbl, cmd in lang.quality_commands if lbl == label]
         if config.ships_tools_python and label in _TOOLS_RUFF_CMDS:
             cmds.append(_TOOLS_RUFF_CMDS[label])
+        if config.include_docs and label == "test":
+            cmds.append(TOOLS_TESTS_CMD)
         return cmds
 
     def target(name: str, desc: str, cmds: list[str], deps: str = "") -> list[str]:
