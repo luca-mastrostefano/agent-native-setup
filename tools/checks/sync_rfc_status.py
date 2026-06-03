@@ -61,7 +61,9 @@ def _move(source: Path, destination: Path) -> None:
     destination.parent.mkdir(parents=True, exist_ok=True)
     try:
         subprocess.run(
-            ["git", "mv", str(source), str(destination)], check=True, capture_output=True
+            ["git", "mv", str(source), str(destination)],
+            check=True,
+            capture_output=True,
         )
     except (subprocess.CalledProcessError, FileNotFoundError):
         shutil.move(str(source), str(destination))
@@ -76,7 +78,10 @@ def main() -> int:
         print(f"moved {rel_from} -> {rel_to} (Status changed)", file=sys.stderr)
 
     if moves:
-        print("RFC(s) moved to match Status — review and `git add` the moves.", file=sys.stderr)
+        print(
+            "RFC(s) moved to match Status — review and `git add` the moves.",
+            file=sys.stderr,
+        )
         return 1
     return 0
 

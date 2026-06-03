@@ -81,7 +81,14 @@ def test_runbook_has_commit_and_push_step(tmp_path: Path) -> None:
     with_ci = _onboarding(tmp_path / "ci")
     assert "Commit the scaffold" in with_ci
     assert "triggers CI" in with_ci
+    assert "add a git remote first" in with_ci  # sets expectations for the push step
     assert "triggers CI" not in _onboarding(tmp_path / "no_ci", include_ci=False)
+
+
+def test_runbook_notes_python_prereq_for_rfc_hooks(tmp_path: Path) -> None:
+    # The RFC/docs hooks shell out to `python`; a non-Python project still needs it.
+    assert "`python` must be on your PATH" in _onboarding(tmp_path / "d")  # docs default on
+    assert "`python` must be on your PATH" not in _onboarding(tmp_path / "n", include_docs=False)
 
 
 def test_api_key_step_only_for_claude_with_ci(tmp_path: Path) -> None:

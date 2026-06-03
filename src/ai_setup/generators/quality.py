@@ -167,6 +167,7 @@ def _taskfile(config: WizardConfig, langs: list[Language], hooks: bool) -> str:
         out += [f"      - {c}" for c in cmds]
         return out
 
+    format_check = cmds_for("format-check")
     typecheck = cmds_for("typecheck")
     test = cmds_for("test")
 
@@ -176,6 +177,11 @@ def _taskfile(config: WizardConfig, langs: list[Language], hooks: bool) -> str:
     lines += task("lint", "run linters", cmds_for("lint") or ["true"])
     lines += task("format", "auto-format", cmds_for("format") or ["true"])
     gate_deps = ["lint"]
+    # The gate runs format in CHECK mode (read-only) so `quality` matches what CI
+    # enforces — green locally means green in CI, without the gate rewriting files.
+    if format_check:
+        lines += task("format-check", "check formatting (read-only)", format_check)
+        gate_deps.append("format-check")
     if typecheck:
         lines += task("typecheck", "type-check", typecheck)
         gate_deps.append("typecheck")
@@ -202,9 +208,12 @@ def _makefile(config: WizardConfig, langs: list[Language], hooks: bool) -> str:
         head = f"{name}:{' ' + deps if deps else ''} ## {desc}"
         return [head] + [f"\t{c}" for c in cmds] + [""]
 
+    format_check = cmds_for("format-check")
     typecheck = cmds_for("typecheck")
     test = cmds_for("test")
     phony = ["help"] + (["install"] if hooks else []) + ["lint", "format"]
+    if format_check:
+        phony.append("format-check")
     if typecheck:
         phony.append("typecheck")
     if test:
@@ -224,6 +233,11 @@ def _makefile(config: WizardConfig, langs: list[Language], hooks: bool) -> str:
     out += target("lint", "run linters", cmds_for("lint") or ["true"])
     out += target("format", "auto-format", cmds_for("format") or ["true"])
     gate_deps = ["lint"]
+    # The gate runs format in CHECK mode (read-only) so `quality` matches what CI
+    # enforces — green locally means green in CI, without the gate rewriting files.
+    if format_check:
+        out += target("format-check", "check formatting (read-only)", format_check)
+        gate_deps.append("format-check")
     if typecheck:
         out += target("typecheck", "type-check", typecheck)
         gate_deps.append("typecheck")

@@ -79,7 +79,7 @@ def test_module_boundaries() -> None:
 '''
 
 ESLINT_CONFIG = """\
-// Flat config. Requires: npm i -D eslint typescript-eslint
+// Flat config. The toolchain is pinned in package.json (npm ci installs it).
 import tseslint from "typescript-eslint";
 
 export default tseslint.config(
@@ -96,6 +96,50 @@ PRETTIER_CONFIG = """\
   "trailingComma": "all"
 }
 """
+
+# The JS/TS toolchain the eslint config, CI, and the command surface all assume.
+# Without this, `npm ci`/`npx eslint` can't resolve typescript-eslint and the gate
+# fails immediately; `npm install` writes the lockfile on first run.
+PACKAGE_JSON = """\
+{
+  "name": "{{ slug }}",
+  "version": "0.1.0",
+  "private": true,
+  "devDependencies": {
+    "eslint": "^9.18.0",
+    "prettier": "^3.4.2",
+    "typescript": "^5.7.3",
+    "typescript-eslint": "^8.21.0"
+  }
+}
+"""
+
+# Strict, no-emit config so `tsc` type-checks without producing output. The gate
+# guards `tsc` (see TS_TYPECHECK) so an empty repo with no .ts files stays green.
+TSCONFIG = """\
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "strict": true,
+    "noEmit": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true
+  },
+  "include": ["**/*.ts", "**/*.tsx"],
+  "exclude": ["node_modules", "dist"]
+}
+"""
+
+# `tsc --noEmit` errors ("No inputs were found") on a repo with zero .ts files, so
+# only run it once TypeScript exists. `if/then/else` (not `&& ... ||`) so a real
+# type error still fails the gate. Shared by the command surface and CI.
+TS_TYPECHECK = (
+    "if git ls-files '*.ts' '*.tsx' | grep -q .; "
+    'then npx tsc --noEmit; else echo "no TypeScript yet"; fi'
+)
 
 GOLANGCI_CONFIG = """\
 # golangci-lint config. https://golangci-lint.run/
@@ -212,6 +256,7 @@ REGISTRY: dict[str, Language] = {
         quality_commands=[
             ("lint", "ruff check ."),
             ("format", "ruff format ."),
+            ("format-check", "ruff format --check ."),
             ("typecheck", "mypy ."),
             ("test", "pytest"),
         ],
@@ -223,6 +268,8 @@ REGISTRY: dict[str, Language] = {
         key="node",
         label="JavaScript / TypeScript",
         config_files={
+            "package.json": PACKAGE_JSON,
+            "tsconfig.json": TSCONFIG,
             "eslint.config.mjs": ESLINT_CONFIG,
             ".prettierrc.json": PRETTIER_CONFIG,
         },
@@ -240,13 +287,16 @@ REGISTRY: dict[str, Language] = {
       language: system
       files: \\.(js|jsx|ts|tsx)$
 """,
-        ci_steps="""\
+        ci_steps=f"""\
 - uses: actions/setup-node@v6
   with:
     node-version: "20"
 - run: npm ci || npm install
 - run: npx prettier --check .
 - run: npx eslint .
+- name: typecheck (tsc, if any TypeScript)
+  run: |
+    {TS_TYPECHECK}
 - run: npm test --if-present
 """,
         ci_ratchet_steps="""\
@@ -271,8 +321,9 @@ REGISTRY: dict[str, Language] = {
         gitignore=["node_modules/", "dist/", ".next/", "*.tsbuildinfo"],
         quality_commands=[
             ("lint", "npx eslint ."),
-            ("format", "npx prettier --check ."),
-            ("typecheck", "npx tsc --noEmit"),
+            ("format", "npx prettier --write ."),
+            ("format-check", "npx prettier --check ."),
+            ("typecheck", TS_TYPECHECK),
             ("test", "npm test --if-present"),
         ],
         dependabot_ecosystem="npm",
@@ -327,6 +378,8 @@ REGISTRY: dict[str, Language] = {
         quality_commands=[
             ("lint", "golangci-lint run"),
             ("format", "gofmt -w ."),
+            # `$()` would be expanded by Make; `! ... | grep` stays runner-portable.
+            ("format-check", "! gofmt -l . | grep -q ."),
             ("typecheck", "go vet ./..."),
             ("test", "go test ./..."),
         ],
@@ -384,6 +437,7 @@ REGISTRY: dict[str, Language] = {
         quality_commands=[
             ("lint", "cargo clippy"),
             ("format", "cargo fmt"),
+            ("format-check", "cargo fmt --check"),
             ("typecheck", "cargo check"),
             ("test", "cargo test"),
         ],
@@ -412,7 +466,7 @@ REGISTRY: dict[str, Language] = {
 - uses: actions/setup-node@v6
   with:
     node-version: "20"
-- run: npx --yes htmlhint "**/*.html"
+- run: npx --yes htmlhint@1.1.4 "**/*.html"
 - uses: lycheeverse/lychee-action@v2
   with:
     args: --offline --no-progress .
@@ -429,14 +483,14 @@ REGISTRY: dict[str, Language] = {
     echo "files=$files" >> "$GITHUB_OUTPUT"
 - name: htmlhint (changed files)
   if: steps.html.outputs.files != ''
-  run: npx --yes htmlhint ${{ steps.html.outputs.files }}
+  run: npx --yes htmlhint@1.1.4 ${{ steps.html.outputs.files }}
 - uses: lycheeverse/lychee-action@v2
   if: steps.html.outputs.files != ''
   with:
     args: --offline --no-progress ${{ steps.html.outputs.files }}
     fail: true
 """,
-        quality_commands=[("lint", 'npx --yes htmlhint "**/*.html"')],
+        quality_commands=[("lint", 'npx --yes htmlhint@1.1.4 "**/*.html"')],
         detect_exts=[".html", ".htm"],
     ),
 }

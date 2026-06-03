@@ -61,6 +61,18 @@ def test_cli_default_is_make(tmp_path: Path) -> None:
     assert not (tmp_path / "Taskfile.yml").exists()
 
 
+def test_quality_gate_runs_format_in_check_mode(tmp_path: Path) -> None:
+    # The gate must include a read-only format check so `quality` mirrors CI without
+    # the gate rewriting files. Holds for both runners.
+    mk = (_build(tmp_path / "m", languages=["python"]) / "Makefile").read_text(encoding="utf-8")
+    assert "quality: lint format-check" in mk
+    assert "format-check: ## check formatting (read-only)\n\truff format --check ." in mk
+    tf = (_build(tmp_path / "t", languages=["python"], runner="task") / "Taskfile.yml").read_text(
+        encoding="utf-8"
+    )
+    assert "format-check" in tf and "deps: [lint, format-check" in tf
+
+
 # --- --runner task opt-in -----------------------------------------------------
 
 

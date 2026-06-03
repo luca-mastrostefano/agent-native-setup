@@ -60,3 +60,12 @@ def test_embedded_scripts_match_repo_files() -> None:
     """The wizard ships exactly the scripts this repo dogfoods and tests."""
     assert docs.RFC_NEEDED == (REPO_ROOT / "tools/checks/rfc_needed.py").read_text(encoding="utf-8")
     assert docs.DOCS_SYNC == (REPO_ROOT / "tools/checks/docs_sync.py").read_text(encoding="utf-8")
+
+
+def test_sync_rfc_status_stays_under_default_line_length(tmp_path: Path) -> None:
+    # sync_rfc_status.py ships even for non-Python projects, where no line-length=100
+    # config is present — keep it <=88 cols so a default ruff/flake8 won't flag it.
+    root = _build(tmp_path, languages=["node"])  # node project: no Python tooling shipped
+    body = (root / "tools/checks/sync_rfc_status.py").read_text(encoding="utf-8")
+    too_long = [line for line in body.splitlines() if len(line) > 88]
+    assert not too_long, f"lines over 88 cols: {too_long}"

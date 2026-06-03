@@ -33,6 +33,16 @@ def test_greenfield_html_scaffolds_htmlhint_and_lychee(tmp_path: Path) -> None:
     assert "htmlhint" in wf
 
 
+def test_htmlhint_is_pinned_not_floating(tmp_path: Path) -> None:
+    # `npx --yes htmlhint` floats to latest; pin it so CI/local are reproducible.
+    root = _build(tmp_path, languages=["html"])
+    wf = (root / ".github/workflows/quality.yml").read_text(encoding="utf-8")
+    mk = (root / "Makefile").read_text(encoding="utf-8")
+    assert "htmlhint@1.1.4" in wf
+    assert "htmlhint@1.1.4" in mk
+    assert 'htmlhint "**/*.html"' not in wf  # no bare, unpinned invocation
+
+
 def test_existing_html_ratchets_to_changed_files(tmp_path: Path) -> None:
     _build(tmp_path, languages=["html"], existing_project=True)
     wf = (tmp_path / ".github/workflows/quality.yml").read_text(encoding="utf-8")

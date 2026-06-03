@@ -17,9 +17,9 @@ that needs a real decision into an RFC in `docs/rfc/current/`.
 - **lychee on Windows / locked-down networks** — the `html` link check self-downloads
   its binary via curl on first run; document the `lychee-docker` / `lychee-system`
   hook fallbacks for environments without curl.
-- **Type-checking in CI** — `mypy`/`tsc` run via pre-commit and `task typecheck`, not
-  in the generated CI job (mypy in CI needs a project install). Add once the friction
-  is worth it.
+- **mypy in CI** — `mypy` runs via pre-commit and the `typecheck` target, not in the
+  generated CI job (mypy in CI needs a project install). Add once the friction is worth
+  it. (`tsc` is now wired into node's CI, guarded for the no-TypeScript-yet case.)
 - **Tests in the existing-repo (ratchet) CI** — greenfield CI runs the suite; the
   changed-files ratchet job does not yet.
 - **Dependency-scan tuning** — the scaffolded vuln scans are sensible defaults; some

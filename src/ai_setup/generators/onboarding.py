@@ -71,10 +71,17 @@ def _steps(config: WizardConfig) -> list[str]:
         "you've read it.",
     ]
     if config.git_hooks:
+        # The RFC/docs hooks shell out to `python tools/checks/*.py`, so a non-Python
+        # project still needs `python` on PATH for them to run.
+        py_clause = (
+            " (the RFC/docs hooks run `python` helpers, so `python` must be on your PATH too)"
+            if config.include_docs
+            else ""
+        )
         steps.append(
             "Install the git hooks: if `pre-commit` isn't on your PATH, `pipx install "
             f"pre-commit` first, then run `{install_cmd}` so lint, format, and the secret "
-            "scan run before every commit."
+            f"scan run before every commit{py_clause}."
         )
     if config.include_quality:
         tail = " and see what the existing code trips on" if config.existing_project else ""
@@ -97,7 +104,11 @@ def _steps(config: WizardConfig) -> list[str]:
         f"lint/format/test, add it the way the existing ones are (a pre-commit hook{ci_clause} "
         "and a command-surface entry), per the contract."
     )
-    push_clause = ", then push — that's what triggers CI" if has_ci else ""
+    push_clause = (
+        ", then push — that's what triggers CI (add a git remote first if there isn't one)"
+        if has_ci
+        else ""
+    )
     steps.append(f"Commit the scaffold and your changes{push_clause}.")
     if has_ci:
         steps.append(
