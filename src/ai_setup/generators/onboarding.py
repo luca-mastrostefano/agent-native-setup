@@ -12,6 +12,7 @@ Scaffolded whenever there's tooling to activate (quality or CI). For Claude, the
 from __future__ import annotations
 
 from ai_setup.config import WizardConfig
+from ai_setup.languages import get
 from ai_setup.scaffold import Scaffolder
 
 HEADER = """\
@@ -68,41 +69,56 @@ def _adoption_step(config: WizardConfig, gate: str, fmt: str) -> str:
 
 def _steps(config: WizardConfig) -> list[str]:
     r = config.runner
-    install_cmd = "pre-commit install" if config.existing_runner else f"{r} install"
     has_ci = config.include_ci and config.use_github_actions
+    has_setup = any(lang.setup_command for lang in get(config.languages))  # e.g. npm install
     gate, fmt = _gate_and_format(config)
 
     steps = [
         "Read **AGENTS.md** — the contract for all work here. Everything below assumes "
         "you've read it.",
     ]
-    if config.git_hooks:
-        # The RFC/docs hooks shell out to `python tools/checks/*.py`, so a non-Python
-        # project still needs `python` on PATH for them to run.
-        py_clause = (
-            " (the RFC/docs hooks run `python` helpers, so `python` must be on your PATH too)"
-            if config.include_docs
-            else ""
-        )
-        # lychee's hook is language: system — it needs the binary already installed, or
-        # the first commit that touches a checked file fails.
-        lychee_clause = (
-            " The HTML link-check hook needs `lychee` on your PATH too "
-            "(`brew install lychee` or `cargo install lychee`)."
-            if "html" in config.languages
-            else ""
-        )
+    # Git hooks are optional (--no-hooks); the setup step is still worth showing when
+    # there are deps to fetch (e.g. node's npm install / lockfile).
+    if config.git_hooks or has_setup:
+        # The pipx prereq + the hook-specific notes only apply to the hooks, which exist
+        # only with git_hooks. (lychee's hook is language: system; the RFC/docs hooks run
+        # `python tools/checks/*.py`.)
+        if config.git_hooks:
+            pre = "if `pre-commit` isn't on your PATH, `pipx install pre-commit` first, then "
+            py_clause = (
+                " The RFC/docs hooks run `python` helpers, so `python` must be on your PATH too."
+                if config.include_docs
+                else ""
+            )
+            lychee_clause = (
+                " The HTML link-check hook needs `lychee` on your PATH too "
+                "(`brew install lychee` or `cargo install lychee`)."
+                if "html" in config.languages
+                else ""
+            )
+        else:
+            pre = py_clause = lychee_clause = ""
+        does = []
+        if config.git_hooks:
+            does.append(
+                "installs the git hooks (lint, format, and the secret scan run before every commit)"
+            )
+        if has_setup:
+            does.append(
+                "fetches dependencies (writing `package-lock.json` — commit it with the rest)"
+            )
+        if config.existing_runner:
+            # We don't own a runner here, so spell out the deterministic commands.
+            cmds = (["`pre-commit install`"] if config.git_hooks else []) + (
+                ["`npm install`"] if has_setup else []
+            )
+            run_phrase = " and ".join(cmds)
+        else:
+            # `bootstrap` does hooks + dep install in one step; `install` is hooks-only.
+            run_phrase = f"`{r} {'bootstrap' if has_setup else 'install'}`"
         steps.append(
-            "Install the git hooks: if `pre-commit` isn't on your PATH, `pipx install "
-            f"pre-commit` first, then run `{install_cmd}` so lint, format, and the secret "
-            f"scan run before every commit{py_clause}.{lychee_clause}"
-        )
-    if "node" in config.languages:
-        # package.json ships without a lockfile (can't resolve one at scaffold time);
-        # generate and commit it so CI's `npm ci` is reproducible.
-        steps.append(
-            "Generate the npm lockfile: run `npm install` (writes `package-lock.json` from "
-            "the pinned `package.json`) and commit it, so CI's `npm ci` is reproducible."
+            f"Set up the toolchain: {pre}run {run_phrase} — it "
+            f"{' and '.join(does)}.{py_clause}{lychee_clause}"
         )
     if config.include_quality:
         tail = " and see what the existing code trips on" if config.existing_project else ""

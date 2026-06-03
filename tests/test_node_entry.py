@@ -53,6 +53,32 @@ def test_typecheck_is_guarded_for_an_empty_repo(tmp_path: Path) -> None:
     assert "else echo" in mk
 
 
+def test_bootstrap_target_does_hooks_then_deps(tmp_path: Path) -> None:
+    # `make bootstrap` is the one deterministic first-run setup the agent can just run:
+    # install the git hooks (via the `install` dep) then fetch deps (npm install).
+    mk = _makefile(tmp_path)  # node
+    block = mk.split("bootstrap:")[1].split("\n\n")[0]
+    assert mk.count("bootstrap: install ## ") == 1  # depends on the hooks target
+    assert "npm install" in block
+    # No deps to fetch -> no bootstrap target (the hooks-only `install` suffices).
+    py = (_build(tmp_path / "py", languages=["python"]) / "Makefile").read_text(encoding="utf-8")
+    assert "bootstrap:" not in py
+
+
+def test_bootstrap_without_hooks_fetches_deps_only(tmp_path: Path) -> None:
+    # Git hooks are optional (--no-hooks); bootstrap still exists for the deps but must
+    # not depend on / claim the (absent) hooks.
+    mk = _makefile(tmp_path, git_hooks=False)
+    assert "install:" not in mk  # no hooks target
+    assert "bootstrap: ## first-run setup: fetch deps" in mk  # accurate desc, no deps
+    assert "npm install" in mk
+    onb = (_build(tmp_path / "o", languages=["node"], git_hooks=False) / "ONBOARDING.md").read_text(
+        encoding="utf-8"
+    )
+    assert "make bootstrap" in onb  # still guided to fetch deps
+    assert "pipx install pre-commit" not in onb  # no hooks -> no pre-commit prereq
+
+
 def test_prettierignore_excludes_markdown_and_lockfile(tmp_path: Path) -> None:
     # The wizard's hand-authored Markdown isn't prettier-formatted; ignoring it (and the
     # generated lockfile) keeps `prettier --check` from reddening the gate on day one.

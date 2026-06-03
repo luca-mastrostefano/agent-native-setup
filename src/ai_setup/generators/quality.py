@@ -199,10 +199,17 @@ def _taskfile(config: WizardConfig, langs: list[Language], hooks: bool) -> str:
     format_check = cmds_for("format-check")
     typecheck = cmds_for("typecheck")
     test = cmds_for("test")
+    setup_cmds = [lang.setup_command for lang in langs if lang.setup_command]
 
     lines = ['version: "3"', "", "tasks:"]
     if hooks:
         lines += task("install", "install git hooks", ["pre-commit install"])
+    if setup_cmds:
+        # One deterministic first-run setup: dep install (+ hooks when enabled).
+        boot_desc = (
+            "first-run setup: git hooks + fetch deps" if hooks else "first-run setup: fetch deps"
+        )
+        lines += task("bootstrap", boot_desc, setup_cmds, deps=["install"] if hooks else None)
     lines += task("lint", "run linters", cmds_for("lint") or ["true"])
     lines += task("format", "auto-format", cmds_for("format") or ["true"])
     gate_deps = ["lint"]
@@ -243,7 +250,9 @@ def _makefile(config: WizardConfig, langs: list[Language], hooks: bool) -> str:
     format_check = cmds_for("format-check")
     typecheck = cmds_for("typecheck")
     test = cmds_for("test")
-    phony = ["help"] + (["install"] if hooks else []) + ["lint", "format"]
+    setup_cmds = [lang.setup_command for lang in langs if lang.setup_command]
+    phony = ["help"] + (["install"] if hooks else []) + (["bootstrap"] if setup_cmds else [])
+    phony += ["lint", "format"]
     if format_check:
         phony.append("format-check")
     if typecheck:
@@ -262,6 +271,12 @@ def _makefile(config: WizardConfig, langs: list[Language], hooks: bool) -> str:
     ]
     if hooks:
         out += target("install", "set up git hooks (once)", ["pre-commit install"])
+    if setup_cmds:
+        # One deterministic first-run setup: dep install (+ hooks when enabled).
+        boot_desc = (
+            "first-run setup: git hooks + fetch deps" if hooks else "first-run setup: fetch deps"
+        )
+        out += target("bootstrap", boot_desc, setup_cmds, deps="install" if hooks else "")
     out += target("lint", "run linters", cmds_for("lint") or ["true"])
     out += target("format", "auto-format", cmds_for("format") or ["true"])
     gate_deps = ["lint"]

@@ -199,6 +199,9 @@ class Language:
     # Dependabot package-ecosystem for this language ("" if none / not applicable).
     dependabot_ecosystem: str = ""
     gitignore: list[str] = field(default_factory=list)
+    # Local dependency install (e.g. `npm install`), run by the `bootstrap` target so
+    # the gate's tools resolve and any lockfile is written. "" if nothing to fetch.
+    setup_command: str = ""
     # (label, shell command) pairs surfaced in the task runner / README
     quality_commands: list[tuple[str, str]] = field(default_factory=list)
     # Auto-detection signals for existing projects:
@@ -328,6 +331,7 @@ REGISTRY: dict[str, Language] = {
 - run: npm audit --audit-level=high
 """,
         gitignore=["node_modules/", "dist/", ".next/", "*.tsbuildinfo"],
+        setup_command="npm install",  # installs the pinned toolchain + writes package-lock.json
         quality_commands=[
             ("lint", "npx eslint ."),
             ("format", "npx prettier --write ."),

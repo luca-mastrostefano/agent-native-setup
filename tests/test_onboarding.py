@@ -108,6 +108,19 @@ def test_runbook_has_npm_lockfile_step_for_node(tmp_path: Path) -> None:
     assert "package-lock.json" not in plain.read_text(encoding="utf-8")
 
 
+def test_setup_step_points_at_bootstrap_when_there_are_deps(tmp_path: Path) -> None:
+    # node has a setup_command, so the runbook hands the agent the one-shot `make
+    # bootstrap`; a deps-free project just installs hooks via `make install`.
+    node = (_build(tmp_path / "n", languages=["node"]) / "ONBOARDING.md").read_text(
+        encoding="utf-8"
+    )
+    assert "make bootstrap" in node
+    py = (_build(tmp_path / "p", languages=["python"]) / "ONBOARDING.md").read_text(
+        encoding="utf-8"
+    )
+    assert "make bootstrap" not in py and "make install" in py
+
+
 def test_api_key_step_only_for_claude_with_ci(tmp_path: Path) -> None:
     assert "ANTHROPIC_API_KEY" in _onboarding(tmp_path / "c", ai_tools=["claude"])
     assert "ANTHROPIC_API_KEY" not in _onboarding(tmp_path / "x", ai_tools=["cursor"])
