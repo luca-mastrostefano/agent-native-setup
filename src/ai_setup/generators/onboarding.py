@@ -17,9 +17,11 @@ from ai_setup.scaffold import Scaffolder
 HEADER = """\
 # First-run setup — {name}
 
-One-time steps to adopt this setup. Work through them in order. The standing
-rules live in `AGENTS.md` (it auto-loads for AI assistants) — this file is only
-the bootstrap, so **delete it once every step is done.**
+This repo was scaffolded by the `ai-setup` wizard — an AI-native setup. The
+tooling is in place but hasn't been activated yet; the steps below are the
+one-time bootstrap. If you're an AI assistant starting here for the first time,
+do them now. The standing rules live in `AGENTS.md`; this file is only the
+bootstrap, so **delete it once every step is done.**
 
 """
 
@@ -106,7 +108,16 @@ def _steps(config: WizardConfig) -> list[str]:
                 "Enable the @claude workflow: add an `ANTHROPIC_API_KEY` secret "
                 "(Settings → Secrets and variables → Actions). This one's on you, not the agent."
             )
-    steps.append("**Delete this file** — setup is done and `AGENTS.md` carries the standing rules.")
+    if config.first_run_banner and config.ai_tools:  # matches when the banner was injected
+        steps.append(
+            "**Delete this file and remove the first-run banner from `AGENTS.md`** (the "
+            "`ai-setup:first-run` block at the top) — setup is done; `AGENTS.md` then "
+            "carries the standing rules."
+        )
+    else:
+        steps.append(
+            "**Delete this file** — setup is done and `AGENTS.md` carries the standing rules."
+        )
     return steps
 
 

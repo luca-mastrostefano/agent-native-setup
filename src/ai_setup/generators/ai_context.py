@@ -13,7 +13,14 @@ from ai_setup.languages import get
 from ai_setup.scaffold import Scaffolder, render
 
 AGENTS_MD = """\
-# {{ name }} — Agent Contract
+{% if first_run_banner %}<!-- ai-setup:first-run — remove this block once ONBOARDING.md is done -->
+> **First run — setup pending.** This repo was scaffolded by the `ai-setup` wizard
+> (an AI-native setup); the tooling is in place but the one-time onboarding hasn't run
+> yet. **Before other work, complete [`ONBOARDING.md`](./ONBOARDING.md)** — then delete
+> it and remove this block.
+<!-- /ai-setup:first-run -->
+
+{% endif %}# {{ name }} — Agent Contract
 
 {% if description %}{{ description }}
 
@@ -243,6 +250,13 @@ def generate(config: WizardConfig, sc: Scaffolder) -> None:
         agents=config.include_agents,
         ci=config.include_ci and config.use_github_actions,
         security=config.include_security,
+        # Banner only helps when a targeted tool auto-loads AGENTS.md AND there's an
+        # ONBOARDING.md to point at; otherwise it's inert text.
+        first_run_banner=(
+            config.first_run_banner
+            and bool(config.ai_tools)
+            and (config.include_quality or config.include_ci)
+        ),
         quality_commands=quality_commands,
         surface_note=surface_note,
         capture_line=capture_line if quality_commands else "",

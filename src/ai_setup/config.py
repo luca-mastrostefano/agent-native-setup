@@ -43,6 +43,10 @@ class WizardConfig:
     # True when the target already had a Taskfile/Makefile: defer to it, don't
     # generate our own Taskfile and don't touch theirs.
     existing_runner: bool = False
+    # Inject a self-removing "first run — complete ONBOARDING.md" banner into AGENTS.md
+    # so an AI assistant onboards itself on its first session. The last onboarding step
+    # removes the banner (and deletes ONBOARDING.md), so it never becomes stale.
+    first_run_banner: bool = False
 
     @property
     def slug(self) -> str:

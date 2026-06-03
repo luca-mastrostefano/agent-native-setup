@@ -50,6 +50,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     )
     p.add_argument("--no-github-actions", dest="github_actions", action="store_false")
     p.add_argument("--no-hooks", dest="hooks", action="store_false")
+    p.add_argument("--no-first-run-banner", dest="first_run_banner", action="store_false")
     p.add_argument("--no-git", dest="git", action="store_false")
     p.add_argument("-y", "--yes", action="store_true", help="non-interactive; use flags/defaults")
     p.add_argument("--force", action="store_true", help="overwrite existing files")
@@ -61,6 +62,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         security=True,
         github_actions=True,
         hooks=True,
+        first_run_banner=True,
         git=True,
     )
     return p.parse_args(argv)
@@ -179,6 +181,13 @@ def _interactive(
                 ),
             ],
         ).unsafe_ask()
+    first_run_banner = False
+    if ("quality" in parts or "ci" in parts) and tools:
+        first_run_banner = questionary.confirm(
+            "Add a first-run banner to AGENTS.md so the agent self-onboards? "
+            "(auto-removed once onboarding is done)",
+            default=True,
+        ).unsafe_ask()
     if (out / ".git").exists():
         console.print("[cyan]Already a git repository[/] — skipping git init.")
         init_git = False
@@ -202,6 +211,7 @@ def _interactive(
         adoption=adoption or "progressive",
         use_github_actions=bool(use_ga),
         git_hooks=bool(hooks),
+        first_run_banner=bool(first_run_banner),
         init_git=bool(init_git),
     )
 
@@ -222,6 +232,7 @@ def _from_flags(args: argparse.Namespace, out: Path, detected: list[str] | None)
         adoption=args.adopt,
         use_github_actions=args.github_actions,
         git_hooks=args.hooks,
+        first_run_banner=args.first_run_banner,
         init_git=args.git,
     )
 
@@ -261,14 +272,20 @@ def _summary(config: WizardConfig, sc: Scaffolder) -> None:
     if config.include_quality or config.include_ci:
         # ONBOARDING.md owns the one-time setup (install hooks, baseline, secrets, docs);
         # point at it rather than duplicating those steps here.
-        if config.include_agents and "claude" in config.ai_tools:
+        if config.first_run_banner and config.ai_tools:
+            steps.append(
+                "Finish setup: open this project in your AI assistant — AGENTS.md tells it "
+                "to complete the one-time onboarding (ONBOARDING.md) on first wake."
+            )
+        elif config.include_agents and "claude" in config.ai_tools:
             steps.append(
                 "Finish setup: in Claude Code, type [bold]/onboard[/] at the prompt "
                 "(walks through ONBOARDING.md)."
             )
         else:
             steps.append(
-                "Finish setup: work through [bold]ONBOARDING.md[/] (or point your agent at it)."
+                "Finish setup: open [bold]ONBOARDING.md[/] and follow it (or ask your "
+                "AI assistant to)."
             )
     # A bordered panel (matching the intro) so the call to action isn't mistaken for
     # trailing log output and scrolled past.
