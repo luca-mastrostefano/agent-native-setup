@@ -82,7 +82,16 @@ def test_runbook_has_commit_and_push_step(tmp_path: Path) -> None:
     assert "Commit the scaffold" in with_ci
     assert "triggers CI" in with_ci
     assert "add a git remote first" in with_ci  # sets expectations for the push step
+    assert "directly to `main`" in with_ci  # no branch/PR judgment call for the bootstrap
     assert "triggers CI" not in _onboarding(tmp_path / "no_ci", include_ci=False)
+
+
+def test_wire_up_step_states_the_testing_bar(tmp_path: Path) -> None:
+    # "add it the way the existing ones are" was ambiguous on tests (the JS test is a
+    # no-op); point at the contract's bar instead of leaving it to the agent.
+    body = _onboarding(tmp_path)
+    assert "a real test where there's logic" in body
+    assert "can't be tested" in body
 
 
 def test_runbook_notes_python_prereq_for_rfc_hooks(tmp_path: Path) -> None:

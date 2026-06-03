@@ -123,14 +123,18 @@ def _steps(config: WizardConfig) -> list[str]:
     steps.append(
         "Wire up any uncovered language: if the repo uses a language not yet set up for "
         f"lint/format/test, add it the way the existing ones are (a pre-commit hook{ci_clause} "
-        "and a command-surface entry), per the contract."
+        "and a command-surface entry), per the contract — including a real test where there's "
+        "logic to cover, and a note on why if something genuinely can't be tested."
     )
     push_clause = (
         ", then push — that's what triggers CI (add a git remote first if there isn't one)"
         if has_ci
         else ""
     )
-    steps.append(f"Commit the scaffold and your changes{push_clause}.")
+    steps.append(
+        "Commit the scaffold and your changes **directly to `main`** (the initial bootstrap, "
+        f"so no branch/PR is needed for the first commit){push_clause}."
+    )
     if has_ci:
         steps.append(
             "After your first push, confirm CI is green (`gh run watch`, or ask the "
