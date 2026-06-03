@@ -97,6 +97,8 @@ def _steps(config: WizardConfig) -> list[str]:
         f"lint/format/test, add it the way the existing ones are (a pre-commit hook{ci_clause} "
         "and a command-surface entry), per the contract."
     )
+    push_clause = ", then push — that's what triggers CI" if has_ci else ""
+    steps.append(f"Commit the scaffold and your changes{push_clause}.")
     if has_ci:
         steps.append(
             "After your first push, confirm CI is green (`gh run watch`, or ask the "
@@ -111,12 +113,13 @@ def _steps(config: WizardConfig) -> list[str]:
     if config.first_run_banner and config.ai_tools:  # matches when the banner was injected
         steps.append(
             "**Delete this file and remove the first-run banner from `AGENTS.md`** (the "
-            "`ai-setup:first-run` block at the top) — setup is done; `AGENTS.md` then "
-            "carries the standing rules."
+            "`ai-setup:first-run` block at the top), then commit — setup is done; "
+            "`AGENTS.md` then carries the standing rules."
         )
     else:
         steps.append(
-            "**Delete this file** — setup is done and `AGENTS.md` carries the standing rules."
+            "**Delete this file**, then commit — setup is done and `AGENTS.md` carries "
+            "the standing rules."
         )
     return steps
 

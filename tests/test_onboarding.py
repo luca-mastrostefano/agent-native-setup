@@ -75,6 +75,15 @@ def test_ci_verify_step_tracks_ci(tmp_path: Path) -> None:
     assert "gh run watch" not in _onboarding(tmp_path / "no_ci", include_ci=False)
 
 
+def test_runbook_has_commit_and_push_step(tmp_path: Path) -> None:
+    # The agent shouldn't have to improvise the initial commit — the runbook owns it,
+    # and ties the push to CI only when CI exists.
+    with_ci = _onboarding(tmp_path / "ci")
+    assert "Commit the scaffold" in with_ci
+    assert "triggers CI" in with_ci
+    assert "triggers CI" not in _onboarding(tmp_path / "no_ci", include_ci=False)
+
+
 def test_api_key_step_only_for_claude_with_ci(tmp_path: Path) -> None:
     assert "ANTHROPIC_API_KEY" in _onboarding(tmp_path / "c", ai_tools=["claude"])
     assert "ANTHROPIC_API_KEY" not in _onboarding(tmp_path / "x", ai_tools=["cursor"])
@@ -101,8 +110,10 @@ def test_header_frames_first_run_for_an_agent(tmp_path: Path) -> None:
 def test_cleanup_removes_banner_when_injected(tmp_path: Path) -> None:
     with_banner = _onboarding(tmp_path / "b", first_run_banner=True)
     assert "remove the first-run banner" in with_banner
+    assert "then commit" in with_banner  # cleanup ends by committing
     without = _onboarding(tmp_path / "n", first_run_banner=False)
     assert "remove the first-run banner" not in without
+    assert "then commit" in without  # both branches end the runbook with a commit
 
 
 def test_banner_injected_into_agents_md(tmp_path: Path) -> None:
@@ -140,9 +151,9 @@ def test_banner_suppressed_without_an_ai_tool(tmp_path: Path) -> None:
 @pytest.mark.parametrize(
     ("extra_args", "expected"),
     [
-        ([], "AI assistant"),  # banner on (default) -> self-onboard message
-        (["--no-first-run-banner"], "/onboard"),  # no banner -> Claude types /onboard
-        (["--no-first-run-banner", "--tools", "cursor"], "ONBOARDING.md"),
+        ([], "/onboard"),  # Claude targeted -> concrete first action, banner or not
+        (["--no-first-run-banner"], "/onboard"),
+        (["--tools", "cursor"], "ONBOARDING.md"),  # no Claude -> point at the file
     ],
 )
 def test_summary_points_at_first_run(
@@ -151,9 +162,25 @@ def test_summary_points_at_first_run(
     extra_args: list[str],
     expected: str,
 ) -> None:
-    # Banner on -> "open in your AI assistant"; banner off -> /onboard or the file.
+    # The summary names a concrete first action (the agent can't speak first):
+    # `/onboard` when Claude is targeted, else the ONBOARDING.md file.
     cli.main(["demo", "-o", str(tmp_path), "--no-git", "-y", *extra_args])
     assert expected in capsys.readouterr().out
+
+
+def test_summary_claude_tail_reflects_banner(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # Both Claude paths name /onboard; the tail is the real delta. Banner on adds
+    # "...AGENTS.md flags the pending setup"; banner off explains it "walks through"
+    # the file. Assert on single words so the rich panel's line-wrapping can't split
+    # the match, and cross-assert absence so a swapped tail is caught.
+    cli.main(["demo", "-o", str(tmp_path / "on"), "--no-git", "-y"])
+    on = capsys.readouterr().out
+    assert "pending" in on and "walks" not in on
+    cli.main(["demo", "-o", str(tmp_path / "off"), "--no-git", "-y", "--no-first-run-banner"])
+    off = capsys.readouterr().out
+    assert "walks" in off and "pending" not in off
 
 
 def test_summary_defers_to_onboarding_without_duplicating_steps(
@@ -162,6 +189,6 @@ def test_summary_defers_to_onboarding_without_duplicating_steps(
     # The runbook owns install + secrets; the summary must not re-list them.
     cli.main(["demo", "-o", str(tmp_path), "--languages", "python", "--no-git", "-y"])
     out = capsys.readouterr().out
-    assert "ONBOARDING.md" in out  # points at the runbook
+    assert "/onboard" in out  # the banner-on Claude line names /onboard, not the file
     assert "pipx install" not in out  # install lives in ONBOARDING.md now
     assert "ANTHROPIC_API_KEY" not in out  # so does the secret

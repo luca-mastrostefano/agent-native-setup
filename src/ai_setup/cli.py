@@ -270,22 +270,23 @@ def _summary(config: WizardConfig, sc: Scaffolder) -> None:
         )
     steps = ["Read [bold]AGENTS.md[/] — the contract for all contributors."]
     if config.include_quality or config.include_ci:
-        # ONBOARDING.md owns the one-time setup (install hooks, baseline, secrets, docs);
-        # point at it rather than duplicating those steps here.
-        if config.first_run_banner and config.ai_tools:
-            steps.append(
-                "Finish setup: open this project in your AI assistant — AGENTS.md tells it "
-                "to complete the one-time onboarding (ONBOARDING.md) on first wake."
+        # ONBOARDING.md owns the one-time setup; tell the user the concrete first action
+        # (the agent can't speak first — it waits for input), not "it self-onboards".
+        banner_on = config.first_run_banner and bool(config.ai_tools)
+        if config.include_agents and "claude" in config.ai_tools:
+            tail = (
+                " (or just ask it what to do — AGENTS.md flags the pending setup)"
+                if banner_on
+                else " (walks through ONBOARDING.md)"
             )
-        elif config.include_agents and "claude" in config.ai_tools:
             steps.append(
-                "Finish setup: in Claude Code, type [bold]/onboard[/] at the prompt "
-                "(walks through ONBOARDING.md)."
+                f"Finish setup: in Claude Code, type [bold]/onboard[/] at the prompt{tail}."
             )
         else:
+            tail = " — it'll also see the first-run note in AGENTS.md" if banner_on else ""
             steps.append(
-                "Finish setup: open [bold]ONBOARDING.md[/] and follow it (or ask your "
-                "AI assistant to)."
+                "Finish setup: open [bold]ONBOARDING.md[/] and follow it, or ask your "
+                f"AI assistant to{tail}."
             )
     # A bordered panel (matching the intro) so the call to action isn't mistaken for
     # trailing log output and scrolled past.

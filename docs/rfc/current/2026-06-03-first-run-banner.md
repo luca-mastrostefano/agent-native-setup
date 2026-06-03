@@ -27,12 +27,15 @@ first. The **last onboarding step removes the banner** (and deletes
 - The HTML-comment delimiters make removal mechanical and unambiguous.
 - `ONBOARDING.md`'s header now states it was scaffolded by `ai-setup` and speaks to
   an agent on its first session.
-- The end-of-run summary, when the banner is on, tells the human to simply open the
-  project in their assistant — it self-onboards.
+- The end-of-run summary names the concrete first action (the agent can't speak
+  first — it waits for the user's message): type `/onboard`, or, with the banner on,
+  just ask the agent what to do, since `AGENTS.md` flags the pending setup.
 
 ## Consequences
 
-- Closes the loop without human action: open the repo in an agent → it onboards.
+- Shortens the loop to a single human message: the agent reads the banner in
+  `AGENTS.md` on its first turn, so "what should I do?" is enough to kick off
+  onboarding — no need to remember `/onboard` or the filename.
 - Self-removing, so it never becomes stale standing-contract noise — *provided*
   the agent completes onboarding. A clearly-labelled, delimited block keeps a
   lingering banner obviously transient if onboarding is interrupted.
