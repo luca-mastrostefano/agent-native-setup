@@ -110,17 +110,26 @@ def _steps(config: WizardConfig) -> list[str]:
                 "Enable the @claude workflow: add an `ANTHROPIC_API_KEY` secret "
                 "(Settings → Secrets and variables → Actions). This one's on you, not the agent."
             )
-    if config.first_run_banner and config.ai_tools:  # matches when the banner was injected
-        steps.append(
-            "**Delete this file and remove the first-run banner from `AGENTS.md`** (the "
-            "`ai-setup:first-run` block at the top), then commit — setup is done; "
-            "`AGENTS.md` then carries the standing rules."
+    # The first-run apparatus self-deletes: name every artifact that was actually
+    # scaffolded so the agent clears all of them in one final commit, leaving only
+    # the standing contract behind.
+    removals = ["**Delete this file**"]
+    if config.first_run_banner and config.ai_tools:  # the banner was injected
+        removals.append(
+            "remove the first-run banner from `AGENTS.md` (the `ai-setup:first-run` "
+            "block at the top)"
         )
+    if config.include_agents and "claude" in config.ai_tools:  # the /onboard command exists
+        removals.append("remove the `/onboard` command (`.claude/commands/onboard.md`)")
+    if len(removals) == 1:
+        cleanup = removals[0]
+    elif len(removals) == 2:
+        cleanup = f"{removals[0]} and {removals[1]}"
     else:
-        steps.append(
-            "**Delete this file**, then commit — setup is done and `AGENTS.md` carries "
-            "the standing rules."
-        )
+        cleanup = ", ".join(removals[:-1]) + ", and " + removals[-1]
+    steps.append(
+        f"{cleanup}, then commit — setup is done and `AGENTS.md` carries the standing rules."
+    )
     return steps
 
 

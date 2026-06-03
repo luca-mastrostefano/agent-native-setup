@@ -107,6 +107,18 @@ def test_header_frames_first_run_for_an_agent(tmp_path: Path) -> None:
     assert "AI assistant" in body  # speaks to the agent waking up here
 
 
+def test_cleanup_removes_onboard_command_for_claude(tmp_path: Path) -> None:
+    # The /onboard command is part of the self-deleting first-run apparatus, so cleanup
+    # must remove it too — otherwise it dangles, pointing at a now-deleted ONBOARDING.md.
+    for_claude = _onboarding(tmp_path / "c", ai_tools=["claude"])
+    assert ".claude/commands/onboard.md" in for_claude
+    # No command scaffolded -> nothing to remove (not Claude, or agents disabled).
+    assert "onboard.md" not in _onboarding(tmp_path / "x", ai_tools=["cursor"])
+    assert "onboard.md" not in _onboarding(
+        tmp_path / "na", ai_tools=["claude"], include_agents=False
+    )
+
+
 def test_cleanup_removes_banner_when_injected(tmp_path: Path) -> None:
     with_banner = _onboarding(tmp_path / "b", first_run_banner=True)
     assert "remove the first-run banner" in with_banner

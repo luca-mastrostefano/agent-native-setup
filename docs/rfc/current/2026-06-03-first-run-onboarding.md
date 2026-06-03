@@ -23,7 +23,8 @@ itself, so it never lingers as stale documentation.
 Kick-off is the lowest-friction option per target:
 
 - **Claude** — a scaffolded `/onboard` slash command (mirrors `/review`) reads
-  and executes the file. One token, discoverable.
+  and executes the file. One token, discoverable; the runbook's final step removes
+  the command too, so it doesn't linger pointing at a deleted file.
 - **Cursor/Copilot** — the wizard's closing summary prints a one-line "point your
   agent at ONBOARDING.md" pointer.
 
@@ -33,8 +34,9 @@ never parses an if/else.
 ## Consequences
 
 - Closes the "what now?" gap after the wizard without bloating the contract.
-- One new generator (`generators/onboarding.py`) + one command constant; the file
-  self-deletes, so it adds no long-lived surface to the generated repo.
+- One new generator (`generators/onboarding.py`) + one command constant; both the
+  file and the `/onboard` command self-delete on completion, so it adds no
+  long-lived surface to the generated repo.
 - Not dogfooded into this repo: it's a *first-run* artifact and this repo is long
   past onboarding — an `ONBOARDING.md` here would be stale on arrival.
 
