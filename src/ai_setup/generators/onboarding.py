@@ -91,6 +91,13 @@ def _steps(config: WizardConfig) -> list[str]:
             f"pre-commit` first, then run `{install_cmd}` so lint, format, and the secret "
             f"scan run before every commit{py_clause}.{lychee_clause}"
         )
+    if "node" in config.languages:
+        # package.json ships without a lockfile (can't resolve one at scaffold time);
+        # generate and commit it so CI's `npm ci` is reproducible.
+        steps.append(
+            "Generate the npm lockfile: run `npm install` (writes `package-lock.json` from "
+            "the pinned `package.json`) and commit it, so CI's `npm ci` is reproducible."
+        )
     if config.include_quality:
         tail = " and see what the existing code trips on" if config.existing_project else ""
         surface = (
@@ -103,8 +110,8 @@ def _steps(config: WizardConfig) -> list[str]:
             steps.append(_adoption_step(config, gate, fmt))
     if config.include_docs:
         steps.append(
-            "Flesh out `docs/architecture/overview.md` — it ships as a stub. Replace it "
-            "with a real map of this codebase's components so future agents have context."
+            "Flesh out `docs/architecture/overview.md` — the tooling components are "
+            "pre-filled; add the product components and dependency rules as they land."
         )
     ci_clause = ", a CI step," if has_ci else ""
     steps.append(

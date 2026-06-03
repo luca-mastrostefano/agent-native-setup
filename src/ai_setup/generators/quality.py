@@ -40,6 +40,21 @@ ACTIONLINT_HOOK = """\
       files: ^\\.github/workflows/
 """
 
+# Guards the Python helpers the docs machinery ships (tools/checks/*.py) when Python
+# isn't a selected language — otherwise they'd ship unlinted, breaking the contract's
+# "wire up every language" rule. Scoped to tools/ and run via pre-commit's managed env
+# (no manual install); ruff's defaults apply, so no pyproject is needed.
+TOOLS_RUFF_HOOK = """\
+- repo: https://github.com/astral-sh/ruff-pre-commit
+  rev: v0.15.15
+  hooks:
+    - id: ruff-check
+      args: [--fix]
+      files: ^tools/.*\\.py$
+    - id: ruff-format
+      files: ^tools/.*\\.py$
+"""
+
 # Mechanical enforcement: a changed RFC's Status drives which folder it lives in.
 RFC_STATUS_HOOK = """\
 - repo: local
@@ -120,6 +135,15 @@ audits dependencies for known vulnerabilities in CI.
 """
 
 
+# Ruff commands guarding the shipped tools/checks/*.py, by quality label. Scoped to
+# tools/ so they're identical in the command surface and CI (no local-vs-CI drift).
+_TOOLS_RUFF_CMDS = {
+    "lint": "ruff check tools/",
+    "format": "ruff format tools/",
+    "format-check": "ruff format --check tools/",
+}
+
+
 def _test_hook(lang: Language) -> str:
     """A pre-push hook that runs a language's full test suite."""
     cmd = next((c for lbl, c in lang.quality_commands if lbl == "test"), None)
@@ -145,6 +169,8 @@ def _pre_commit_config(config: WizardConfig, langs: list[Language]) -> str:
     if config.include_ci and config.use_github_actions:
         blocks.append(ACTIONLINT_HOOK)  # lint the workflows we generate
     blocks += [lang.pre_commit_block for lang in langs if lang.pre_commit_block]
+    if config.ships_tools_python:
+        blocks.append(TOOLS_RUFF_HOOK)
     if config.include_docs:
         blocks.append(RFC_STATUS_HOOK)
     if commit_msg:
@@ -157,7 +183,10 @@ def _pre_commit_config(config: WizardConfig, langs: list[Language]) -> str:
 
 def _taskfile(config: WizardConfig, langs: list[Language], hooks: bool) -> str:
     def cmds_for(label: str) -> list[str]:
-        return [cmd for lang in langs for lbl, cmd in lang.quality_commands if lbl == label]
+        cmds = [cmd for lang in langs for lbl, cmd in lang.quality_commands if lbl == label]
+        if config.ships_tools_python and label in _TOOLS_RUFF_CMDS:
+            cmds.append(_TOOLS_RUFF_CMDS[label])
+        return cmds
 
     def task(name: str, desc: str, cmds: list[str], deps: list[str] | None = None) -> list[str]:
         out = [f"  {name}:", f"    desc: {desc}"]
@@ -202,7 +231,10 @@ def _makefile(config: WizardConfig, langs: list[Language], hooks: bool) -> str:
     """A self-documenting Makefile (`make help`) — the zero-install default runner."""
 
     def cmds_for(label: str) -> list[str]:
-        return [cmd for lang in langs for lbl, cmd in lang.quality_commands if lbl == label]
+        cmds = [cmd for lang in langs for lbl, cmd in lang.quality_commands if lbl == label]
+        if config.ships_tools_python and label in _TOOLS_RUFF_CMDS:
+            cmds.append(_TOOLS_RUFF_CMDS[label])
+        return cmds
 
     def target(name: str, desc: str, cmds: list[str], deps: str = "") -> list[str]:
         head = f"{name}:{' ' + deps if deps else ''} ## {desc}"
@@ -265,6 +297,8 @@ def generate(config: WizardConfig, sc: Scaffolder) -> None:
         sc.write(".pre-commit-config.yaml", _pre_commit_config(config, langs))
 
     gitignore = BASE_GITIGNORE + [line for lang in langs for line in lang.gitignore]
+    if config.ships_tools_python:  # tools/checks/*.py runs and drops bytecode
+        gitignore += ["__pycache__/", "*.pyc"]
     if "claude" in config.ai_tools:
         gitignore.append(".claude/settings.local.json")  # Claude Code's per-user local settings
     # preserve=True: never overwrite a repo's existing .gitignore, even with --force.

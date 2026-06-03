@@ -1,174 +1,244 @@
-# Scaffold review — onboarding retrospective
+# Onboarding retrospective — clinic_slack
 
-**Date:** 2026-06-03
-**Author:** onboarding agent (Claude Code), reviewing a scaffold produced by another AI agent.
+_Date: 2026-06-03. Author: the agent that ran `/onboard`._
 
-This is a one-time report written while running `ONBOARDING.md`. It records what
-the first-run setup actually did, where the scaffold fell short, and the
-ambiguities that needed a judgement call. It is feedback on the _scaffolding
-agent's output_, not on the project itself.
+This repo was scaffolded by another AI agent (the `ai-setup` wizard). I then ran
+the one-time `/onboard` flow (`ONBOARDING.md`). This file records what I did, how
+long it took and why, what the scaffolding agent could have done better, and the
+ambiguities I hit — so the next person understands the current state and the
+remaining rough edges.
+
+Result commits: `619c5d5` (bootstrap) and `39f027d` (finalize), both green on CI.
 
 ---
 
 ## 1. What I did
 
-Per `ONBOARDING.md`, in order:
+The nine `ONBOARDING.md` steps, condensed:
 
-1. **Read the contract** (`AGENTS.md`).
-2. **Installed git hooks** — `make install` (pre-commit + pre-push).
-3. **Established a clean `make quality` baseline.** This did not pass as
-   shipped; the fixes are in section 2.
-4. **Wrote `docs/architecture/overview.md`** — replaced the stub with a real map
-   of what exists today (contract/docs, the local quality gate, CI, the `tools/`
-   RFC-sync script) and honest "no app code yet" dependency rules.
-5. **Wired up Python**, the one uncovered language (`tools/checks/sync_rfc_status.py`):
-   a `ruff-check` + `ruff-format` pre-commit hook, a `setup-python` + ruff step in
-   `quality.yml`, and `ruff` entries in the Makefile `lint`/`format` targets.
-6. **Removed the `ai-setup:first-run` banner** from `AGENTS.md`.
+1. **Read the contract** (`AGENTS.md`) and surveyed the whole scaffold.
+2. **Installed git hooks** (`make install` → pre-commit + pre-push).
+3. **Tried to establish a clean baseline** (`make quality`). It was **red out of
+   the box** — see §4.1. Formatted the three offending scaffold files
+   (`AGENTS.md`, `eslint.config.mjs`, `.claude/agents/code-reviewer.md`) so the
+   gate and CI could pass. Formatting-only, no semantic change.
+4. **Wrote `docs/architecture/overview.md`** — replaced the `TODO` stub with an
+   honest component + toolchain map (the repo is greenfield; product code will
+   land via RFCs).
+5. **Wired Python** — the only language the scaffold left unguarded (it ships
+   `tools/checks/sync_rfc_status.py`). Added `ruff` lint+format across the three
+   enforcement points (pre-commit, CI `quality.yml`, `Makefile`), pinned
+   `ruff==0.15.14` everywhere, plus an 8-test stdlib `unittest` suite for the
+   RFC-sync helper (run by `make test`, CI, and a pre-push hook). Added
+   `__pycache__/` and `*.pyc` to `.gitignore`. Generated and committed a
+   `package-lock.json` (the scaffold shipped none).
+6. **Ran the `code-reviewer`** on my diff → clean; I added the `main()`
+   integration test it suggested (covers the hook's actual exit-code contract).
+7. **Created the private GitHub repo, pushed `main`, and confirmed CI green** on
+   both commits.
+8. **Finalized**: removed the first-run banner from `AGENTS.md`, deleted
+   `ONBOARDING.md` and `.claude/commands/onboard.md`, and logged the
+   gitleaks/Node-20 gap in `docs/improvements.md`.
 
-To make the baseline green I added/changed:
-
-- **`package.json` + `package-lock.json`** — pinned the JS/TS toolchain the
-  scaffold already referenced (eslint 9, typescript-eslint 8, prettier 3,
-  typescript 5). `npm audit`: 0 vulnerabilities.
-- **`tsconfig.json`** (strict, `noEmit`) and a **guard on the `typecheck`
-  target** so `tsc` is skipped until the first `.ts`/`.tsx` lands.
-- **`.prettierignore`** for `package-lock.json`.
-- Ran the formatters the scaffold ships but had not applied (`prettier --write`
-  on 3 files, `ruff format` on 1).
-
-Still outstanding (blocked on a human — see section 4): the first commit, adding
-a git remote, pushing, confirming CI, the `ANTHROPIC_API_KEY` secret, and
-deleting `ONBOARDING.md`.
+Still **owned by the human** (by design): adding the `ANTHROPIC_API_KEY` secret
+(step 8) that the `@claude` workflow needs.
 
 ---
 
-## 2. What the scaffolding agent could have done better
+## 2. Task list & approximate timing
+
+Why `/onboard` felt long: the dominant costs are **one-time** — installing npm
+deps, downloading/building ~7 pre-commit hook environments, waiting on CI runs —
+plus human round-trips (your `gh` login) and the agent's careful
+read → change → verify loops. Almost none of this recurs on day-to-day work.
+
+Times are approximate. Where a tool reported a duration I used it; otherwise it's
+a typical first-run estimate.
+
+| Phase                | Work                                                                                              | Approx time                      |
+| -------------------- | ------------------------------------------------------------------------------------------------- | -------------------------------- |
+| Survey & plan        | Read contract, ONBOARDING, Makefile, configs, docs, workflows, Python helper; probe toolchain     | ~2–3 min                         |
+| Install & baseline   | `make install` (~3 s), `npm install` (**13 s**, measured), `make quality` ×2, fix 3 unclean files | ~1–2 min                         |
+| Architecture doc     | Write `overview.md`, prettier fix, re-verify                                                      | ~1 min                           |
+| Wire Python          | Write tests, edit pre-commit/Makefile/CI, run `ruff` + tests                                      | ~1–2 min                         |
+| Validate hooks       | First `pre-commit run --all-files` (downloads gitleaks, actionlint, ruff, lychee, … envs)         | **~2–3 min** ⟵ big one-time cost |
+| Commit + self-review | Stage, commit, `code-reviewer` subagent (**72 s**, measured), strengthen test, amend              | ~2–3 min                         |
+| Remote + push        | (you re-auth `gh`), `gh repo create` (failed: repo pre-existed), inspect empty repo, push         | ~1 min + your login wait         |
+| CI verification      | Watch bootstrap run (**32 s**) + finalize run (~30 s)                                             | ~1–2 min                         |
+| Finalize             | Strip banner, delete ONBOARDING + command, log gap, commit, push                                  | ~1 min                           |
+| Diagnose Dependabot  | Inspect the two failing Dependabot PR runs                                                        | ~0.5 min                         |
+
+**Rough total active time ≈ 15–25 min**, of which first-run downloads + CI waits +
+human auth are the largest slices. The commit timeline confirms the shape:
+bootstrap commit at `16:21:42Z` → first CI run at `16:30:18Z` (the ~8 min gap is
+mostly self-review + your `gh` login + the repo-create dance) → finalize commit at
+`16:32:33Z`.
+
+### 2.1 Where spawning agents could have run work in parallel
+
+Most of the wall-clock above was sequential, but several chunks were genuinely
+independent and could have been parallelized — by **backgrounding the slow
+installs** and by **spawning sub-agents** for disjoint work. Honest opportunities,
+biggest win first:
+
+1. **Background the one-time installs at t=0.** Kick off `npm install` and
+   `pre-commit install-hooks` (pre-builds _all_ hook environments) as background
+   jobs the moment the session starts, concurrent with reading the scaffold. The
+   ~2–3 min of hook-env downloads — the single largest cost — would overlap
+   analysis that doesn't need them, instead of blocking the first commit/run.
+   _Est. savings: ~2–3 min._
+2. **Fan out the read-only survey.** Spawn parallel `Explore` agents along disjoint
+   axes — (a) toolchain & quality-gate wiring, (b) docs/RFC structure, (c) which
+   languages are present vs. guarded — each returning a structured summary. The
+   scaffold here is small so the payoff is modest, but on a real codebase this
+   collapses the survey phase. _Est. savings: small here, large at scale._
+3. **Author the two independent deliverables concurrently.** Step 4
+   (`docs/architecture/overview.md`) and step 5 (Python wiring + tests) touch
+   **disjoint files** with no ordering dependency. One agent drafts the
+   architecture doc while another implements the `ruff` wiring + `unittest` suite;
+   I reconcile and run the gate once. No worktree isolation needed (the file sets
+   don't overlap). _Est. savings: ~1–2 min._
+4. **Parallel verification streams.** Run the `code-reviewer` on the diff while a
+   second agent audits **local == CI consistency** (version pins + identical
+   `unittest discover` globs across the three Python wiring points) and a third
+   diagnoses the failing Dependabot runs. All three are independent, read-only
+   analyses. _Est. savings: ~1 min._
+
+**What should have stayed serial — parallelism would have hurt:**
+
+- **The three Python wiring edits themselves** (pre-commit / Makefile / CI). They
+  must stay mutually consistent — same pinned `ruff` version, byte-identical
+  `unittest discover` globs — so a single coherent author is safer than three
+  agents that can drift. (The `code-reviewer` checked for exactly this drift;
+  splitting the work would have invited it.)
+- **The dependency chain** baseline → wire → verify → commit → push → CI: each step
+  gates on the previous result.
+- **Human-gated steps** (`gh` auth, the API-key secret): a sub-agent can't decide
+  these for you.
+
+Net: with backgrounded installs plus the two independent authoring streams, a
+similar onboarding could plausibly land in **~10–15 min** rather than ~15–25 — the
+floor being the unavoidable one-time downloads, CI runs, and human round-trips.
+
+---
+
+## 3. What the scaffolding agent could have done better
 
 Ordered by impact.
 
-### 🔴 Blocker — the JS/TS toolchain had no `package.json`
+1. **The scaffold failed its own quality gate.** Three files it generated
+   (`AGENTS.md`, `eslint.config.mjs`, `.claude/agents/code-reviewer.md`) were not
+   `prettier`-formatted, so `make quality` and CI were **red before anyone touched
+   anything** — directly contradicting onboarding step 3 ("establish a clean
+   baseline"). Fix: the wizard should run `make format` on its own output before
+   finishing. A scaffold should pass the gate it ships.
 
-`eslint.config.mjs` imports `typescript-eslint`; the Makefile and CI call
-`npx eslint`, `npx tsc`, `npx prettier`; `quality.yml` runs `npm ci || npm install`;
-`dependabot.yml` declares an **npm** ecosystem. Yet no `package.json` or lockfile
-was shipped. The result: `make quality` and CI both fail immediately with
-`ERR_MODULE_NOT_FOUND: typescript-eslint`. The "establish a clean baseline" step
-**cannot pass as delivered**.
+2. **It shipped a language it didn't guard.** The scaffold writes and _runs_
+   `tools/checks/sync_rfc_status.py` (via a pre-commit hook) but wired no
+   lint/format/test for Python — even though it carefully wired JS/TS and HTML.
+   Onboarding step 5 exists to patch exactly this, but the cleaner move is to not
+   ship an unguarded language: add `ruff` when you add the `.py` file.
 
-> Fix: ship `package.json` with pinned `devDependencies` and a committed
-> `package-lock.json`. A scaffold that wires `npm ci` into CI must include the
-> lockfile it expects.
+3. **`.gitignore` ignored only JS artifacts.** It lists `node_modules/`, `dist/`,
+   `.next/`, `*.tsbuildinfo` but not `__pycache__/` / `*.pyc` — so the moment the
+   Python hook or tests run, bytecode is created and would be committed. Same
+   JS-vs-Python blind spot as #2.
 
-### 🔴 Blocker — `typecheck` can never pass on an empty repo
+4. **CI is red on every pull request — the `gitleaks` step omits its required
+   token.** The `checks` job runs `gitleaks/gitleaks-action` without passing
+   `GITHUB_TOKEN`, which the action **requires for any `pull_request` scan**. The
+   run log is explicit: `🛑 GITHUB_TOKEN is now required to scan pull requests`.
+   It is **not** Dependabot-specific — _any_ PR fails this step; Dependabot's
+   weekly PRs are simply the first to hit it (both already failed, `v2` and the
+   `v3` bump alike). `push` events don't need the token, so `main` stays green and
+   the failure is easy to miss. One-line fix: add
+   `env: { GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} }` to the gitleaks step.
 
-`typecheck: npx tsc --noEmit` with no `tsconfig.json` and zero `.ts` files just
-prints `tsc` help and exits 1; any `tsconfig` errors `TS18003`/`TS18002` with
-zero inputs. Because `quality` depends on `typecheck`, the whole gate fails.
+5. **A soon-to-break action version.** `gitleaks/gitleaks-action@v2` runs on
+   Node 20, which GitHub force-migrates to Node 24 on **2026-06-16** — ~2 weeks
+   after this scaffold was generated. Pinning an about-to-deprecate action on day
+   one is avoidable. (Logged in `docs/improvements.md`.)
 
-> Fix: ship a `tsconfig.json` **and** guard the target for the
-> no-TypeScript-yet state (or don't fold `typecheck` into `quality` until TS
-> exists). I chose the guard.
+6. **No lockfile.** `package.json` shipped without `package-lock.json`, so CI
+   can't use `npm ci` (the workflow hedges with `npm ci || npm install`) and
+   Dependabot/builds aren't reproducible. I generated and committed one.
 
-### 🟠 The local gate and CI enforce different things
+7. **The eslint pre-commit hook under-covers vs CI.** Its `files` pattern is
+   `\.(js|jsx|ts|tsx)$`, which **excludes `.mjs`** — and the repo's only JS file
+   is `eslint.config.mjs`. So the local hook lints nothing, while `make lint` /
+   CI (`npx eslint .`) do lint it. Local and CI should agree. (Left unfixed — out
+   of onboarding scope; noted here.)
 
-- CI (`quality.yml`) runs `prettier --check` and `lychee`, but **not** `tsc`.
-- Local `make quality` runs `tsc` (via `typecheck`) but **not** `prettier --check`
-  or `lychee`.
-
-So `make quality` can be green while CI is red (formatting/links), and `tsc` is
-enforced locally but never in CI. A contributor's local gate should be a
-superset of CI, or identical to it.
-
-> Fix: make `make quality` run the same checks as CI (add `format`/prettier and a
-> link check), and run `typecheck` in CI too.
-
-### 🟠 `lychee` pre-commit hook needs a binary nobody is told to install
-
-The hook is `language: system` (`entry: lychee`) — it requires a locally
-installed `lychee`, which it will **not** download. But `README.md` lists only
-`pre-commit` as a requirement and `ONBOARDING.md` never mentions lychee. A fresh
-clone therefore **cannot `git commit`** until the dev discovers they need
-`brew install lychee` (or equivalent). CI is fine because it uses
-`lycheeverse/lychee-action`.
-
-> Fix: either use the `lychee-docker` hook (no local binary), or document the
-> `lychee` install in `README.md`/`ONBOARDING.md` alongside `pre-commit`.
-
-### 🟠 Python shipped unguarded — violating the scaffold's own contract
-
-`AGENTS.md` says: _"If a language in the repo isn't yet wired up for linting,
-formatting, and tests, add it."_ The scaffold shipped `tools/checks/sync_rfc_status.py`
-with **no** linter, formatter, or CI — and the file wasn't even `ruff format`
-clean. The scaffolding agent both wrote code that breaks its own contract and
-left the wiring as homework (onboarding step 5).
-
-> Fix: the agent that adds a language should wire its tooling in the same pass.
-
-### 🟡 Shipped files failed the scaffold's own formatters
-
-`prettier --check` flagged `AGENTS.md`, `eslint.config.mjs`, and
-`.claude/agents/code-reviewer.md`; `ruff format --check` flagged the Python tool.
-The scaffold would reject itself at commit time.
-
-> Fix: run your own formatters before declaring the scaffold done.
-
-### 🟡 `htmlhint` is unpinned and untracked
-
-`htmlhint` is invoked via `npx --yes` (Makefile + CI) rather than as a
-`devDependency`, so its version floats and `dependabot` can't track it —
-inconsistent with eslint/prettier/typescript.
-
-> Fix: add `htmlhint` to `devDependencies` and drop `--yes`.
-
-### 🟡 `make format` checks but doesn't format
-
-The target named `format` ("auto-format") runs `prettier --check` (and now
-`ruff format --check`) — it never writes. The name implies it fixes; it only
-reports. (I matched the existing convention for ruff to stay consistent, but the
-naming is misleading.)
-
-> Fix: make `format` write (`--write` / `ruff format`) and add a separate
-> `format-check` for CI, or rename the target.
+8. **The architecture stub could have been pre-filled.** Step 4 asks the
+   onboarder to describe the components, but the wizard _built_ those components
+   (contract, docs, quality gate, RFC automation) and knows them — it could have
+   seeded the tooling section instead of a generic `TODO`.
 
 ---
 
-## 3. Ambiguities I had to resolve
+## 4. Problems & ambiguities I encountered
 
-- **Is the JS/TS tooling premature?** There is no JS/TS source yet, only config.
-  I treated the Node toolchain as intended (config + CI + dependabot all assume
-  it) and materialized the manifest rather than deleting the tooling.
-- **Version pinning.** `npx` had pulled eslint 10, but `typescript-eslint@8`
-  supports only eslint `^8.57 || ^9`. I pinned **eslint 9** to keep a known-good
-  pair rather than chase eslint 10.
-- **"Clean baseline" vs. a `tsc` that can't pass with zero files.** Resolved by
-  guarding the target instead of adding a placeholder `.ts` (which would be
-  speculative code).
-- **"lint, format, and tests" vs. "Simplicity First."** The contract says wire
-  up _tests_ for each language, but adding a pytest suite + CI job for a single
-  internal tool script is over-engineering. I wired lint+format and deferred
-  Python tests until there's real Python to test.
-- **Where will app code live?** Nothing specifies a layout; I assumed `src/` for
-  the `tsconfig` include and the architecture doc, and said so.
-- **May the agent commit/push?** `ONBOARDING.md` says to, but pushing is
-  outward-facing and the `/onboard` brief says to confirm human decisions. I
-  stopped before committing to get explicit sign-off.
-
----
-
-## 4. Environment blockers (not the scaffold's fault, but worth noting)
-
-- No git remote and no initial commit, so steps 6–7 (push, confirm CI) can't run.
-- `gh` auth is invalid (`The token in keyring is invalid`), so even
-  `gh repo create` would fail until re-auth.
-- `ONBOARDING.md` steps 6–8 implicitly assume a working GitHub connection; a
-  "prerequisites: authenticated `gh`, a remote" note would set expectations.
+- **4.1 Red baseline (see §3.1).** I had to judge whether re-formatting 3 files
+  counted as the "repo-wide reformatting" the onboarding said to confirm with a
+  human first. I treated it as in-scope (3 files, formatting-only, _required_ for
+  any green build) and proceeded transparently rather than blocking.
+- **4.2 How much to wire "test" for Python.** The JS "test" wiring is a no-op
+  (`npm test --if-present`), so "add it the way the existing ones are" is
+  ambiguous — placeholder or real test? I chose a real **stdlib** `unittest`
+  suite (zero new deps): it proves the wiring _and_ covers the one real Python
+  module. A clearer scaffold/contract would state the intended bar.
+- **4.3 `ruff` hook id.** The pre-commit hook labelled `ruff` as a "legacy
+  alias"; I switched it to the current `ruff-check`.
+- **4.4 Python bytecode got staged.** Running the tests created
+  `tools/checks/__pycache__/*.pyc`, which `git add -A` picked up (see §3.3). Fixed
+  via the `.gitignore` addition + unstage.
+- **4.5 Remote friction (environment, not the scaffold).** No git remote existed,
+  `gh`'s stored token was invalid, the `gh` token lacked the `workflow` scope, and
+  a `clinic_slack` repo _already existed_ (empty/private) so `gh repo create`
+  errored. Resolved by having you re-auth, verifying the existing repo was empty,
+  and pushing over **SSH** (which sidesteps the missing `workflow` scope).
+- **4.6 "Branch first" vs "commit to main".** The harness default is to branch off
+  the default branch; the onboarding explicitly wants the bootstrap committed and
+  pushed to `main` to trigger CI. For an initial-history bootstrap I followed the
+  onboarding (direct to `main`).
 
 ---
 
-## 5. Suggested follow-ups
+## 5. Is the project ready to work in?
 
-- Promote the actionable items above into `docs/improvements.md` or an RFC.
-- Add Python unit tests for `sync_rfc_status.py` (`parse_status`,
-  `target_folder`, `find_moves`) once a Python test runner is justified.
-- Align the local gate with CI so "green locally" means "green in CI".
+**Mostly yes.** Core dev loop is live:
+
+- ✅ Contract + docs + RFC lifecycle in place; architecture map written.
+- ✅ Quality gate **actually green** now (was red) — `prettier`, `eslint`, `tsc`,
+  `htmlhint`, `ruff`, `gitleaks`, `actionlint`, `lychee`, `npm audit`.
+- ✅ Hooks installed (pre-commit + pre-push); tests run at all three layers.
+- ✅ JS/TS, HTML, **and Python** all lint/format/test-wired and consistent
+  (local = CI).
+- ✅ Private repo pushed; CI green on `main`.
+- ✅ Agents (`code-reviewer`, `planner`) and commands (`/review`, `/rfc`)
+  available.
+
+**Before it's 100%:**
+
+- ⚠️ **`ANTHROPIC_API_KEY` secret not set** → the `@claude` PR/issue workflow won't
+  run until you add it (onboarding step 8 — yours to do).
+- ⚠️ **Every pull request shows red CI** — the `gitleaks` step is missing
+  `GITHUB_TOKEN` (§3.4); `main` is green so it's easy to miss. One-line fix.
+- ⚠️ **gitleaks Node-20 deprecation** looms (2026-06-16, §3.5).
+- ℹ️ The eslint pre-commit hook skips `.mjs` (§3.7) — minor.
+- ℹ️ No product code yet — greenfield by design; the Slack-for-clinics app lands
+  via RFCs.
+
+---
+
+## 6. Recommended follow-ups
+
+1. Add the `ANTHROPIC_API_KEY` repo secret (required for `@claude`).
+2. Pass `GITHUB_TOKEN` to the `gitleaks` step
+   (`env: { GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} }`) so `pull_request` scans
+   stop failing.
+3. Move `gitleaks-action` to a Node-24-compatible setup before 2026-06-16.
+4. Broaden the eslint pre-commit `files` pattern to include `.mjs` (and `.cjs`)
+   so local matches CI.
+5. Consider deleting this retrospective once its action items are addressed — it's
+   a one-time onboarding artifact, not standing docs.

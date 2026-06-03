@@ -29,4 +29,6 @@ jobs:
       - uses: pypa/gh-action-pip-audit@v1.1.0
         with:
           inputs: .
-      - uses: gitleaks/gitleaks-action@v2
+      - uses: gitleaks/gitleaks-action@v3 # v3 = node24; v2 was the deprecated node20
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} # required to scan any pull_request

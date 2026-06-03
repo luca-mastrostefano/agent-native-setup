@@ -27,8 +27,16 @@ def test_gitleaks_in_pre_commit(tmp_path: Path) -> None:
 def test_checks_job_has_secrets_and_vuln_scan(tmp_path: Path) -> None:
     wf = _wf(_build(tmp_path, languages=["python"]))
     assert "checks:" in wf
-    assert "gitleaks/gitleaks-action@v2" in wf
+    assert "gitleaks/gitleaks-action@v3" in wf  # v3 = node24 (v2 was deprecated node20)
     assert "pip-audit" in wf
+
+
+def test_gitleaks_passes_github_token(tmp_path: Path) -> None:
+    # gitleaks-action requires GITHUB_TOKEN to scan ANY pull_request; without it every
+    # PR's checks job is red while main stays green. (Not Dependabot-specific.)
+    wf = _wf(_build(tmp_path, languages=["python"]))
+    assert "GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}" in wf
+    assert "dependabot[bot]" not in wf  # the earlier actor-skip was the wrong fix
 
 
 def test_tests_run_in_greenfield_ci(tmp_path: Path) -> None:

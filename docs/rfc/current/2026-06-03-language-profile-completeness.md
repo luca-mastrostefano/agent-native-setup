@@ -49,6 +49,18 @@ Complete the **node** profile and make the gate/CI symmetric, generically:
 - Keep `sync_rfc_status.py` ≤ 88 cols so it is lint-clean under any config, and
   note in `ONBOARDING.md` that the RFC/docs hooks need `python` on PATH.
 
+### Follow-up (same theme, applied after a second onboarding run)
+
+- **The scaffold must pass its own formatter.** Conform `eslint.config.mjs` to
+  prettier's output, and ship a `.prettierignore` (`*.md`, `package-lock.json`,
+  `dist/`) so prettier covers code, not the hand-authored Markdown it would
+  otherwise reflow — which had reddened the gate on the wizard's own output.
+- **Guard the language you ship, not just the one selected.** When the docs
+  machinery ships `tools/checks/*.py` into a non-Python project
+  (`config.ships_tools_python`), wire a ruff guard scoped to `tools/` at all three
+  layers (pre-commit, command surface, CI) so it can't drift — superseding the
+  weaker "keep it ≤ 88 cols" stopgap above.
+
 ## Consequences
 
 - A scaffolded JS/TS project passes `make quality` and CI from the first run.

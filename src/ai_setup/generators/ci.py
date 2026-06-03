@@ -65,7 +65,23 @@ CHECKS_JOB_HEAD_NONBLOCKING = """\
         with:
           fetch-depth: 0
 """
-GITLEAKS_CI_STEP = "- uses: gitleaks/gitleaks-action@v2\n"
+GITLEAKS_CI_STEP = (
+    # v3 runs on node24 (v2 was the deprecated node20). gitleaks-action requires
+    # GITHUB_TOKEN to scan *any* pull_request (not just Dependabot's); without it the
+    # step fails on every PR while `main` stays green — easy to miss.
+    "- uses: gitleaks/gitleaks-action@v3\n  env:\n    GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}\n"
+)
+
+# Guards the Python helpers shipped under tools/ when Python isn't a selected language,
+# matching the tools/ ruff in the command surface + pre-commit (no local-vs-CI drift).
+TOOLS_RUFF_CI = """\
+- uses: actions/setup-python@v6
+  with:
+    python-version: "3.12"
+- run: pipx install ruff
+- run: ruff check tools/
+- run: ruff format --check tools/
+"""
 
 CLAUDE_WORKFLOW = """\
 name: claude
@@ -185,6 +201,8 @@ def generate(config: WizardConfig, sc: Scaffolder) -> None:
                 "  quality:\n    runs-on: ubuntu-latest\n"
                 "    continue-on-error: true  # adoption=none: informational, never blocks\n",
             )
+    if config.ships_tools_python:  # guard the shipped tools/checks/*.py in CI too
+        blocks.append(TOOLS_RUFF_CI)
     steps = _dedupe_steps("".join(textwrap.indent(b, "      ") for b in blocks if b))
     if not steps:
         steps = '      - run: echo "no language tooling configured"\n'

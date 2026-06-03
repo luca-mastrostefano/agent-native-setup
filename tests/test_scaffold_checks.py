@@ -56,6 +56,46 @@ def test_code_reviewer_omits_docs_check_without_docs(tmp_path: Path) -> None:
     assert "4. Goal-driven" in body  # the other checks survive
 
 
+def test_non_python_project_guards_shipped_python_with_ruff(tmp_path: Path) -> None:
+    # docs ship tools/checks/*.py even for a node project; guard them with ruff at all
+    # three layers (pre-commit, command surface, CI) so they don't ship unlinted.
+    root = _build(tmp_path, languages=["node"])
+    pc = (root / ".pre-commit-config.yaml").read_text(encoding="utf-8")
+    mk = (root / "Makefile").read_text(encoding="utf-8")
+    wf = (root / ".github/workflows/quality.yml").read_text(encoding="utf-8")
+    assert "ruff-check" in pc and "^tools/.*\\.py$" in pc  # scoped pre-commit hook
+    assert "ruff check tools/" in mk and "ruff format --check tools/" in mk  # local gate
+    assert "ruff check tools/" in wf  # CI matches local
+    assert "__pycache__/" in (root / ".gitignore").read_text(encoding="utf-8")
+
+
+def test_python_project_does_not_double_guard(tmp_path: Path) -> None:
+    # When Python IS selected its own ruff covers tools/; don't add the scoped guard.
+    mk = (_build(tmp_path, languages=["python"]) / "Makefile").read_text(encoding="utf-8")
+    assert "ruff check ." in mk
+    assert "ruff check tools/" not in mk
+
+
+def test_architecture_overview_preseeds_tooling(tmp_path: Path) -> None:
+    # The wizard knows the components it built; seed them instead of a bare TODO.
+    body = (_build(tmp_path, languages=["node"]) / "docs/architecture/overview.md").read_text(
+        encoding="utf-8"
+    )
+    assert "Tooling & process" in body
+    assert "`AGENTS.md`" in body and "`tools/checks/`" in body
+    assert "CI" in body  # ci is on by default
+    assert "TODO" in body  # product components still left to the team
+
+
+def test_ruff_precommit_uses_current_id(tmp_path: Path) -> None:
+    # ruff-pre-commit renamed `ruff` -> `ruff-check`; `ruff` is a legacy alias.
+    pc = (_build(tmp_path, languages=["python"]) / ".pre-commit-config.yaml").read_text(
+        encoding="utf-8"
+    )
+    assert "id: ruff-check" in pc
+    assert "id: ruff\n" not in pc  # no bare legacy alias
+
+
 def test_embedded_scripts_match_repo_files() -> None:
     """The wizard ships exactly the scripts this repo dogfoods and tests."""
     assert docs.RFC_NEEDED == (REPO_ROOT / "tools/checks/rfc_needed.py").read_text(encoding="utf-8")

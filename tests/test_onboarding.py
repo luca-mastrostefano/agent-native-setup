@@ -91,6 +91,14 @@ def test_runbook_notes_python_prereq_for_rfc_hooks(tmp_path: Path) -> None:
     assert "`python` must be on your PATH" not in _onboarding(tmp_path / "n", include_docs=False)
 
 
+def test_runbook_has_npm_lockfile_step_for_node(tmp_path: Path) -> None:
+    # package.json ships without a lockfile; the runbook must own generating + committing it.
+    node = _build(tmp_path / "node", languages=["node"]) / "ONBOARDING.md"
+    assert "package-lock.json" in node.read_text(encoding="utf-8")
+    plain = _build(tmp_path / "py", languages=["python"]) / "ONBOARDING.md"
+    assert "package-lock.json" not in plain.read_text(encoding="utf-8")
+
+
 def test_api_key_step_only_for_claude_with_ci(tmp_path: Path) -> None:
     assert "ANTHROPIC_API_KEY" in _onboarding(tmp_path / "c", ai_tools=["claude"])
     assert "ANTHROPIC_API_KEY" not in _onboarding(tmp_path / "x", ai_tools=["cursor"])

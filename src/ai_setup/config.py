@@ -53,5 +53,11 @@ class WizardConfig:
         return slugify(self.project_name)
 
     @property
+    def ships_tools_python(self) -> bool:
+        """The docs/RFC machinery ships tools/checks/*.py even when Python isn't a
+        selected language — so those helpers need a (ruff) guard of their own."""
+        return self.include_docs and "python" not in self.languages
+
+    @property
     def target(self) -> Path:
         return self.output_dir.resolve()

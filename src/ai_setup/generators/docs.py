@@ -380,15 +380,24 @@ rewrite it all at once:
 ARCH_OVERVIEW = """\
 # Architecture overview
 
-> Brand-new project. Fill this in as the first real components land.
+> Brand-new project — only the AI-native scaffolding exists so far. The tooling
+> components below are pre-filled (the wizard built them); add the product
+> components and dependency rules as real code lands.
 
 ## Components
 
-_TODO: list the main pieces and their responsibilities._
+### Tooling & process
+
+{{ tooling }}
+
+### Product
+
+_TODO: list the application's own components and their responsibilities as they land._
 
 ## Dependency rules
 
-_TODO: state which parts may depend on which. Enforce mechanically when stable._
+_TODO: state which parts may depend on which. Enforce mechanically (e.g. with an
+architecture test) once the boundaries stabilize._
 """
 
 RFC_TEMPLATE = """\
@@ -441,10 +450,36 @@ The cost is keeping `AGENTS.md` and the docs current as the project evolves.
 """
 
 
+def _arch_tooling(config: WizardConfig) -> str:
+    """Pre-seed the architecture overview with the components the wizard built."""
+    bullets = [
+        "- **`AGENTS.md`** — the contract every contributor (human or AI) works from: "
+        "the navigation map, the command surface, and the four execution principles.",
+        "- **`docs/`** — `architecture/` (this map) and `rfc/` (the proposal lifecycle "
+        "`current/` → `done/` → `superseded/`).",
+        "- **`tools/checks/`** — scripts that enforce the RFC/docs conventions "
+        "mechanically (e.g. keeping each RFC in the folder its Status names).",
+    ]
+    if config.include_quality:
+        layers = (
+            "pre-commit, command-surface, and CI"
+            if config.include_ci and config.use_github_actions
+            else "pre-commit and command-surface"
+        )
+        bullets.append(
+            f"- **Quality gate** — linters/formatters wired at the {layers} layers so "
+            "violations are caught mechanically."
+        )
+    if config.include_ci and config.use_github_actions:
+        sec = " plus a secrets + dependency scan" if config.include_security else ""
+        bullets.append(f"- **CI** (`.github/workflows/`) — the quality gate{sec} on every push/PR.")
+    return "\n".join(bullets)
+
+
 def generate(config: WizardConfig, sc: Scaffolder) -> None:
     sc.write("docs/README.md", DOCS_README)
     sc.render_write("docs/contributing.md", CONTRIBUTING, existing_project=config.existing_project)
-    sc.write("docs/architecture/overview.md", ARCH_OVERVIEW)
+    sc.render_write("docs/architecture/overview.md", ARCH_OVERVIEW, tooling=_arch_tooling(config))
     sc.write("docs/improvements.md", IMPROVEMENTS)
     sc.write("docs/rfc/TEMPLATE.md", RFC_TEMPLATE)
     sc.write("tools/checks/sync_rfc_status.py", SYNC_RFC_STATUS)

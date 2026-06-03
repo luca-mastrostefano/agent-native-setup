@@ -53,6 +53,24 @@ def test_typecheck_is_guarded_for_an_empty_repo(tmp_path: Path) -> None:
     assert "else echo" in mk
 
 
+def test_prettierignore_excludes_markdown_and_lockfile(tmp_path: Path) -> None:
+    # The wizard's hand-authored Markdown isn't prettier-formatted; ignoring it (and the
+    # generated lockfile) keeps `prettier --check` from reddening the gate on day one.
+    pi = (_build(tmp_path, languages=["node"]) / ".prettierignore").read_text(encoding="utf-8")
+    assert "*.md" in pi
+    assert "package-lock.json" in pi
+
+
+def test_precommit_hooks_cover_mjs(tmp_path: Path) -> None:
+    # CI runs `eslint .`/`prettier .` (which lint eslint.config.mjs); the local hooks
+    # must match by covering .mjs/.cjs, else the only JS file is linted only in CI.
+    pc = (_build(tmp_path, languages=["node"]) / ".pre-commit-config.yaml").read_text(
+        encoding="utf-8"
+    )
+    assert "js|jsx|mjs|cjs|ts|tsx" in pc  # eslint hook
+    assert "mjs" in pc.split("id: prettier")[1].split("id: eslint")[0]  # prettier hook too
+
+
 def test_local_gate_matches_ci_checks(tmp_path: Path) -> None:
     # Green locally should mean green in CI: the gate runs format-check + typecheck,
     # and CI runs the same tsc step it used to skip.

@@ -82,10 +82,18 @@ ESLINT_CONFIG = """\
 // Flat config. The toolchain is pinned in package.json (npm ci installs it).
 import tseslint from "typescript-eslint";
 
-export default tseslint.config(
-  ...tseslint.configs.recommended,
-  { ignores: ["dist/", "node_modules/", "**/*.gen.*"] },
-);
+export default tseslint.config(...tseslint.configs.recommended, {
+  ignores: ["dist/", "node_modules/", "**/*.gen.*"],
+});
+"""
+
+# prettier formats code, not the hand-authored Markdown docs (whose table/emphasis
+# styling it would rewrite, reddening the gate on the wizard's own output). It also
+# can't usefully format the generated lockfile. Keep prettier scoped to code.
+PRETTIERIGNORE = """\
+dist/
+package-lock.json
+*.md
 """
 
 PRETTIER_CONFIG = """\
@@ -210,7 +218,7 @@ REGISTRY: dict[str, Language] = {
 - repo: https://github.com/astral-sh/ruff-pre-commit
   rev: v0.15.15
   hooks:
-    - id: ruff
+    - id: ruff-check
       args: [--fix]
     - id: ruff-format
 - repo: https://github.com/pre-commit/mirrors-mypy
@@ -272,6 +280,7 @@ REGISTRY: dict[str, Language] = {
             "tsconfig.json": TSCONFIG,
             "eslint.config.mjs": ESLINT_CONFIG,
             ".prettierrc.json": PRETTIER_CONFIG,
+            ".prettierignore": PRETTIERIGNORE,
         },
         pre_commit_block="""\
 - repo: local
@@ -280,12 +289,12 @@ REGISTRY: dict[str, Language] = {
       name: prettier
       entry: npx prettier --write
       language: system
-      files: \\.(js|jsx|ts|tsx|json|css|md)$
+      files: \\.(js|jsx|mjs|cjs|ts|tsx|json|css|md)$
     - id: eslint
       name: eslint
       entry: npx eslint --fix
       language: system
-      files: \\.(js|jsx|ts|tsx)$
+      files: \\.(js|jsx|mjs|cjs|ts|tsx)$
 """,
         ci_steps=f"""\
 - uses: actions/setup-node@v6
