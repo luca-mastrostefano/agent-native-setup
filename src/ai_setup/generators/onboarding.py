@@ -78,10 +78,18 @@ def _steps(config: WizardConfig) -> list[str]:
             if config.include_docs
             else ""
         )
+        # lychee's hook is language: system — it needs the binary already installed, or
+        # the first commit that touches a checked file fails.
+        lychee_clause = (
+            " The HTML link-check hook needs `lychee` on your PATH too "
+            "(`brew install lychee` or `cargo install lychee`)."
+            if "html" in config.languages
+            else ""
+        )
         steps.append(
             "Install the git hooks: if `pre-commit` isn't on your PATH, `pipx install "
             f"pre-commit` first, then run `{install_cmd}` so lint, format, and the secret "
-            f"scan run before every commit{py_clause}."
+            f"scan run before every commit{py_clause}.{lychee_clause}"
         )
     if config.include_quality:
         tail = " and see what the existing code trips on" if config.existing_project else ""

@@ -14,9 +14,10 @@ that needs a real decision into an RFC in `docs/rfc/current/`.
   covers JS/TS but nothing lints CSS.
 - **Prettier-for-HTML formatting** — markup formatting in the `html` entry; deferred
   (overlaps the `node` entry's Prettier, lower value than the link/resource gate).
-- **lychee on Windows / locked-down networks** — the `html` link check self-downloads
-  its binary via curl on first run; document the `lychee-docker` / `lychee-system`
-  hook fallbacks for environments without curl.
+- **lychee no-binary fallback** — the `html` link-check pre-commit hook is
+  `language: system`, so it needs a `lychee` binary on PATH (now flagged in README +
+  ONBOARDING). For contributors who can't install it, offer the `lychee-docker` hook
+  (needs Docker) or drop the link check to CI-only.
 - **mypy in CI** — `mypy` runs via pre-commit and the `typecheck` target, not in the
   generated CI job (mypy in CI needs a project install). Add once the friction is worth
   it. (`tsc` is now wired into node's CI, guarded for the no-TypeScript-yet case.)

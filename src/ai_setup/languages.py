@@ -449,8 +449,9 @@ REGISTRY: dict[str, Language] = {
         key="html",
         label="HTML",
         config_files={".htmlhintrc": HTMLHINTRC},
-        # htmlhint installs via pre-commit's node backend; lychee's hook downloads
-        # its own prebuilt binary. Neither needs a tool pre-installed on the machine.
+        # htmlhint self-installs via pre-commit's node backend, but lychee's hook is
+        # `language: system` — it needs a `lychee` binary already on PATH (README and
+        # ONBOARDING flag the install; `lychee-docker` is the no-binary alternative).
         pre_commit_block="""\
 - repo: https://github.com/Lucas-C/pre-commit-hooks-nodejs
   rev: v1.1.2

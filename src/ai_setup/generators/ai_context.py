@@ -150,7 +150,7 @@ This repository follows an AI-native setup. **Start with
 [`AGENTS.md`](./AGENTS.md)** — the single source of truth for conventions, the
 command surface, and the four execution principles.
 
-{% if show_quickstart %}Requires [`pre-commit`](https://pre-commit.com){% if runner == "task" %} and [`task`](https://taskfile.dev){% endif %}.
+{% if show_quickstart %}Requires [`pre-commit`](https://pre-commit.com){% if runner == "task" %} and [`task`](https://taskfile.dev){% endif %}{% if needs_lychee %}; the HTML link-check hook also needs [`lychee`](https://lychee.cli.rs) on your PATH (`brew install lychee`, `cargo install lychee`, or a release binary){% endif %}.
 
 ```bash
 {{ runner }} install   # set up git hooks (once)
@@ -292,6 +292,7 @@ def generate(config: WizardConfig, sc: Scaffolder) -> None:
         description=config.description,
         show_quickstart=config.include_quality and not config.existing_runner,
         runner=config.runner,
+        needs_lychee=config.git_hooks and "html" in config.languages,
     )
 
     if claude_targeted:

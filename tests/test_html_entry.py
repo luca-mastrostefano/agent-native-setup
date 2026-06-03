@@ -43,6 +43,19 @@ def test_htmlhint_is_pinned_not_floating(tmp_path: Path) -> None:
     assert 'htmlhint "**/*.html"' not in wf  # no bare, unpinned invocation
 
 
+def test_lychee_binary_install_is_documented(tmp_path: Path) -> None:
+    # The lychee hook is language:system (needs the binary on PATH), so a fresh clone
+    # can't commit until it's installed — README + ONBOARDING must flag it.
+    root = _build(tmp_path, languages=["html"])
+    readme = (root / "README.md").read_text(encoding="utf-8")
+    onboarding = (root / "ONBOARDING.md").read_text(encoding="utf-8")
+    assert "lychee" in readme and "install lychee" in readme
+    assert "install lychee" in onboarding
+    # A project without html says nothing about lychee.
+    plain = (_build(tmp_path / "p", languages=["python"]) / "README.md").read_text(encoding="utf-8")
+    assert "lychee" not in plain
+
+
 def test_existing_html_ratchets_to_changed_files(tmp_path: Path) -> None:
     _build(tmp_path, languages=["html"], existing_project=True)
     wf = (tmp_path / ".github/workflows/quality.yml").read_text(encoding="utf-8")
