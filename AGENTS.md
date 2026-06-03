@@ -115,7 +115,10 @@ template in `docs/rfc/TEMPLATE.md`. Lifecycle: `current/ → done/ → supersede
   rather than leaving it unguarded.
 - **Feedback loops** — agents in `.claude/agents/`, tests,
   and reviews close the loop so quality compounds. Before calling a non-trivial change
-  done, run the `code-reviewer` (`/review`) on your diff and resolve its findings. After
+  done, run the `code-reviewer` (`/review`) on your diff and resolve its findings. When a
+  change touches a security-sensitive surface — auth, untrusted input, secrets or crypto,
+  or file/network I/O — also run `/security-review` before merging; the mechanical scans
+  catch known-bad dependencies and committed secrets, not logic flaws. After
   changing a workflow in
   `.github/workflows/`, confirm it passed on GitHub (`gh run watch`; if `gh` isn't set
   up, ask the maintainer to check the repo's Actions tab) — local checks can't tell an

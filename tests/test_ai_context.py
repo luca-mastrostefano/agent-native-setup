@@ -53,6 +53,19 @@ def test_contract_self_review_when_agents(tmp_path: Path) -> None:
     assert "/review" in _run(tmp_path).read_text(encoding="utf-8")
 
 
+def test_contract_routes_to_security_review_for_claude(tmp_path: Path) -> None:
+    # `/security-review` is a Claude Code built-in: point at it for Claude targets, with a
+    # surface-based trigger so it isn't busywork — but never for a non-Claude target.
+    claude = _run(tmp_path / "c").read_text(encoding="utf-8")
+    assert "/security-review" in claude
+    # The smart trigger names the sensitive surfaces (not "review everything"); assert one
+    # of them so a reworded sentence that drops the scoping is caught.
+    assert "untrusted input" in claude
+    assert "/security-review" not in _run(tmp_path / "x", ai_tools=["cursor"]).read_text(
+        encoding="utf-8"
+    )
+
+
 def test_contract_warns_about_staging(tmp_path: Path) -> None:
     # The commit-ships-the-index gotcha that bites agents after acting on review.
     assert "staged index" in _run(tmp_path).read_text(encoding="utf-8")

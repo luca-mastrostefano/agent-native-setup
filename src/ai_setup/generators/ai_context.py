@@ -131,7 +131,10 @@ template in `docs/rfc/TEMPLATE.md`. Lifecycle: `current/ → done/ → supersede
 - **Feedback loops** — {% if agents %}agents in `.claude/agents/`, {% endif %}tests,
   and reviews close the loop so quality compounds.{% if agents %} Before calling a
   non-trivial change done, run the `code-reviewer` (`/review`) on your diff and resolve
-  its findings.{% endif %}{% if ci %} After changing a workflow
+  its findings.{% endif %}{% if claude %} When a change touches a security-sensitive
+  surface — auth, untrusted input, secrets or crypto, or file/network I/O — also run
+  `/security-review` before merging; the mechanical scans catch known-bad dependencies
+  and committed secrets, not logic flaws.{% endif %}{% if ci %} After changing a workflow
   in `.github/workflows/`, confirm it passed on GitHub (`gh run watch`; if `gh` isn't set
   up, ask the maintainer to check the repo's Actions tab) — local checks can't tell an
   action is missing or out of date.{% endif %} Remember that `git commit` records the
@@ -248,6 +251,9 @@ def generate(config: WizardConfig, sc: Scaffolder) -> None:
         description=config.description,
         docs=config.include_docs,
         agents=config.include_agents,
+        # `/security-review` is a Claude Code built-in, so point at it only for Claude
+        # targets — independent of whether we scaffold our own `.claude/` agents.
+        claude="claude" in config.ai_tools,
         ci=config.include_ci and config.use_github_actions,
         security=config.include_security,
         # Banner only helps when a targeted tool auto-loads AGENTS.md AND there's an

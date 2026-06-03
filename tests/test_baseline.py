@@ -43,7 +43,11 @@ def test_dependabot_security_only_for_existing_repo(tmp_path: Path) -> None:
 
 
 def test_pr_template_present(tmp_path: Path) -> None:
-    assert (_build(tmp_path, languages=["python"]) / ".github/PULL_REQUEST_TEMPLATE.md").exists()
+    pr = _build(tmp_path, languages=["python"]) / ".github/PULL_REQUEST_TEMPLATE.md"
+    assert pr.exists()
+    # Tool-agnostic security-review reminder (the contract names /security-review for
+    # Claude; the PR checklist stays generic so it's correct for any host).
+    assert "Security-reviewed if it touches" in pr.read_text(encoding="utf-8")
 
 
 def test_ci_least_privilege_permissions(tmp_path: Path) -> None:
