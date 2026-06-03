@@ -12,11 +12,12 @@ repo. It reads a `WizardConfig`, then a set of generators write files through a
 | `config.py` | `WizardConfig` — the immutable-ish description of what to scaffold. A leaf: no project imports. |
 | `languages.py` | The `Language` registry (linters, pre-commit hooks, CI steps, configs per language) and `detect_languages()`. Adding a language = one `Language` entry. |
 | `scaffold.py` | `Scaffolder` — writes files under the target, records what it created (for rollback), and renders Jinja templates. Knows nothing about the generators. |
-| `generators/` | One module per concern — `ai_context` (AGENTS.md/CLAUDE.md), `agents` (`.claude/`), `docs` (docs tree + RFC lifecycle + embedded check scripts), `quality` (pre-commit, Taskfile, gitignore), `ci` (GitHub Actions). Each exposes `generate(config, sc)`. |
+| `generators/` | One module per concern — `ai_context` (AGENTS.md/CLAUDE.md), `agents` (`.claude/`), `docs` (docs tree + RFC lifecycle + embedded check scripts), `quality` (pre-commit, Taskfile, gitignore), `ci` (GitHub Actions), `onboarding` (the self-deleting `ONBOARDING.md` first-run runbook). Each exposes `generate(config, sc)`. |
 | `tools/checks/` | Standalone enforcement scripts run as git hooks: `sync_rfc_status.py`, `rfc_needed.py`, `docs_sync.py`. The wizard embeds copies of these (as constants in `generators/docs.py`) to scaffold into Python projects. |
 
 Flow: `cli.build()` → `ai_context` → `agents` → `docs` → `quality` → `ci`, each
-gated on the matching `include_*` flag.
+gated on the matching `include_*` flag, then `onboarding` (gated on
+`include_quality or include_ci`).
 
 ## Dependency rules
 

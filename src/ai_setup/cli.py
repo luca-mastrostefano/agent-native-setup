@@ -11,7 +11,7 @@ from rich.console import Console
 from rich.panel import Panel
 
 from ai_setup.config import AI_TOOLS, WizardConfig
-from ai_setup.generators import agents, ai_context, ci, docs, quality
+from ai_setup.generators import agents, ai_context, ci, docs, onboarding, quality
 from ai_setup.languages import REGISTRY, detect_languages, detect_runner
 from ai_setup.scaffold import Scaffolder
 
@@ -237,6 +237,7 @@ def build(config: WizardConfig, sc: Scaffolder) -> Scaffolder:
         quality.generate(config, sc)
     if config.include_ci:
         ci.generate(config, sc)
+    onboarding.generate(config, sc)  # gated internally on quality-or-ci
     git_dir = config.target / ".git"
     if config.init_git and not git_dir.exists():
         try:
@@ -257,6 +258,11 @@ def _summary(config: WizardConfig, sc: Scaffolder) -> None:
             f"\n[yellow]Skipped {len(sc.skipped)} existing file(s)[/] (use --force to overwrite)"
         )
     steps = ["Read [bold]AGENTS.md[/] — the contract for all contributors."]
+    if config.include_quality or config.include_ci:  # ONBOARDING.md was scaffolded
+        if config.include_agents and "claude" in config.ai_tools:
+            steps.append("First agent run: type [bold]/onboard[/] (walks through ONBOARDING.md).")
+        else:
+            steps.append("First agent run: point your agent at [bold]ONBOARDING.md[/].")
     if config.git_hooks:
         install_cmd = "pre-commit install" if config.existing_runner else f"{config.runner} install"
         steps.append(

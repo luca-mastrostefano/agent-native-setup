@@ -104,6 +104,16 @@ Run the `code-reviewer` subagent on the current uncommitted changes and
 summarize its findings. Focus on correctness and the four execution principles.
 """
 
+ONBOARD_COMMAND = """\
+---
+description: Walk through first-run setup (ONBOARDING.md), then delete it
+---
+
+Read `ONBOARDING.md` at the repo root and carry out each step in order. Stop to
+confirm with me on anything needing a human decision (adding secrets, repo-wide
+reformatting). When every step passes, delete `ONBOARDING.md`.
+"""
+
 
 def generate(config: WizardConfig, sc: Scaffolder) -> None:
     if "claude" not in config.ai_tools:
@@ -116,6 +126,10 @@ def generate(config: WizardConfig, sc: Scaffolder) -> None:
     sc.write(".claude/commands/review.md", REVIEW_COMMAND)
     if config.include_docs:
         sc.write(".claude/commands/rfc.md", RFC_COMMAND)
+    # Matches when generators/onboarding.py writes ONBOARDING.md, so the command
+    # never points at a file that wasn't scaffolded.
+    if config.include_quality or config.include_ci:
+        sc.write(".claude/commands/onboard.md", ONBOARD_COMMAND)
 
     # SessionStart hook: inject the live command surface into the agent's context.
     if config.include_quality or config.existing_runner:
