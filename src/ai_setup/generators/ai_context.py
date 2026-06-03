@@ -127,7 +127,9 @@ template in `docs/rfc/TEMPLATE.md`. Lifecycle: `current/ → done/ → supersede
   its findings.{% endif %}{% if ci %} After changing a workflow
   in `.github/workflows/`, confirm it passed on GitHub (`gh run watch`; if `gh` isn't set
   up, ask the maintainer to check the repo's Actions tab) — local checks can't tell an
-  action is missing or out of date.{% endif %}
+  action is missing or out of date.{% endif %} Remember that `git commit` records the
+  staged index, not your working tree: re-stage any fix made after `git add` — including
+  ones prompted by review — then sanity-check `git show --stat` before pushing.
 """
 
 README_MD = """\

@@ -53,6 +53,11 @@ def test_contract_self_review_when_agents(tmp_path: Path) -> None:
     assert "/review" in _run(tmp_path).read_text(encoding="utf-8")
 
 
+def test_contract_warns_about_staging(tmp_path: Path) -> None:
+    # The commit-ships-the-index gotcha that bites agents after acting on review.
+    assert "staged index" in _run(tmp_path).read_text(encoding="utf-8")
+
+
 def test_merges_existing_agents_md(tmp_path: Path) -> None:
     (tmp_path / "AGENTS.md").write_text("# House rules\n\nAlways rebase.\n")
     body = _run(tmp_path).read_text(encoding="utf-8")
