@@ -11,14 +11,14 @@ Scaffolded whenever there's tooling to activate (quality or CI). For Claude, the
 
 from __future__ import annotations
 
-from ai_setup.config import WizardConfig
-from ai_setup.languages import get
-from ai_setup.scaffold import Scaffolder
+from agent_native_setup.config import WizardConfig
+from agent_native_setup.languages import get
+from agent_native_setup.scaffold import Scaffolder
 
 HEADER = """\
 # First-run setup — {name}
 
-This repo was scaffolded by the `ai-setup` wizard — an AI-native setup. The
+This repo was scaffolded by the `agent-native-setup` wizard — an agentic-native setup. The
 tooling is in place but hasn't been activated yet; the steps below are the
 one-time bootstrap. If you're an AI assistant starting here for the first time,
 do them now. The standing rules live in `AGENTS.md`; this file is only the
@@ -201,7 +201,7 @@ def _steps(config: WizardConfig) -> list[str]:
             else ""
         )
         removals.append(
-            "remove the first-run banner from `AGENTS.md` (the `ai-setup:first-run` "
+            "remove the first-run banner from `AGENTS.md` (the `agent-native-setup:first-run` "
             f"block at the top{symlink_note})"
         )
     if config.include_agents and "claude" in config.ai_tools:  # the /onboard command exists

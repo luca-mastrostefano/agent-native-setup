@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import textwrap
 
-from ai_setup.config import WizardConfig
-from ai_setup.languages import get
-from ai_setup.scaffold import Scaffolder
+from agent_native_setup.config import WizardConfig
+from agent_native_setup.languages import get
+from agent_native_setup.scaffold import Scaffolder
 
 QUALITY_WORKFLOW_HEAD = """\
 name: quality

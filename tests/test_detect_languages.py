@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from ai_setup.languages import detect_languages
+from agent_native_setup.languages import detect_languages
 
 
 def test_detects_by_marker_files(tmp_path: Path) -> None:

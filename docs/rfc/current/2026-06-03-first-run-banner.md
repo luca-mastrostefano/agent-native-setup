@@ -16,7 +16,7 @@ bootstrap text there would re-fire every session.
 ## Decision
 
 Optionally inject a **self-removing** banner at the top of `AGENTS.md`: a
-delimited `<!-- ai-setup:first-run -->` block telling the agent that the repo was
+delimited `<!-- agent-native-setup:first-run -->` block telling the agent that the repo was
 AI-scaffolded, onboarding hasn't run, and it should complete `ONBOARDING.md`
 first. The **last onboarding step removes the banner** (and deletes
 `ONBOARDING.md`), so it exists only during the bootstrap window — resolving the
@@ -25,7 +25,7 @@ first. The **last onboarding step removes the banner** (and deletes
 - Gated by a wizard prompt / `--no-first-run-banner` flag, default **on**, offered
   only when onboarding will exist and at least one AI tool is targeted.
 - The HTML-comment delimiters make removal mechanical and unambiguous.
-- `ONBOARDING.md`'s header now states it was scaffolded by `ai-setup` and speaks to
+- `ONBOARDING.md`'s header now states it was scaffolded by `agent-native-setup` and speaks to
   an agent on its first session.
 - The end-of-run summary names the concrete first action (the agent can't speak
   first — it waits for the user's message): type `/onboard`, or, with the banner on,

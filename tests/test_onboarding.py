@@ -6,9 +6,9 @@ from pathlib import Path
 
 import pytest
 
-from ai_setup import cli
-from ai_setup.config import WizardConfig
-from ai_setup.scaffold import Scaffolder
+from agent_native_setup import cli
+from agent_native_setup.config import WizardConfig
+from agent_native_setup.scaffold import Scaffolder
 
 
 def _build(tmp_path: Path, **overrides: object) -> Path:
@@ -226,7 +226,7 @@ def test_onboard_command_absent_when_no_onboarding(tmp_path: Path) -> None:
 
 def test_header_frames_first_run_for_an_agent(tmp_path: Path) -> None:
     body = _onboarding(tmp_path)
-    assert "scaffolded by the `ai-setup` wizard" in body
+    assert "scaffolded by the `agent-native-setup` wizard" in body
     assert "AI assistant" in body  # speaks to the agent waking up here
 
 
@@ -254,13 +254,13 @@ def test_cleanup_removes_banner_when_injected(tmp_path: Path) -> None:
 def test_banner_injected_into_agents_md(tmp_path: Path) -> None:
     root = _build(tmp_path, languages=["python"], first_run_banner=True)
     agents = (root / "AGENTS.md").read_text(encoding="utf-8")
-    assert "ai-setup:first-run" in agents  # the removable, delimited block
+    assert "agent-native-setup:first-run" in agents  # the removable, delimited block
     assert "complete [`ONBOARDING.md`]" in agents
 
 
 def test_no_banner_without_flag_or_without_onboarding(tmp_path: Path) -> None:
     off = _build(tmp_path / "off", languages=["python"], first_run_banner=False) / "AGENTS.md"
-    assert "ai-setup:first-run" not in off.read_text(encoding="utf-8")
+    assert "agent-native-setup:first-run" not in off.read_text(encoding="utf-8")
     # Flag on but no tooling -> no ONBOARDING.md -> banner would dangle, so it's suppressed.
     bare = (
         _build(
@@ -272,14 +272,14 @@ def test_no_banner_without_flag_or_without_onboarding(tmp_path: Path) -> None:
         )
         / "AGENTS.md"
     )
-    assert "ai-setup:first-run" not in bare.read_text(encoding="utf-8")
+    assert "agent-native-setup:first-run" not in bare.read_text(encoding="utf-8")
 
 
 def test_banner_suppressed_without_an_ai_tool(tmp_path: Path) -> None:
     # Nothing auto-loads AGENTS.md without a targeted tool, so the banner would be inert —
     # and the runbook must not tell the agent to remove one that was never written.
     root = _build(tmp_path, languages=["python"], ai_tools=[], first_run_banner=True)
-    assert "ai-setup:first-run" not in (root / "AGENTS.md").read_text(encoding="utf-8")
+    assert "agent-native-setup:first-run" not in (root / "AGENTS.md").read_text(encoding="utf-8")
     assert "remove the first-run banner" not in (root / "ONBOARDING.md").read_text(encoding="utf-8")
 
 

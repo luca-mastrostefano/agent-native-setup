@@ -15,7 +15,7 @@ SRC_DIR = Path(__file__).resolve().parents[1] / "src"
 # e.g. "billing": ("ui", "experiments") forbids src/billing/** importing those.
 FORBIDDEN_IMPORTS: dict[str, tuple[str, ...]] = {
     # Generators render output; they must not reach back into the CLI orchestrator.
-    "ai_setup/generators": ("ai_setup.cli",),
+    "agent_native_setup/generators": ("agent_native_setup.cli",),
 }
 
 

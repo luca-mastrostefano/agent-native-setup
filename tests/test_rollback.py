@@ -6,9 +6,9 @@ from pathlib import Path
 
 import pytest
 
-from ai_setup import cli
-from ai_setup.config import WizardConfig
-from ai_setup.scaffold import Scaffolder
+from agent_native_setup import cli
+from agent_native_setup.config import WizardConfig
+from agent_native_setup.scaffold import Scaffolder
 
 
 def test_rollback_removes_new_files_and_prunes_dirs(tmp_path: Path) -> None:

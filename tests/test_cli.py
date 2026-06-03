@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from ai_setup import cli
+from agent_native_setup import cli
 
 
 @pytest.mark.parametrize("interrupt", [KeyboardInterrupt, EOFError])

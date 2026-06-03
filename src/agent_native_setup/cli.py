@@ -10,10 +10,10 @@ from pathlib import Path
 from rich.console import Console
 from rich.panel import Panel
 
-from ai_setup.config import AI_TOOLS, WizardConfig
-from ai_setup.generators import agents, ai_context, ci, docs, onboarding, quality
-from ai_setup.languages import REGISTRY, detect_languages, detect_runner
-from ai_setup.scaffold import Scaffolder
+from agent_native_setup.config import AI_TOOLS, WizardConfig
+from agent_native_setup.generators import agents, ai_context, ci, docs, onboarding, quality
+from agent_native_setup.languages import REGISTRY, detect_languages, detect_runner
+from agent_native_setup.scaffold import Scaffolder
 
 console = Console()
 LANG_KEYS = list(REGISTRY)
@@ -25,7 +25,9 @@ def _csv(value: str) -> list[str]:
 
 
 def parse_args(argv: list[str]) -> argparse.Namespace:
-    p = argparse.ArgumentParser(prog="ai-setup", description="Scaffold an AI-native project setup.")
+    p = argparse.ArgumentParser(
+        prog="agent-native-setup", description="Scaffold an agentic-native project setup."
+    )
     p.add_argument("name", nargs="?", help="project name")
     p.add_argument("-o", "--output", default=".", help="target directory (default: cwd)")
     p.add_argument("--description", default="")
@@ -304,8 +306,8 @@ def _summary(config: WizardConfig, sc: Scaffolder) -> None:
 def _intro() -> None:
     console.print(
         Panel.fit(
-            "[bold]ai-setup[/] scaffolds an [bold]AI-native[/] project setup:\n"
-            "  • a canonical [bold]AGENTS.md[/] contract for human + AI contributors\n"
+            "[bold]agent-native-setup[/] scaffolds an [bold]agentic-native[/] project setup:\n"
+            "  • a canonical [bold]AGENTS.md[/] contract for coding agents and humans\n"
             "  • docs + RFCs and a [bold].claude/[/] agents & commands library\n"
             "  • linters, pre-commit hooks, secret + dependency scanning, and CI\n\n"
             "[dim]Non-destructive — existing files are never overwritten. "

@@ -8,8 +8,8 @@ from __future__ import annotations
 
 import json
 
-from ai_setup.config import WizardConfig
-from ai_setup.scaffold import Scaffolder
+from agent_native_setup.config import WizardConfig
+from agent_native_setup.scaffold import Scaffolder
 
 # Make has no built-in target lister; grep self-documenting `## ` targets, else names.
 _MAKE_LIST_GREP = (

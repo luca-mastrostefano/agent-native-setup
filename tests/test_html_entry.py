@@ -4,10 +4,10 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from ai_setup import cli
-from ai_setup.config import WizardConfig
-from ai_setup.languages import detect_languages
-from ai_setup.scaffold import Scaffolder
+from agent_native_setup import cli
+from agent_native_setup.config import WizardConfig
+from agent_native_setup.languages import detect_languages
+from agent_native_setup.scaffold import Scaffolder
 
 
 def _build(tmp_path: Path, **overrides: object) -> Path:

@@ -1,13 +1,14 @@
 <div align="center">
 
-# 🪄 ai-project-setup
+# 🪄 agent-native-setup
 
-**One command to scaffold an AI-native setup into any repo — new or existing.**
+**One command to make any repo agentic-native — new or existing.**
 
-A canonical agent contract, an agents & commands library, a docs + RFC structure,
-language linters with pre-commit hooks, secrets + dependency scanning, and CI —
-wired so AI and human contributors share one set of rules and quality is enforced
-mechanically, not from memory.
+Coding agents (Claude Code, Cursor, Copilot, …) are only as effective as the repo they
+work in. This wizard lays down the setup that makes a codebase legible and safe for
+agents *and* humans: a single contract every agent follows, mechanical guardrails that
+catch mistakes automatically, and feedback loops — review subagents, tests, an RFC
+trail — so quality compounds instead of drifting. Enforced by tooling, not memory.
 
 ![Python](https://img.shields.io/badge/python-3.10%2B-blue)
 
@@ -19,14 +20,14 @@ mechanically, not from memory.
 
 ```bash
 # Run it once, no install (uv):
-uvx --from git+https://github.com/luca-mastrostefano/ai-project-setup ai-setup -o ./my-app
+uvx --from git+https://github.com/luca-mastrostefano/agent-native-setup agent-native-setup -o ./my-app
 
-# …or install the `ai-setup` command (pick one):
-pipx install git+https://github.com/luca-mastrostefano/ai-project-setup
-uv tool install git+https://github.com/luca-mastrostefano/ai-project-setup
+# …or install the `agent-native-setup` command (pick one):
+pipx install git+https://github.com/luca-mastrostefano/agent-native-setup
+uv tool install git+https://github.com/luca-mastrostefano/agent-native-setup
 ```
 
-Then run `ai-setup` and answer the prompts — or go non-interactive (below).
+Then run `agent-native-setup` and answer the prompts — or go non-interactive (below).
 
 > Installs straight from GitHub — no clone, no manual dependency setup. Needs the
 > repo to be public (or collaborator access) and Python 3.10+.
@@ -35,15 +36,30 @@ Then run `ai-setup` and answer the prompts — or go non-interactive (below).
 
 Pointed at a target repo, the wizard generates:
 
-- **`AGENTS.md`** — the single source of truth; `CLAUDE.md`, Cursor, and Copilot all
-  point back to it so the contract never forks.
-- **`.claude/`** — a small, opinionated set of subagents and slash commands.
-- **`docs/` + RFCs** — an architecture doc and an RFC lifecycle
-  (`current → done → superseded`), kept in sync by hooks.
-- **Linters + pre-commit hooks** — per language, plus secrets scanning (gitleaks) and
-  self-explaining enforcement hooks.
-- **CI** — a GitHub Actions quality gate (lint + tests) and a security job
-  (dependency + secret scanning).
+- **The `AGENTS.md` contract** — one source of truth carrying the four execution
+  principles, a live command surface, a navigation map, and when-to-write-an-RFC rules.
+  `CLAUDE.md` (a symlink), `.cursor/rules/`, and `.github/copilot-instructions.md` all
+  point back to it, so the rules never fork across tools.
+- **A `.claude/` agent library** — focused subagents (`code-reviewer`, `planner`), slash
+  commands (`/review`, `/rfc`, `/onboard`), and a `SessionStart` hook that injects the
+  live command surface into every session.
+- **`docs/` + an RFC lifecycle** — a pre-seeded architecture map, the
+  `current → done → superseded` RFC flow (with a template), a contributing guide, and an
+  improvements backlog — kept in folder-sync and freshness by hooks.
+- **`tools/checks/`** — small enforcement scripts (RFC ↔ folder sync, "new component
+  needs a doc," "structural change needs an RFC") that ship with their own tests.
+- **Per-language lint, format & types** — ruff (Python), ESLint + Prettier + tsc (JS/TS),
+  golangci-lint + gofmt (Go), clippy + rustfmt (Rust), htmlhint + lychee (HTML), with
+  their config files.
+- **A three-layer quality gate** — the same checks wired at **pre-commit**, a
+  self-documenting **`make`/`task`** command surface, and **CI**, so local-green means
+  CI-green.
+- **A security baseline** — committed-secret scanning (gitleaks) and dependency/vuln
+  audits, in both pre-commit and a dedicated CI job, plus `SECURITY.md` and Dependabot.
+- **Engineering baseline files** — `.editorconfig`, `.gitattributes`, per-language
+  `.gitignore`, a PR template, and (on existing repos) a `.git-blame-ignore-revs`.
+- **A self-deleting `ONBOARDING.md`** — a one-time runbook that walks an agent through
+  activating the setup on first run, then removes itself.
 
 It's **non-destructive**: existing files are never overwritten, and on a repo that
 already has code it **grandfathers the legacy code** — the gate checks only what a
@@ -54,13 +70,13 @@ pull request changes, so day one isn't a wall of red.
 **Interactive** — prompts for everything:
 
 ```bash
-ai-setup -o ./my-new-project
+agent-native-setup -o ./my-new-project
 ```
 
 **Non-interactive** — scriptable / CI:
 
 ```bash
-ai-setup my-app -o ./my-app --languages python,node \
+agent-native-setup my-app -o ./my-app --languages python,node \
   --tools claude,cursor,copilot --yes
 ```
 
@@ -70,7 +86,7 @@ auto-detected (from marker files like `pyproject.toml` / `package.json` / `go.mo
 gate switches to changed-files-only so your legacy code isn't flagged on day one:
 
 ```bash
-ai-setup -o ./existing-app --yes
+agent-native-setup -o ./existing-app --yes
 ```
 
 ### Flags
@@ -103,8 +119,8 @@ coding, simplicity first, surgical changes, goal-driven execution.
 ## Develop
 
 ```bash
-git clone https://github.com/luca-mastrostefano/ai-project-setup
-cd ai-project-setup
+git clone https://github.com/luca-mastrostefano/agent-native-setup
+cd agent-native-setup
 pip install -e .
 task install   # set up pre-commit hooks (once)
 task quality   # lint + typecheck + tests
@@ -112,5 +128,5 @@ task quality   # lint + typecheck + tests
 
 ## Extending
 
-Add a language by appending one `Language` entry to `src/ai_setup/languages.py` —
+Add a language by appending one `Language` entry to `src/agent_native_setup/languages.py` —
 the generators stay generic.

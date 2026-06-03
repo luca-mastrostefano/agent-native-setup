@@ -6,10 +6,10 @@ import subprocess
 import sys
 from pathlib import Path
 
-from ai_setup import cli
-from ai_setup.config import WizardConfig
-from ai_setup.generators import docs
-from ai_setup.scaffold import Scaffolder
+from agent_native_setup import cli
+from agent_native_setup.config import WizardConfig
+from agent_native_setup.generators import docs
+from agent_native_setup.scaffold import Scaffolder
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 

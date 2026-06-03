@@ -1,6 +1,6 @@
-# How to use `ai-setup`
+# How to use `agent-native-setup`
 
-`ai-setup` scaffolds an AI-native project setup: a canonical `AGENTS.md` contract
+`agent-native-setup` scaffolds an agentic-native project setup: a canonical `AGENTS.md` contract
 (with per-tool pointers), a docs + RFC structure, Claude Code agents/commands,
 language linters with pre-commit hooks, and CI.
 
@@ -10,13 +10,13 @@ preserved), and languages are auto-detected.
 
 ## Install
 
-From the `ai-project-setup` repo:
+From the `agent-native-setup` repo:
 
 ```bash
 pip install -e .
 ```
 
-This puts the `ai-setup` command on your PATH (also runnable as `python -m ai_setup`).
+This puts the `agent-native-setup` command on your PATH (also runnable as `python -m agent_native_setup`).
 
 ## On an existing project
 
@@ -25,16 +25,16 @@ Languages are auto-detected from marker files (`pyproject.toml`, `package.json`,
 
 ```bash
 # non-interactive — detect languages, scaffold everything, skip existing files
-ai-setup -o /path/to/existing-project --yes
+agent-native-setup -o /path/to/existing-project --yes
 
 # interactive — detected languages come pre-checked; confirm or adjust
-ai-setup -o /path/to/existing-project
+agent-native-setup -o /path/to/existing-project
 
 # from inside the project (-o defaults to the current directory)
-cd /path/to/existing-project && ai-setup --yes
+cd /path/to/existing-project && agent-native-setup --yes
 
 # pin languages explicitly (skips detection)
-ai-setup -o /path/to/existing-project --languages python,node --yes
+agent-native-setup -o /path/to/existing-project --languages python,node --yes
 ```
 
 ## On a new project
@@ -43,10 +43,10 @@ There's nothing to detect yet, so choose languages interactively or pass them.
 
 ```bash
 # interactive (prompts for name, languages, tools, and which parts to scaffold)
-ai-setup -o ./my-new-project
+agent-native-setup -o ./my-new-project
 
 # non-interactive
-ai-setup my-app -o ./my-app --languages python,node --tools claude --yes
+agent-native-setup my-app -o ./my-app --languages python,node --tools claude --yes
 ```
 
 ## After scaffolding

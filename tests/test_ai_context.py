@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from ai_setup.config import WizardConfig
-from ai_setup.generators import ai_context
-from ai_setup.scaffold import Scaffolder
+from agent_native_setup.config import WizardConfig
+from agent_native_setup.generators import ai_context
+from agent_native_setup.scaffold import Scaffolder
 
 
 def _run(tmp_path: Path, *, ai_tools: list[str] | None = None) -> Path:

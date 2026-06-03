@@ -8,23 +8,23 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from ai_setup.config import WizardConfig
-from ai_setup.languages import get
-from ai_setup.scaffold import Scaffolder, render
+from agent_native_setup.config import WizardConfig
+from agent_native_setup.languages import get
+from agent_native_setup.scaffold import Scaffolder, render
 
 AGENTS_MD = """\
-{% if first_run_banner %}<!-- ai-setup:first-run — remove this block once ONBOARDING.md is done -->
-> **First run — setup pending.** This repo was scaffolded by the `ai-setup` wizard
-> (an AI-native setup); the tooling is in place but the one-time onboarding hasn't run
+{% if first_run_banner %}<!-- agent-native-setup:first-run — remove this block once ONBOARDING.md is done -->
+> **First run — setup pending.** This repo was scaffolded by the `agent-native-setup` wizard
+> (an agentic-native setup); the tooling is in place but the one-time onboarding hasn't run
 > yet. **Before other work, complete [`ONBOARDING.md`](./ONBOARDING.md)** — then delete
 > it and remove this block.
-<!-- /ai-setup:first-run -->
+<!-- /agent-native-setup:first-run -->
 
 {% endif %}# {{ name }} — Agent Contract
 
 {% if description %}{{ description }}
 
-{% endif %}This file is the **single source of truth** for both human and AI contributors.
+{% endif %}This file is the **single source of truth** for both coding agents and humans.
 `CLAUDE.md`, `.cursor/rules/`, and `.github/copilot-instructions.md` all point here.
 
 ## Navigation
@@ -120,7 +120,7 @@ Write an RFC in `docs/rfc/current/` before: changing architecture or a public
 contract, adding a dependency or service, or anything hard to reverse. Use the
 template in `docs/rfc/TEMPLATE.md`. Lifecycle: `current/ → done/ → superseded/`.
 
-{% endif %}## How this project stays AI-native
+{% endif %}## How this project stays agentic-native
 
 - **Context** — this contract, `docs/`, and RFCs keep intent discoverable.
 - **Mechanical enforcement** — linters, hooks{% if ci %}, and CI{% endif %} catch
@@ -149,7 +149,7 @@ README_MD = """\
 
 {% endif %}## Getting started
 
-This repository follows an AI-native setup. **Start with
+This repository follows an agentic-native setup. **Start with
 [`AGENTS.md`](./AGENTS.md)** — the single source of truth for conventions, the
 command surface, and the four execution principles.
 

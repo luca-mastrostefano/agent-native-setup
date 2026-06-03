@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import textwrap
 
-from ai_setup.config import WizardConfig
-from ai_setup.languages import Language, get
-from ai_setup.scaffold import Scaffolder
+from agent_native_setup.config import WizardConfig
+from agent_native_setup.languages import Language, get
+from agent_native_setup.scaffold import Scaffolder
 
 BASE_HOOKS = """\
 - repo: https://github.com/pre-commit/pre-commit-hooks

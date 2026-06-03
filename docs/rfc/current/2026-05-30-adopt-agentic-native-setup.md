@@ -1,12 +1,12 @@
-# Adopt the AI-native project setup
+# Adopt the agentic-native project setup
 
 - **Status:** Accepted
 - **Date:** 2026-05-30
-- **Author:** ai-project-setup team
+- **Author:** agent-native-setup team
 
 ## Context
 
-Starting a new project, we want AI and human contributors working from the same
+Starting a new project, we want coding agents and humans working from the same
 contract from day one, with conventions enforced mechanically rather than by
 memory.
 

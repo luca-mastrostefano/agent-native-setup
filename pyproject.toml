@@ -3,9 +3,9 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "ai-project-setup"
+name = "agent-native-setup"
 version = "0.1.0"
-description = "Wizard that scaffolds an AI-native project setup (AGENTS.md/CLAUDE.md, agents, docs/RFCs, linters, CI)."
+description = "Wizard that scaffolds an agentic-native project setup (AGENTS.md/CLAUDE.md, agents, docs/RFCs, linters, CI)."
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
@@ -15,10 +15,10 @@ dependencies = [
 ]
 
 [project.scripts]
-ai-setup = "ai_setup.cli:main"
+agent-native-setup = "agent_native_setup.cli:main"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/ai_setup"]
+packages = ["src/agent_native_setup"]
 
 [tool.ruff]
 line-length = 100
@@ -30,7 +30,7 @@ select = ["E", "F", "I", "W", "B", "RUF"]
 [tool.ruff.lint.per-file-ignores]
 # Generators hold markdown/YAML templates as string literals; long content
 # lines (e.g. the verbatim execution principles) are intentional.
-"src/ai_setup/generators/*" = ["E501"]
+"src/agent_native_setup/generators/*" = ["E501"]
 
 [tool.pytest.ini_options]
 # Scope pytest to tests/; the stdlib-unittest suite under tools/checks/ is run by

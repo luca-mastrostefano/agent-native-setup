@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from ai_setup import cli
-from ai_setup.config import WizardConfig
-from ai_setup.scaffold import Scaffolder
+from agent_native_setup import cli
+from agent_native_setup.config import WizardConfig
+from agent_native_setup.scaffold import Scaffolder
 
 
 def _build(tmp_path: Path, **overrides: object) -> Path:
@@ -43,7 +43,7 @@ def test_dependabot_security_only_for_existing_repo(tmp_path: Path) -> None:
 
 
 def test_no_claude_pr_workflow_scaffolded(tmp_path: Path) -> None:
-    # An @claude CI bot is out of scope — this product scaffolds an AI-native setup, it
+    # An @claude CI bot is out of scope — this product scaffolds an agentic-native setup, it
     # doesn't deploy an agent into the project's CI. Only the quality workflow ships.
     root = _build(tmp_path, languages=["python"])  # claude is in the default ai_tools
     assert (root / ".github/workflows/quality.yml").exists()

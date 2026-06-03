@@ -1,6 +1,6 @@
 # Architecture overview
 
-`ai-project-setup` is a Python CLI that scaffolds an AI-native setup into a target
+`agent-native-setup` is a Python CLI that scaffolds an agentic-native setup into a target
 repo. It reads a `WizardConfig`, then a set of generators write files through a
 `Scaffolder`. There is no runtime service — it's a one-shot generator.
 
@@ -8,7 +8,7 @@ repo. It reads a `WizardConfig`, then a set of generators write files through a
 
 | Module | Responsibility |
 | --- | --- |
-| `cli.py` | Entry point (`ai-setup`). Parses flags / runs the interactive prompts, detects languages, builds the `WizardConfig`, and orchestrates `build()`. |
+| `cli.py` | Entry point (`agent-native-setup`). Parses flags / runs the interactive prompts, detects languages, builds the `WizardConfig`, and orchestrates `build()`. |
 | `config.py` | `WizardConfig` — the immutable-ish description of what to scaffold. A leaf: no project imports. |
 | `languages.py` | The `Language` registry (linters, pre-commit hooks, CI steps, configs per language) and `detect_languages()`. Adding a language = one `Language` entry. |
 | `scaffold.py` | `Scaffolder` — writes files under the target, records what it created (for rollback), and renders Jinja templates. Knows nothing about the generators. |

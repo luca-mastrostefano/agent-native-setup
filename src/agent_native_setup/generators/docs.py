@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from datetime import date
 
-from ai_setup.config import WizardConfig
-from ai_setup.scaffold import Scaffolder
+from agent_native_setup.config import WizardConfig
+from agent_native_setup.scaffold import Scaffolder
 
 DOCS_README = """\
 # Docs
@@ -539,7 +539,7 @@ rewrite it all at once:
 ARCH_OVERVIEW = """\
 # Architecture overview
 
-> Brand-new project — only the AI-native scaffolding exists so far. The tooling
+> Brand-new project — only the agentic-native scaffolding exists so far. The tooling
 > components below are pre-filled (the wizard built them); add the product
 > components and dependency rules as real code lands.
 
@@ -584,7 +584,7 @@ Briefly: what else we looked at and why we passed.
 """
 
 FIRST_RFC = """\
-# Adopt the AI-native project setup
+# Adopt the agentic-native project setup
 
 - **Status:** Accepted
 - **Date:** {{ today }}
@@ -592,7 +592,7 @@ FIRST_RFC = """\
 
 ## Context
 
-Starting a new project, we want AI and human contributors working from the same
+Starting a new project, we want coding agents and humans working from the same
 contract from day one, with conventions enforced mechanically rather than by
 memory.
 
@@ -657,7 +657,7 @@ def generate(config: WizardConfig, sc: Scaffolder) -> None:
         extras.append("CI on every push")
     extras_clause = f"{', '.join(extras)}, " if extras else ""
     sc.render_write(
-        f"docs/rfc/current/{date.today():%Y-%m-%d}-adopt-ai-native-setup.md",
+        f"docs/rfc/current/{date.today():%Y-%m-%d}-adopt-agentic-native-setup.md",
         FIRST_RFC,
         today=f"{date.today():%Y-%m-%d}",
         name=config.project_name,
