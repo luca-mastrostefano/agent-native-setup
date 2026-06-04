@@ -23,6 +23,9 @@ jobs:
       - run: python -m unittest discover -s tools/checks
   checks:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read # gitleaks-action lists PR commits via the API; 403s without it
     steps:
       - uses: actions/checkout@v6
         with:
@@ -33,3 +36,4 @@ jobs:
       - uses: gitleaks/gitleaks-action@v3 # v3 = node24; v2 was the deprecated node20
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} # required to scan any pull_request
+          GITLEAKS_ENABLE_COMMENTS: "false" # keep CI read-only (no pull-requests:write)

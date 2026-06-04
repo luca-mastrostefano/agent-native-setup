@@ -39,6 +39,16 @@ def test_gitleaks_passes_github_token(tmp_path: Path) -> None:
     assert "dependabot[bot]" not in wf  # the earlier actor-skip was the wrong fix
 
 
+def test_checks_job_grants_gitleaks_pr_read_and_stays_readonly(tmp_path: Path) -> None:
+    # gitleaks-action calls the PR API (list commits) on every pull_request, so the checks
+    # job needs pull-requests:read or it 403s on the first PR. We keep CI read-only
+    # (least-privilege) by disabling PR comments rather than granting pull-requests:write.
+    wf = _wf(_build(tmp_path, languages=["python"]))
+    assert "pull-requests: read" in wf
+    assert 'GITLEAKS_ENABLE_COMMENTS: "false"' in wf
+    assert "pull-requests: write" not in wf  # no CI write permission anywhere
+
+
 def test_tests_run_in_greenfield_ci(tmp_path: Path) -> None:
     wf = _wf(_build(tmp_path, languages=["python"]))
     assert "pytest" in wf

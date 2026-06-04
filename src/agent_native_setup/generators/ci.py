@@ -51,6 +51,9 @@ jobs:
 CHECKS_JOB_HEAD = """\
   checks:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read  # gitleaks-action lists PR commits via the API; 403s without it
     steps:
       - uses: actions/checkout@v6
         with:
@@ -60,16 +63,25 @@ CHECKS_JOB_HEAD_NONBLOCKING = """\
   checks:
     runs-on: ubuntu-latest
     continue-on-error: true  # existing repo: report vulns/secrets, don't block
+    permissions:
+      contents: read
+      pull-requests: read  # gitleaks-action lists PR commits via the API; 403s without it
     steps:
       - uses: actions/checkout@v6
         with:
           fetch-depth: 0
 """
 GITLEAKS_CI_STEP = (
-    # v3 runs on node24 (v2 was the deprecated node20). gitleaks-action requires
-    # GITHUB_TOKEN to scan *any* pull_request (not just Dependabot's); without it the
-    # step fails on every PR while `main` stays green — easy to miss.
-    "- uses: gitleaks/gitleaks-action@v3\n  env:\n    GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}\n"
+    # v3 runs on node24 (v2 was the deprecated node20). On a pull_request, gitleaks-action
+    # calls the PR API to list commits — that needs pull-requests:read on the job (see the
+    # checks-job head) — and by default posts findings as PR comments, which would need
+    # pull-requests:write. We keep CI read-only and disable comments, so a leak still fails
+    # the job and shows in the run log without granting write. GITHUB_TOKEN authenticates
+    # the read call; without it every PR's checks job 403s while `main` stays green.
+    "- uses: gitleaks/gitleaks-action@v3\n"
+    "  env:\n"
+    "    GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}\n"
+    '    GITLEAKS_ENABLE_COMMENTS: "false"\n'
 )
 
 # Guards the Python helpers shipped under tools/ when Python isn't a selected language,
