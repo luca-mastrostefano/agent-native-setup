@@ -75,8 +75,9 @@ These aren't just config files — they actively keep an agent (and you) on the 
   Tests must prove behavior, not restate the code: cover the boundaries (empty/zero/one/max),
   bad input, and error paths — not just the happy path.
 - **A self-review pass before "done".** A `code-reviewer` subagent (`/review`) reads the
-  diff and flags real bugs, over-engineering, drive-by changes, stale docs, and weak or
-  happy-path-only tests — caught before they land, not after.
+  diff and flags real bugs, over-engineering, drive-by changes, stale docs, weak or
+  happy-path-only tests, and changes that hurt cohesion or sneak in coupling (scoped to the
+  change — it never nags about legacy file size) — caught before they land, not after.
 - **Security in two layers.** `gitleaks` (committed secrets) and dependency/vulnerability
   audits run mechanically in pre-commit and CI; for changes touching auth, untrusted input,
   secrets, or network I/O, the contract routes the agent to a `/security-review` for the
