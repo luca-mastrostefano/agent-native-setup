@@ -161,6 +161,19 @@ def test_tools_tests_runner_wired_at_all_three_layers(tmp_path: Path) -> None:
     assert runner in wf  # CI
 
 
+def test_pre_push_test_hooks_scrub_git_env(tmp_path: Path) -> None:
+    # git exports GIT_DIR into every hook; a test that `git init`s a temp dir would otherwise
+    # operate on the real repo. The pre-push *test* hooks scrub it; the git-aware rfc-status
+    # hook (which should see the real repo) does not.
+    pc = (_build(tmp_path, languages=["python"]) / ".pre-commit-config.yaml").read_text(
+        encoding="utf-8"
+    )
+    scrub = "env -u GIT_DIR -u GIT_WORK_TREE -u GIT_INDEX_FILE "
+    assert f"entry: {scrub}pytest" in pc  # python test hook
+    assert f"entry: {scrub}python -m unittest discover -s tools/checks" in pc  # tools tests
+    assert "entry: python tools/checks/sync_rfc_status.py" in pc  # git-aware hook NOT scrubbed
+
+
 def test_tools_tests_runner_omitted_without_docs(tmp_path: Path) -> None:
     root = _build(tmp_path, languages=["node"], include_docs=False)
     runner = "python -m unittest discover -s tools/checks"

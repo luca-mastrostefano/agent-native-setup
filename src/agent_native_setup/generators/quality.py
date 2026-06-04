@@ -148,6 +148,14 @@ _TOOLS_RUFF_CMDS = {
 # works even when Python isn't a selected language (no pytest to install).
 TOOLS_TESTS_CMD = "python -m unittest discover -s tools/checks"
 
+# git exports GIT_DIR / GIT_WORK_TREE / GIT_INDEX_FILE into every hook it runs, and those
+# override `cwd` — so a test suite wired into a pre-push hook that shells out to git in a
+# temp dir would operate on THIS repo, not the temp one (a silent trap: the same command
+# is green via the command surface and CI, red only under the hook). Scrub them in the
+# entry. Only the *test* hooks need it; the commit-msg / rfc-status hooks below are
+# git-aware and *should* see the real repo, so they keep the inherited env.
+_HOOK_GIT_SCRUB = "env -u GIT_DIR -u GIT_WORK_TREE -u GIT_INDEX_FILE "
+
 # Pre-push gate for those tests. The per-language _test_hook only covers a *language's*
 # suite, so a non-Python repo would otherwise push the helpers with nothing exercising
 # their logic.
@@ -156,7 +164,7 @@ TOOLS_TESTS_HOOK = f"""\
   hooks:
     - id: tools-checks-tests
       name: tools/checks tests (pre-push)
-      entry: {TOOLS_TESTS_CMD}
+      entry: {_HOOK_GIT_SCRUB}{TOOLS_TESTS_CMD}
       language: system
       pass_filenames: false
       always_run: true
@@ -174,7 +182,7 @@ def _test_hook(lang: Language) -> str:
   hooks:
     - id: {lang.key}-tests
       name: {lang.label} tests (pre-push)
-      entry: {cmd}
+      entry: {_HOOK_GIT_SCRUB}{cmd}
       language: system
       pass_filenames: false
       always_run: true

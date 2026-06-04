@@ -162,7 +162,9 @@ def _steps(config: WizardConfig) -> list[str]:
         "Wire up any uncovered language: if the repo uses a language not yet set up for "
         f"lint/format/test, add it the way the existing ones are (a pre-commit hook{ci_clause} "
         "and a command-surface entry), per the contract — including a real test where there's "
-        "logic to cover, and a note on why if something genuinely can't be tested."
+        "logic to cover, and a note on why if something genuinely can't be tested. If a "
+        "test hook shells out to git, keep the existing hooks' `env -u GIT_DIR …` prefix so "
+        "it runs against a temp repo, not this one."
     )
     push_clause = (
         ", then push — that's what triggers CI (add a git remote first if there isn't one)"

@@ -50,16 +50,18 @@ repos:
         stages: [commit-msg]  # the commit message file is passed as the argument
   - repo: local
     hooks:
+      # env -u … scrubs git's GIT_DIR/GIT_WORK_TREE/GIT_INDEX_FILE (exported into every
+      # hook); without it, tests that `git init` a temp dir would operate on THIS repo.
       - id: python-tests
         name: Python tests (pre-push)
-        entry: pytest
+        entry: env -u GIT_DIR -u GIT_WORK_TREE -u GIT_INDEX_FILE pytest
         language: system
         pass_filenames: false
         always_run: true
         stages: [pre-push]
       - id: tools-checks-tests
         name: tools/checks tests (pre-push)
-        entry: python -m unittest discover -s tools/checks
+        entry: env -u GIT_DIR -u GIT_WORK_TREE -u GIT_INDEX_FILE python -m unittest discover -s tools/checks
         language: system
         pass_filenames: false
         always_run: true
