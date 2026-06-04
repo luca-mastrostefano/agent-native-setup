@@ -94,11 +94,14 @@ agent-native-setup -o ./existing-app --yes
 | Flag | Effect |
 | --- | --- |
 | `-o, --output` | Target directory (default: current dir). |
+| `--description "..."` | One-line project description (used in `AGENTS.md`/`README.md`). |
 | `--languages` | Comma-separated: `python,node,go,rust,html`. Linters only for these. |
 | `--tools` | Comma-separated: `claude,cursor,copilot` (default: all). |
+| `--runner make\|task` | Command-surface runner for a fresh repo (default: `make`; an existing one is auto-detected). |
+| `--adopt progressive\|full\|none` | How the gate applies to an **existing** repo's code (default: `progressive`). |
 | `--no-agents` · `--no-docs` · `--no-quality` · `--no-ci` | Skip that part. |
 | `--no-security` | Skip secrets + dependency scanning (keep the rest). |
-| `--no-github-actions` | Quality tooling without CI workflows. |
+| `--no-github-actions` | Quality tooling without the CI workflow. |
 | `--no-hooks` · `--no-git` | Skip pre-commit hooks / `git init`. |
 | `-y, --yes` | Non-interactive; use flags and defaults. |
 | `--force` | Overwrite existing files. |
