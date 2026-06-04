@@ -65,6 +65,29 @@ It's **non-destructive**: existing files are never overwritten, and on a repo th
 already has code it **grandfathers the legacy code** — the gate checks only what a
 pull request changes, so day one isn't a wall of red.
 
+## Guardrails for your agent
+
+These aren't just config files — they actively keep an agent (and you) on the rails:
+
+- **A real testing bar.** Every change ships the test that *proves* it, at the right
+  level — **unit** (logic + edge cases), **integration** (module / public-contract /
+  boundary crossings), and **regression** (a failing test written *first* for every bug).
+  Tests must prove behavior, not restate the code: cover the boundaries (empty/zero/one/max),
+  bad input, and error paths — not just the happy path.
+- **A self-review pass before "done".** A `code-reviewer` subagent (`/review`) reads the
+  diff and flags real bugs, over-engineering, drive-by changes, stale docs, and weak or
+  happy-path-only tests — caught before they land, not after.
+- **Security in two layers.** `gitleaks` (committed secrets) and dependency/vulnerability
+  audits run mechanically in pre-commit and CI; for changes touching auth, untrusted input,
+  secrets, or network I/O, the contract routes the agent to a `/security-review` for the
+  logic-level flaws scanners can't see.
+- **Docs and decisions can't silently drift.** `commit-msg` hooks require an RFC for a
+  structural change and an architecture-doc update for a new component (or a logged
+  waiver); RFCs auto-file into their lifecycle folder.
+- **Every rule, enforced three ways.** The same checks run at **pre-commit**, on the
+  **command surface**, and in **CI** — so a violation can't slip past whichever layer the
+  agent skips.
+
 ## Usage
 
 **Interactive** — prompts for everything:
