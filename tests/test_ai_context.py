@@ -79,6 +79,13 @@ def test_contract_warns_about_staging(tmp_path: Path) -> None:
     assert "staged index" in _run(tmp_path).read_text(encoding="utf-8")
 
 
+def test_contract_wants_followable_processes(tmp_path: Path) -> None:
+    # Long/background commands must stream progress, not buffer silently (a common pain).
+    body = _run(tmp_path).read_text(encoding="utf-8")
+    assert "followable" in body
+    assert "buffering silently" in body
+
+
 def test_merges_existing_agents_md(tmp_path: Path) -> None:
     (tmp_path / "AGENTS.md").write_text("# House rules\n\nAlways rebase.\n")
     body = _run(tmp_path).read_text(encoding="utf-8")

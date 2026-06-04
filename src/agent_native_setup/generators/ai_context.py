@@ -143,7 +143,10 @@ template in `docs/rfc/TEMPLATE.md`. Lifecycle: `current/ → done/ → supersede
   up, ask the maintainer to check the repo's Actions tab) — local checks can't tell an
   action is missing or out of date.{% endif %} Remember that `git commit` records the
   staged index, not your working tree: re-stage any fix made after `git add` — including
-  ones prompted by review — then sanity-check `git show --stat` before pushing.
+  ones prompted by review — then sanity-check `git show --stat` before pushing. And make
+  any long-running or backgrounded command followable — run it unbuffered (`python -u` /
+  `PYTHONUNBUFFERED=1` / `stdbuf -oL`) and `tee` it to a logfile — so its progress streams
+  instead of buffering silently.
 """
 
 README_MD = """\
