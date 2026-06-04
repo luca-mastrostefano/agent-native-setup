@@ -87,6 +87,9 @@ These aren't just config files — they actively keep an agent (and you) on the 
 - **Every rule, enforced three ways.** The same checks run at **pre-commit**, on the
   **command surface**, and in **CI** — so a violation can't slip past whichever layer the
   agent skips.
+- **…and the small operational foot-guns.** Followable background processes (no silent
+  buffering), re-staging after `git add`, verifying CI after a workflow change — the
+  reminders that turn a frustrating session into a smooth one.
 
 ## Usage
 
