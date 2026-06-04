@@ -60,6 +60,16 @@ def test_code_reviewer_checks_test_quality(tmp_path: Path) -> None:
     assert "missing edge case" in body
 
 
+def test_code_reviewer_cohesion_lens_is_delta_scoped(tmp_path: Path) -> None:
+    # Cohesion/coupling lens, but only on the change — it must never nag about legacy size.
+    body = (_build(tmp_path, languages=["python"]) / ".claude/agents/code-reviewer.md").read_text(
+        encoding="utf-8"
+    )
+    assert "Cohesion & coupling" in body
+    assert "of *this change* only" in body
+    assert "pre-existing size" in body  # legacy is explicitly grandfathered
+
+
 def test_code_reviewer_omits_docs_check_without_docs(tmp_path: Path) -> None:
     root = _build(tmp_path, languages=["python"], include_docs=False)
     body = (root / ".claude/agents/code-reviewer.md").read_text(encoding="utf-8")

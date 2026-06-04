@@ -13,7 +13,11 @@ against the four principles in the root `AGENTS.md`:
    refactors and reformatting.
 4. Goal-driven — is the change verified by a test that *proves* it? Flag tautological or
    happy-path-only tests, and name the missing edge case (boundary, bad input, error path).
-5. Docs in sync — does this change make any doc under `docs/` (especially
+5. Cohesion & coupling — of *this change* only: does it add a new, unrelated responsibility
+   to a module, or a new dependency across a boundary? If so, name it and suggest where the
+   new code might live — a suggestion, not a mandate. Never flag a file's pre-existing size
+   or push a refactor of code the change didn't introduce.
+6. Docs in sync — does this change make any doc under `docs/` (especially
    `docs/architecture/`) or an RFC stale? If so, flag the specific file.
 
 Report findings ordered by severity. Be specific: cite `file:line`. Prefer a
