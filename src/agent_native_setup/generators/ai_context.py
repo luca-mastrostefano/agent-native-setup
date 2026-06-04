@@ -15,7 +15,7 @@ from agent_native_setup.scaffold import Scaffolder, render
 AGENTS_MD = """\
 {% if first_run_banner %}<!-- agent-native-setup:first-run — remove this block once ONBOARDING.md is done -->
 > **First run — setup pending.** This repo was scaffolded by the `agent-native-setup` wizard
-> (an agentic-native setup); the tooling is in place but the one-time onboarding hasn't run
+> (an agent-native setup); the tooling is in place but the one-time onboarding hasn't run
 > yet. **Before other work, complete [`ONBOARDING.md`](./ONBOARDING.md)** — then delete
 > it and remove this block.
 <!-- /agent-native-setup:first-run -->
@@ -124,7 +124,7 @@ Write an RFC in `docs/rfc/current/` before: changing architecture or a public
 contract, adding a dependency or service, or anything hard to reverse. Use the
 template in `docs/rfc/TEMPLATE.md`. Lifecycle: `current/ → done/ → superseded/`.
 
-{% endif %}## How this project stays agentic-native
+{% endif %}## How this project stays agent-native
 
 - **Context** — this contract, `docs/`, and RFCs keep intent discoverable.
 - **Mechanical enforcement** — linters, hooks{% if ci %}, and CI{% endif %} catch
@@ -153,7 +153,7 @@ README_MD = """\
 
 {% endif %}## Getting started
 
-This repository follows an agentic-native setup. **Start with
+This repository follows an agent-native setup. **Start with
 [`AGENTS.md`](./AGENTS.md)** — the single source of truth for conventions, the
 command surface, and the four execution principles.
 

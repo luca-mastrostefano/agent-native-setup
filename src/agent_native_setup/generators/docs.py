@@ -539,7 +539,7 @@ rewrite it all at once:
 ARCH_OVERVIEW = """\
 # Architecture overview
 
-> Brand-new project — only the agentic-native scaffolding exists so far. The tooling
+> Brand-new project — only the agent-native scaffolding exists so far. The tooling
 > components below are pre-filled (the wizard built them); add the product
 > components and dependency rules as real code lands.
 
@@ -584,7 +584,7 @@ Briefly: what else we looked at and why we passed.
 """
 
 FIRST_RFC = """\
-# Adopt the agentic-native project setup
+# Adopt the agent-native project setup
 
 - **Status:** Accepted
 - **Date:** {{ today }}
@@ -657,7 +657,7 @@ def generate(config: WizardConfig, sc: Scaffolder) -> None:
         extras.append("CI on every push")
     extras_clause = f"{', '.join(extras)}, " if extras else ""
     sc.render_write(
-        f"docs/rfc/current/{date.today():%Y-%m-%d}-adopt-agentic-native-setup.md",
+        f"docs/rfc/current/{date.today():%Y-%m-%d}-adopt-agent-native-setup.md",
         FIRST_RFC,
         today=f"{date.today():%Y-%m-%d}",
         name=config.project_name,

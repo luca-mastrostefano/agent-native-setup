@@ -1,6 +1,6 @@
 # How to use `agent-native-setup`
 
-`agent-native-setup` scaffolds an agentic-native project setup: a canonical `AGENTS.md` contract
+`agent-native-setup` scaffolds an agent-native project setup: a canonical `AGENTS.md` contract
 (with per-tool pointers), a docs + RFC structure, Claude Code agents/commands,
 language linters with pre-commit hooks, and CI.
 

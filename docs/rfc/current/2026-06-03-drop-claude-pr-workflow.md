@@ -10,7 +10,7 @@ The wizard scaffolded `.github/workflows/claude.yml` — a GitHub Actions bot th
 Claude on `@claude` PR/issue comments — for every Claude-targeted repo with CI, and made
 onboarding ask for an `ANTHROPIC_API_KEY` secret. But that's a *runtime* feature of the
 target repo (an agent acting in CI), orthogonal to this product's job: scaffolding an
-agentic-native project *setup*. A fresh project doesn't know it wants an agent in PR checks and
+agent-native project *setup*. A fresh project doesn't know it wants an agent in PR checks and
 isn't responsible for one, so the workflow doesn't belong in the scaffold — not even as an
 opt-in toggle on this product.
 

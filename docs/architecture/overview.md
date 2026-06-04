@@ -1,6 +1,6 @@
 # Architecture overview
 
-`agent-native-setup` is a Python CLI that scaffolds an agentic-native setup into a target
+`agent-native-setup` is a Python CLI that scaffolds an agent-native setup into a target
 repo. It reads a `WizardConfig`, then a set of generators write files through a
 `Scaffolder`. There is no runtime service — it's a one-shot generator.
 

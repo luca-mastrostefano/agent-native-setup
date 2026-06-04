@@ -2,7 +2,7 @@
 
 # 🪄 agent-native-setup
 
-**One command to make any repo agentic-native — new or existing.**
+**One command to make any repo agent-native — new or existing.**
 
 Coding agents (Claude Code, Cursor, Copilot, …) are only as effective as the repo they
 work in. This wizard lays down the setup that makes a codebase legible and safe for

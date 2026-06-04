@@ -18,7 +18,7 @@ from agent_native_setup.scaffold import Scaffolder
 HEADER = """\
 # First-run setup — {name}
 
-This repo was scaffolded by the `agent-native-setup` wizard — an agentic-native setup. The
+This repo was scaffolded by the `agent-native-setup` wizard — an agent-native setup. The
 tooling is in place but hasn't been activated yet; the steps below are the
 one-time bootstrap. If you're an AI assistant starting here for the first time,
 do them now. The standing rules live in `AGENTS.md`; this file is only the

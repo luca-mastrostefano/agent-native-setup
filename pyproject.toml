@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "agent-native-setup"
 version = "0.1.0"
-description = "Wizard that scaffolds an agentic-native project setup (AGENTS.md/CLAUDE.md, agents, docs/RFCs, linters, CI)."
+description = "Wizard that scaffolds an agent-native project setup (AGENTS.md/CLAUDE.md, agents, docs/RFCs, linters, CI)."
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [

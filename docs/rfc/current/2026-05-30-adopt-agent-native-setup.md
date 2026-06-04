@@ -1,4 +1,4 @@
-# Adopt the agentic-native project setup
+# Adopt the agent-native project setup
 
 - **Status:** Accepted
 - **Date:** 2026-05-30

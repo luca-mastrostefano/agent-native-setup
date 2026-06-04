@@ -26,7 +26,7 @@ def _csv(value: str) -> list[str]:
 
 def parse_args(argv: list[str]) -> argparse.Namespace:
     p = argparse.ArgumentParser(
-        prog="agent-native-setup", description="Scaffold an agentic-native project setup."
+        prog="agent-native-setup", description="Scaffold an agent-native project setup."
     )
     p.add_argument("name", nargs="?", help="project name")
     p.add_argument("-o", "--output", default=".", help="target directory (default: cwd)")
@@ -306,7 +306,7 @@ def _summary(config: WizardConfig, sc: Scaffolder) -> None:
 def _intro() -> None:
     console.print(
         Panel.fit(
-            "[bold]agent-native-setup[/] scaffolds an [bold]agentic-native[/] project setup:\n"
+            "[bold]agent-native-setup[/] scaffolds an [bold]agent-native[/] project setup:\n"
             "  • a canonical [bold]AGENTS.md[/] contract for coding agents and humans\n"
             "  • docs + RFCs and a [bold].claude/[/] agents & commands library\n"
             "  • linters, pre-commit hooks, secret + dependency scanning, and CI\n\n"

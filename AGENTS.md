@@ -1,6 +1,6 @@
 # agent-native-setup — Agent Contract
 
-A wizard that scaffolds an agentic-native project setup into a new repo.
+A wizard that scaffolds an agent-native project setup into a new repo.
 
 This file is the **single source of truth** for both coding agents and humans.
 `CLAUDE.md`, `.cursor/rules/`, and `.github/copilot-instructions.md` all point here.
@@ -109,7 +109,7 @@ Write an RFC in `docs/rfc/current/` before: changing architecture or a public
 contract, adding a dependency or service, or anything hard to reverse. Use the
 template in `docs/rfc/TEMPLATE.md`. Lifecycle: `current/ → done/ → superseded/`.
 
-## How this project stays agentic-native
+## How this project stays agent-native
 
 - **Context** — this contract, `docs/`, and RFCs keep intent discoverable.
 - **Mechanical enforcement** — linters, hooks, and CI catch
