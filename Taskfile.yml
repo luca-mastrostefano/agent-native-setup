@@ -31,3 +31,7 @@ tasks:
     desc: move RFCs into the folder matching their Status
     cmds:
       - python tools/checks/sync_rfc_status.py
+  release:
+    desc: 'cut a release (tag + GitHub release) — usage: task release VERSION=0.2.0'
+    cmds:
+      - gh release create "v{{.VERSION}}" --title "v{{.VERSION}}" --generate-notes

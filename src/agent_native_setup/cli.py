@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -10,6 +11,7 @@ from pathlib import Path
 from rich.console import Console
 from rich.panel import Panel
 
+from agent_native_setup import update_check
 from agent_native_setup.config import AI_TOOLS, WizardConfig
 from agent_native_setup.generators import agents, ai_context, ci, docs, onboarding, quality
 from agent_native_setup.languages import REGISTRY, detect_languages, detect_runner
@@ -56,6 +58,12 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     p.add_argument("--no-git", dest="git", action="store_false")
     p.add_argument("-y", "--yes", action="store_true", help="non-interactive; use flags/defaults")
     p.add_argument("--force", action="store_true", help="overwrite existing files")
+    p.add_argument(
+        "--no-update-check",
+        dest="update_check",
+        action="store_false",
+        help="don't check GitHub for a newer release at the end of a run",
+    )
     p.set_defaults(
         agents=True,
         docs=True,
@@ -66,6 +74,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         hooks=True,
         first_run_banner=True,
         git=True,
+        update_check=True,
     )
     return p.parse_args(argv)
 
@@ -377,6 +386,14 @@ def main(argv: list[str] | None = None) -> int:
             console.print(f"[yellow]Rolled back {removed} newly created item(s).[/]")
         return 130
     _summary(config, sc)
+    # Advisory, interactive-only: never in scripted/CI runs, and never blocks or fails.
+    if (
+        interactive
+        and args.update_check
+        and not os.environ.get("CI")
+        and not os.environ.get("AGENT_NATIVE_SETUP_NO_UPDATE_CHECK")
+    ):
+        update_check.maybe_notify(console)
     return 0
 
 

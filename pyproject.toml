@@ -1,10 +1,10 @@
 [build-system]
-requires = ["hatchling"]
+requires = ["hatchling", "hatch-vcs"]
 build-backend = "hatchling.build"
 
 [project]
 name = "agent-native-setup"
-version = "0.1.0"
+dynamic = ["version"] # derived from the latest git tag (hatch-vcs)
 description = "Wizard that scaffolds an agent-native project setup (AGENTS.md/CLAUDE.md, agents, docs/RFCs, linters, CI)."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -12,10 +12,16 @@ dependencies = [
     "questionary>=2.0",
     "jinja2>=3.1",
     "rich>=13.0",
+    "packaging>=23", # version comparison for the update check
 ]
 
 [project.scripts]
 agent-native-setup = "agent_native_setup.cli:main"
+
+# Version comes from git tags: a build at tag v0.2.0 is 0.2.0; N commits past it is
+# 0.2.0.devN+g<sha>. Tag vX.Y.Z (e.g. `task release`) to cut a release.
+[tool.hatch.version]
+source = "vcs"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/agent_native_setup"]
