@@ -51,6 +51,15 @@ def test_code_reviewer_has_docs_check_with_docs(tmp_path: Path) -> None:
     assert "Docs in sync" in (root / ".claude/agents/code-reviewer.md").read_text(encoding="utf-8")
 
 
+def test_code_reviewer_checks_test_quality(tmp_path: Path) -> None:
+    # The goal-driven lens checks test quality, not just presence.
+    body = (_build(tmp_path, languages=["python"]) / ".claude/agents/code-reviewer.md").read_text(
+        encoding="utf-8"
+    )
+    assert "happy-path-only" in body
+    assert "missing edge case" in body
+
+
 def test_code_reviewer_omits_docs_check_without_docs(tmp_path: Path) -> None:
     root = _build(tmp_path, languages=["python"], include_docs=False)
     body = (root / ".claude/agents/code-reviewer.md").read_text(encoding="utf-8")

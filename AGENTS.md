@@ -97,6 +97,10 @@ mechanically add all three:
 - **Integration** — when the change crosses a module, a public contract, or an external boundary.
 - **Regression** — for every bug, write the failing test that reproduces it *first*, then fix.
 
+Tests should *prove behavior*, not restate the implementation — cover the boundaries
+(empty/zero/one/max), bad input, and error paths, not just the happy path. A test that
+can't fail isn't worth writing.
+
 If something genuinely can't be tested, say why rather than skipping silently.
 
 ## When to write an RFC

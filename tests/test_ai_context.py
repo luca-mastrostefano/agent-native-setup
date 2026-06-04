@@ -33,6 +33,14 @@ def test_contract_states_testing_expectation(tmp_path: Path) -> None:
     assert "Regression" in body  # bug -> reproducing test, named explicitly
 
 
+def test_contract_pushes_test_quality(tmp_path: Path) -> None:
+    # Beyond "ships with a test": steer toward meaningful, edge-case tests, not coverage theater.
+    body = _run(tmp_path).read_text(encoding="utf-8")
+    assert "prove behavior" in body
+    assert "error paths" in body
+    assert "can't fail isn't worth writing" in body
+
+
 def test_contract_covers_uncovered_languages(tmp_path: Path) -> None:
     body = _run(tmp_path).read_text(encoding="utf-8")
     assert "isn't yet wired up" in body  # framed by repo state, not "what the setup did"
