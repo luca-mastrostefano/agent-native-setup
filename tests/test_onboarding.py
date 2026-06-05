@@ -159,6 +159,15 @@ def test_runbook_has_no_api_key_step(tmp_path: Path) -> None:
     assert "ANTHROPIC_API_KEY" not in _onboarding(tmp_path, ai_tools=["claude"])
 
 
+def test_runbook_flags_enabling_dependabot_security_updates(tmp_path: Path) -> None:
+    # dependabot.yml can't flip the repo setting; on by default for public, manual for
+    # private — a maintainer hit this. Only when CI/dependabot.yml is scaffolded.
+    body = _onboarding(tmp_path / "ci")
+    assert "automated-security-fixes" in body
+    assert "on by default for public" in body
+    assert "automated-security-fixes" not in _onboarding(tmp_path / "no_ci", include_ci=False)
+
+
 def test_baseline_step_flags_python_command_surface_tools(tmp_path: Path) -> None:
     # The command surface calls ruff/mypy/pytest directly; the scaffold doesn't install
     # them, so the runbook must name them as prereqs (a real onboarding tripped on ruff).

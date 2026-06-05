@@ -40,6 +40,7 @@ def test_dependabot_security_only_for_existing_repo(tmp_path: Path) -> None:
     ).read_text(encoding="utf-8")
     assert "open-pull-requests-limit: 0" not in fresh  # fresh repo: full version updates
     assert "open-pull-requests-limit: 0" in legacy  # existing repo: security-only, no flood
+    assert "on by default for public" in legacy  # comment is accurate re: how to enable
 
 
 def test_no_claude_pr_workflow_scaffolded(tmp_path: Path) -> None:

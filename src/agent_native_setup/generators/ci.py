@@ -164,9 +164,9 @@ def _dependabot(langs: list, security_only: bool) -> str:
     )
     header = (
         "# Existing repo: routine version updates are off (open-pull-requests-limit: 0)\n"
-        "# so Dependabot won't bulk-bump already-outdated deps. Security updates still\n"
-        "# apply once enabled in Settings > Code security. Remove the limit for routine\n"
-        "# version-update PRs.\n"
+        "# so Dependabot won't bulk-bump already-outdated deps. Security (vuln-fix) updates\n"
+        "# are on by default for public repos, and a Settings > Code security toggle for\n"
+        "# private ones. Remove the limit for routine version-update PRs.\n"
         if security_only
         else ""
     )

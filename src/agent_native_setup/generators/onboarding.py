@@ -189,6 +189,13 @@ def _steps(config: WizardConfig) -> list[str]:
             "maintainer to check the Actions tab) — local checks can't catch a missing "
             "action tag or a deprecated runner."
         )
+        steps.append(
+            "Turn on Dependabot's security (vuln-fix) updates — a repo setting "
+            "`dependabot.yml` can't set (on by default for public repos; manual for private). "
+            "With repo admin: `gh api --method PUT repos/{owner}/{repo}/vulnerability-alerts` "
+            "then `gh api --method PUT repos/{owner}/{repo}/automated-security-fixes` "
+            "(idempotent — a no-op where already on), else Settings → Code security."
+        )
     # The first-run apparatus self-deletes: name every artifact that was actually
     # scaffolded so the agent clears all of them in one final commit, leaving only
     # the standing contract behind.
