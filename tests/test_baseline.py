@@ -67,6 +67,22 @@ def test_ci_least_privilege_permissions(tmp_path: Path) -> None:
     assert "contents: read" in wf
 
 
+def test_ci_cancels_superseded_pr_runs(tmp_path: Path) -> None:
+    # concurrency cancels a superseded PR run (saves minutes); the run_id fallback keeps
+    # every push/main run from being cancelled. Both the greenfield and ratchet workflows.
+    fresh = (
+        _build(tmp_path / "f", languages=["python"]) / ".github/workflows/quality.yml"
+    ).read_text(encoding="utf-8")
+    assert "concurrency:" in fresh
+    assert "cancel-in-progress: true" in fresh
+    assert "github.head_ref || github.run_id" in fresh  # PR cancels, push/main doesn't
+    ratchet = (
+        _build(tmp_path / "legacy", languages=["python"], existing_project=True)
+        / ".github/workflows/quality.yml"
+    ).read_text(encoding="utf-8")
+    assert "cancel-in-progress: true" in ratchet
+
+
 def test_security_md_present_with_security(tmp_path: Path) -> None:
     assert (_build(tmp_path, languages=["python"]) / "SECURITY.md").exists()
 

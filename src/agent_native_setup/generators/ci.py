@@ -15,6 +15,11 @@ on:
     branches: [main]
   pull_request:
 
+# Cancel a superseded run on the same PR; keep every push/main run (run_id is unique).
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 
@@ -31,6 +36,11 @@ QUALITY_WORKFLOW_HEAD_RATCHET = """\
 name: quality
 on:
   pull_request:
+
+# Cancel a superseded run on the same PR (all runs here are PRs).
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
