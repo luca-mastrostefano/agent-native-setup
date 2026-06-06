@@ -86,6 +86,33 @@ def test_contract_wants_followable_processes(tmp_path: Path) -> None:
     assert "buffering silently" in body
 
 
+def test_contract_scopes_context_down_as_repo_grows(tmp_path: Path) -> None:
+    # As the repo grows, push detail into scoped files instead of one sprawling contract:
+    # nearest-wins nested contracts + per-subsystem architecture docs.
+    body = _run(tmp_path).read_text(encoding="utf-8")
+    assert "nearest contract" in body  # the nested-contract (nearest-wins) convention
+    assert "docs/architecture/<name>.md" in body  # split architecture per-subsystem
+    # The nested file needs a CLAUDE.md symlink for Claude (it won't read a bare nested
+    # AGENTS.md) — and that nugget is Claude-specific, so it's gated to Claude targets.
+    assert "symlink beside it" in body
+    cursor = _run(tmp_path / "cur", ai_tools=["cursor"]).read_text(encoding="utf-8")
+    assert "nearest contract" in cursor  # the convention applies to any tool
+    assert "symlink beside it" not in cursor  # but the Claude-only symlink note is gated out
+    # The docs gate is pinned both ways: a docs-off contract drops the architecture clause
+    # but keeps the (docs-independent) nested-contract convention.
+    nodocs_cfg = WizardConfig(
+        project_name="demo",
+        output_dir=tmp_path / "nodocs",
+        languages=[],
+        ai_tools=["claude"],
+        include_docs=False,
+    )
+    ai_context.generate(nodocs_cfg, Scaffolder(nodocs_cfg.target))
+    nodocs = (tmp_path / "nodocs" / "AGENTS.md").read_text(encoding="utf-8")
+    assert "docs/architecture/<name>.md" not in nodocs
+    assert "nearest contract" in nodocs
+
+
 def test_merges_existing_agents_md(tmp_path: Path) -> None:
     (tmp_path / "AGENTS.md").write_text("# House rules\n\nAlways rebase.\n")
     body = _run(tmp_path).read_text(encoding="utf-8")

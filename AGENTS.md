@@ -111,7 +111,12 @@ template in `docs/rfc/TEMPLATE.md`. Lifecycle: `current/ → done/ → supersede
 
 ## How this project stays agent-native
 
-- **Context** — this contract, `docs/`, and RFCs keep intent discoverable.
+- **Context** — this contract, `docs/`, and RFCs keep intent discoverable. Keep it that
+  way as the repo grows by scoping context down instead of letting one file sprawl: a
+  directory with rules of its own can carry a local `AGENTS.md` (with a `CLAUDE.md` symlink
+  beside it, like the root — Claude loads `CLAUDE.md`, not `AGENTS.md`) that agents follow
+  as the nearest contract. Likewise, give a subsystem its own `docs/architecture/<name>.md`
+  and keep `overview.md` the index, so no one file becomes a monolith.
 - **Mechanical enforcement** — linters, hooks, and CI catch
   violations automatically. Error messages should tell you how to fix them. If a
   language in the repo isn't yet wired up for linting, formatting, and tests, add it the
