@@ -20,6 +20,9 @@ dist/
 .eggs/
 *.egg
 pip-wheel-metadata/
+# This project locks via pyproject (hatchling/hatch-vcs) and installs with pip/pipx;
+# a uv.lock is a local artifact, not part of the build — don't track it.
+uv.lock
 
 # Virtualenvs
 .venv/
