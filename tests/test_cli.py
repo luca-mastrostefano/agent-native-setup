@@ -41,6 +41,17 @@ def test_intro_shown_at_start_of_interactive_run(
     assert "scaffolds" in capsys.readouterr().out  # the "what this will do" intro
 
 
+def test_intro_shows_version_in_top_right(capsys: pytest.CaptureFixture[str]) -> None:
+    # The version rides on the top border, to the right of the "What this will do" heading.
+    from agent_native_setup import __version__
+
+    cli._intro()
+    top = capsys.readouterr().out.splitlines()[0]  # the top border line
+    assert "What this will do" in top
+    assert f"v{__version__}" in top
+    assert top.index("What this will do") < top.index(f"v{__version__}")  # heading left, ver right
+
+
 def test_next_steps_label_contract_optional_and_setup_important(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:

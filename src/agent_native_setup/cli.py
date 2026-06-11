@@ -11,7 +11,7 @@ from pathlib import Path
 from rich.console import Console
 from rich.panel import Panel
 
-from agent_native_setup import update_check
+from agent_native_setup import __version__, update_check
 from agent_native_setup.config import AI_TOOLS, WizardConfig
 from agent_native_setup.generators import agents, ai_context, ci, docs, onboarding, quality
 from agent_native_setup.languages import REGISTRY, detect_languages, detect_runner
@@ -319,18 +319,32 @@ def _summary(config: WizardConfig, sc: Scaffolder) -> None:
 
 
 def _intro() -> None:
-    console.print(
-        Panel.fit(
-            "[bold]agent-native-setup[/] scaffolds an [bold]agent-native[/] project setup:\n"
-            "  • a canonical [bold]AGENTS.md[/] contract for coding agents and humans\n"
-            "  • docs + RFCs and a [bold].claude/[/] agents & commands library\n"
-            "  • linters, pre-commit hooks, secret + dependency scanning, and CI\n\n"
-            "[dim]Non-destructive — existing files are never overwritten. "
-            "A few quick questions follow; press Ctrl+C to cancel.[/]",
-            title="What this will do",
-            border_style="cyan",
-        )
+    body = (
+        "[bold]agent-native-setup[/] scaffolds an [bold]agent-native[/] project setup:\n"
+        "  • a canonical [bold]AGENTS.md[/] contract for coding agents and humans\n"
+        "  • docs + RFCs and a [bold].claude/[/] agents & commands library\n"
+        "  • linters, pre-commit hooks, secret + dependency scanning, and CI\n\n"
+        "[dim]Non-destructive — existing files are never overwritten. "
+        "A few quick questions follow; press Ctrl+C to cancel.[/]"
     )
+    # Rich panels allow only one title, so span it: the heading on the left and the
+    # version on the right, sized to the panel's fit width (6 = the "╭─ " + " ─╮" border
+    # decoration). On a terminal too narrow to fit both, fall back to the plain heading.
+    label, ver = "What this will do", f"v{__version__}"
+    width = console.measure(Panel.fit(body)).maximum
+    gap = width - len(label) - len(ver) - 6
+    if gap >= 2:
+        console.print(
+            Panel(
+                body,
+                title=f"{label}{' ' * gap}{ver}",
+                title_align="left",
+                width=width,
+                border_style="cyan",
+            )
+        )
+    else:  # terminal too narrow to span both — show the heading alone
+        console.print(Panel.fit(body, title=label, border_style="cyan"))
 
 
 def main(argv: list[str] | None = None) -> int:
