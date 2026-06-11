@@ -30,9 +30,11 @@ Deferred ideas and known gaps — things not yet decided (so not an RFC) and not
 current state (so not `architecture/`). Keep entries concrete; promote anything
 that needs a real decision into an RFC in `docs/rfc/current/`.
 
+**Start each entry with {% if git %}the short commit you noted it at (`git rev-parse --short HEAD`){% else %}the date you noted it (`YYYY-MM-DD`){% endif %} in square brackets**, so every idea stays anchored to the state of the code it refers to.
+
 ## Known gaps
 
-- _Add the first gap or deferred idea here._
+- [{% if git %}a1b2c3d{% else %}YYYY-MM-DD{% endif %}] _Add the first gap or deferred idea here._
 """
 
 SYNC_RFC_STATUS = '''\
@@ -639,7 +641,10 @@ def generate(config: WizardConfig, sc: Scaffolder) -> None:
     sc.write("docs/README.md", DOCS_README)
     sc.render_write("docs/contributing.md", CONTRIBUTING, existing_project=config.existing_project)
     sc.render_write("docs/architecture/overview.md", ARCH_OVERVIEW, tooling=_arch_tooling(config))
-    sc.write("docs/improvements.md", IMPROVEMENTS)
+    # Stamp entries with the commit they were noted at — or the date, when the scaffolded
+    # project won't be a git repo (no init and no existing .git).
+    is_git = config.init_git or (config.target / ".git").exists()
+    sc.render_write("docs/improvements.md", IMPROVEMENTS, git=is_git)
     sc.write("docs/rfc/TEMPLATE.md", RFC_TEMPLATE)
     sc.write("tools/checks/sync_rfc_status.py", SYNC_RFC_STATUS)
     sc.write("tools/checks/test_sync_rfc_status.py", TEST_SYNC_RFC_STATUS)

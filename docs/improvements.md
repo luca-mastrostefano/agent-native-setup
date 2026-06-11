@@ -4,6 +4,8 @@ Deferred ideas and known gaps — things not yet decided (so not an RFC) and not
 current state (so not `architecture/`). Keep entries concrete; promote anything
 that needs a real decision into an RFC in `docs/rfc/current/`.
 
+**Start each entry with the short commit you noted it at (`git rev-parse --short HEAD`) in square brackets**, so every idea stays anchored to the state of the code it refers to.
+
 ## Known gaps
 
 - **Aggregator as an opt-in CI layer** — a `--megalinter`-style flag adding MegaLinter
