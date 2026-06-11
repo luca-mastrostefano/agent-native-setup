@@ -279,7 +279,8 @@ def _summary(config: WizardConfig, sc: Scaffolder) -> None:
         console.print(
             f"\n[yellow]Skipped {len(sc.skipped)} existing file(s)[/] (use --force to overwrite)"
         )
-    steps = ["Read [bold]AGENTS.md[/] — the contract for all contributors."]
+    contract = "Read [bold]AGENTS.md[/] — the contract for all contributors."
+    onboard: str | None = None
     if config.include_quality or config.include_ci:
         # ONBOARDING.md owns the one-time setup; tell the user the concrete first action
         # (the agent can't speak first — it waits for input), not "it self-onboards".
@@ -290,15 +291,20 @@ def _summary(config: WizardConfig, sc: Scaffolder) -> None:
                 if banner_on
                 else " (walks through ONBOARDING.md)"
             )
-            steps.append(
-                f"Finish setup: in Claude Code, type [bold]/onboard[/] at the prompt{tail}."
-            )
+            onboard = f"Finish setup: in Claude Code, type [bold]/onboard[/] at the prompt{tail}."
         else:
             tail = " — it'll also see the first-run note in AGENTS.md" if banner_on else ""
-            steps.append(
+            onboard = (
                 "Finish setup: open [bold]ONBOARDING.md[/] and follow it, or ask your "
                 f"AI assistant to{tail}."
             )
+    # The one-time setup is the must-do; reading the contract is recommended-not-required.
+    # Label them as a contrasting pair only when both show, so a lone contract step (no
+    # quality/CI) isn't mislabelled "Optional".
+    if onboard:
+        steps = [f"[dim]Optional:[/] {contract}", f"⚠️  [bold]IMPORTANT:[/] {onboard}"]
+    else:
+        steps = [contract]
     # A bordered panel (matching the intro) so the call to action isn't mistaken for
     # trailing log output and scrolled past.
     console.print()

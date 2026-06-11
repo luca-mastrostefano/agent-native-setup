@@ -7,6 +7,8 @@ from pathlib import Path
 import pytest
 
 from agent_native_setup import cli
+from agent_native_setup.config import WizardConfig
+from agent_native_setup.scaffold import Scaffolder
 
 
 @pytest.mark.parametrize("interrupt", [KeyboardInterrupt, EOFError])
@@ -37,3 +39,34 @@ def test_intro_shown_at_start_of_interactive_run(
     monkeypatch.setattr(cli, "_interactive", boom)
     cli.main(["demo", "-o", str(tmp_path)])
     assert "scaffolds" in capsys.readouterr().out  # the "what this will do" intro
+
+
+def test_next_steps_label_contract_optional_and_setup_important(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # With both steps shown, they're a contrasting pair: reading the contract is Optional,
+    # finishing the one-time setup is the IMPORTANT must-do — and in that order.
+    config = WizardConfig(project_name="demo", output_dir=tmp_path, init_git=False)
+    cli._summary(config, Scaffolder(config.target))
+    out = capsys.readouterr().out
+    assert "⚠" in out  # the importance icon precedes IMPORTANT
+    assert out.index("Optional:") < out.index("IMPORTANT:")  # contract first, setup second
+
+
+def test_next_steps_lone_contract_not_mislabelled_optional(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # No quality and no CI -> only the contract step. With no contrasting must-do, it must
+    # NOT be marked "Optional" (that would read as "skip the only thing to do").
+    config = WizardConfig(
+        project_name="demo",
+        output_dir=tmp_path,
+        init_git=False,
+        include_quality=False,
+        include_ci=False,
+    )
+    cli._summary(config, Scaffolder(config.target))
+    out = capsys.readouterr().out
+    assert "AGENTS.md" in out
+    assert "Optional:" not in out
+    assert "IMPORTANT:" not in out
