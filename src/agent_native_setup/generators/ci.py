@@ -6,6 +6,7 @@ import textwrap
 
 from agent_native_setup.config import WizardConfig
 from agent_native_setup.languages import get
+from agent_native_setup.pins import sub
 from agent_native_setup.scaffold import Scaffolder
 
 QUALITY_WORKFLOW_HEAD = """\
@@ -96,24 +97,24 @@ GITLEAKS_CI_STEP = (
 
 # Guards the Python helpers shipped under tools/ when Python isn't a selected language,
 # matching the tools/ ruff in the command surface + pre-commit (no local-vs-CI drift).
-TOOLS_RUFF_CI = """\
+TOOLS_RUFF_CI = sub("""\
 - uses: actions/setup-python@v6
   with:
-    python-version: "3.12"
+    python-version: "@PYTHON_VERSION@"
 - run: pipx install ruff
 - run: ruff check tools/
 - run: ruff format --check tools/
-"""
+""")
 
 # Runs the stdlib-unittest tests shipped beside the tools/checks helpers. The setup-python
 # step is identical to the ruff guard's / Python's, so _dedupe_steps collapses it; only
 # the unittest run is added. Whenever helpers ship (include_docs), any language.
-TOOLS_TESTS_CI = """\
+TOOLS_TESTS_CI = sub("""\
 - uses: actions/setup-python@v6
   with:
-    python-version: "3.12"
+    python-version: "@PYTHON_VERSION@"
 - run: python -m unittest discover -s tools/checks
-"""
+""")
 
 PULL_REQUEST_TEMPLATE = """\
 ## What & why

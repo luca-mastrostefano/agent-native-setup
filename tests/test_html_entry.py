@@ -7,6 +7,7 @@ from pathlib import Path
 from agent_native_setup import cli
 from agent_native_setup.config import WizardConfig
 from agent_native_setup.languages import detect_languages
+from agent_native_setup.pins import PINS
 from agent_native_setup.scaffold import Scaffolder
 
 
@@ -27,6 +28,7 @@ def test_greenfield_html_scaffolds_htmlhint_and_lychee(tmp_path: Path) -> None:
     pc = (tmp_path / ".pre-commit-config.yaml").read_text(encoding="utf-8")
     assert "id: htmlhint" in pc
     assert "id: lychee" in pc
+    assert "rev: lychee-v" in pc  # the hook script exits 100 on a bare vX.Y.Z tag
     assert "--offline" in pc  # link check stays offline / local-file only
     wf = (tmp_path / ".github/workflows/quality.yml").read_text(encoding="utf-8")
     assert "lycheeverse/lychee-action@v2" in wf
@@ -38,19 +40,19 @@ def test_htmlhint_is_pinned_not_floating(tmp_path: Path) -> None:
     root = _build(tmp_path, languages=["html"])
     wf = (root / ".github/workflows/quality.yml").read_text(encoding="utf-8")
     mk = (root / "Makefile").read_text(encoding="utf-8")
-    assert "htmlhint@1.1.4" in wf
-    assert "htmlhint@1.1.4" in mk
+    assert f"htmlhint@{PINS['HTMLHINT_VERSION']}" in wf
+    assert f"htmlhint@{PINS['HTMLHINT_VERSION']}" in mk
     assert 'htmlhint "**/*.html"' not in wf  # no bare, unpinned invocation
 
 
-def test_lychee_binary_install_is_documented(tmp_path: Path) -> None:
-    # The lychee hook is language:system (needs the binary on PATH), so a fresh clone
-    # can't commit until it's installed — README + ONBOARDING must flag it.
+def test_lychee_self_install_is_documented(tmp_path: Path) -> None:
+    # The lychee hook (language: script since lychee-v0.16) downloads its binary on
+    # the first hook run — README + ONBOARDING must flag the one-time download.
     root = _build(tmp_path, languages=["html"])
     readme = (root / "README.md").read_text(encoding="utf-8")
     onboarding = (root / "ONBOARDING.md").read_text(encoding="utf-8")
-    assert "lychee" in readme and "install lychee" in readme
-    assert "install lychee" in onboarding
+    assert "lychee" in readme and "first hook run" in readme
+    assert "lychee" in onboarding and "first hook run" in onboarding
     # A project without html says nothing about lychee.
     plain = (_build(tmp_path / "p", languages=["python"]) / "README.md").read_text(encoding="utf-8")
     assert "lychee" not in plain

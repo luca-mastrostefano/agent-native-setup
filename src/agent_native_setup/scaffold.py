@@ -27,6 +27,11 @@ class Scaffolder:
         # may delete. Pre-existing files are never recorded here, so an interrupt
         # can't destroy the user's own content.
         self.new_paths: list[Path] = []
+        # Pre-existing content this run overwrote (only possible under --force),
+        # snapshotted so rollback can put it back. Bytes, not text — the user's
+        # original file may not be UTF-8.
+        self.replaced_files: list[tuple[Path, bytes]] = []
+        self.replaced_links: list[tuple[Path, str]] = []  # (link path, original target)
 
     def track_new(self, path: Path, *, existed: bool) -> None:
         if not existed:
@@ -39,6 +44,12 @@ class Scaffolder:
             self.skipped.append(rel)
             return
         existed = path.exists()
+        if existed:  # force-overwrite — snapshot the original so rollback can restore it
+            if path.is_symlink():  # snapshot the link itself, and don't write through it
+                self.replaced_links.append((path, os.readlink(path)))
+                path.unlink()
+            else:
+                self.replaced_files.append((path, path.read_bytes()))
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(content, encoding="utf-8")
         self.created.append(rel)
@@ -57,6 +68,11 @@ class Scaffolder:
             if not self.force:
                 self.skipped.append(link_rel)
                 return
+            # Snapshot whatever the force-replace removes, so rollback can restore it.
+            if link.is_symlink():
+                self.replaced_links.append((link, os.readlink(link)))
+            elif link.is_file():
+                self.replaced_files.append((link, link.read_bytes()))
             link.unlink()
         link.parent.mkdir(parents=True, exist_ok=True)
         rel_dest = os.path.relpath((self.target / dest_rel), start=link.parent)
@@ -65,20 +81,38 @@ class Scaffolder:
         self.track_new(link, existed=existed)
 
     def rollback(self) -> int:
-        """Delete everything this run created, then prune dirs it emptied.
+        """Undo this run: delete what it created, restore what it overwrote,
+        then prune dirs it emptied.
 
-        Only paths recorded in ``new_paths`` are touched, so files that predate
-        this run survive an interrupted scaffold untouched.
+        Deletion only touches paths recorded in ``new_paths``, so files that
+        predate this run survive an interrupted scaffold untouched; files a
+        ``--force`` run overwrote are restored from their snapshots.
         """
-        removed = 0
+        rolled_back = 0
         for path in reversed(self.new_paths):
             try:
                 if path.is_symlink() or path.is_file():
                     path.unlink()
-                    removed += 1
+                    rolled_back += 1
                 elif path.is_dir():
                     shutil.rmtree(path)
-                    removed += 1
+                    rolled_back += 1
+            except OSError:
+                pass
+        for path, content in reversed(self.replaced_files):
+            try:
+                if path.is_symlink():  # don't write through a symlink that replaced the file
+                    path.unlink()
+                path.write_bytes(content)
+                rolled_back += 1
+            except OSError:
+                pass
+        for link, target in reversed(self.replaced_links):
+            try:
+                if link.is_symlink() or link.exists():
+                    link.unlink()
+                link.symlink_to(target)
+                rolled_back += 1
             except OSError:
                 pass
         for path in self.new_paths:
@@ -89,4 +123,4 @@ class Scaffolder:
                 except OSError:
                     break
                 parent = parent.parent
-        return removed
+        return rolled_back

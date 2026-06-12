@@ -7,26 +7,34 @@ commit *or* a logged waiver in the commit message:
 
     RFC-Not-Needed: <reason>
 
-It never writes or moves RFCs — authoring stays with the contributor and
-`sync_rfc_status.py` handles moves. The RFC that introduced it lives in `docs/rfc/`.
+New dependencies are detected in every manifest the scaffold knows: pyproject.toml,
+package.json, go.mod and Cargo.toml. The hook never writes or moves RFCs —
+authoring stays with the contributor and `sync_rfc_status.py` handles moves. The
+RFCs that introduced and extended it live in `docs/rfc/`.
 """
 
 from __future__ import annotations
 
+import json
 import re
 import subprocess
 import sys
 from pathlib import Path
 
-WAIVER_RE = re.compile(r"^\s*RFC-Not-Needed:\s*(\S.*?)\s*$", re.IGNORECASE | re.MULTILINE)
+WAIVER_RE = re.compile(
+    r"^\s*RFC-Not-Needed:\s*(\S.*?)\s*$",
+    re.IGNORECASE | re.MULTILINE,
+)
 _NAME_RE = re.compile(r"^\s*([A-Za-z0-9][A-Za-z0-9._-]*)")
 _DEPS_ARRAY_RE = re.compile(r"(?ms)^\s*dependencies\s*=\s*\[(.*?)\]")
+_CARGO_DEP_TABLES = ("dependencies", "dev-dependencies", "build-dependencies")
 
 
 def _git(*args: str) -> str | None:
     """Run a git command; return stdout, or None if it fails."""
+    cmd = ["git", *args]
     try:
-        out = subprocess.run(["git", *args], check=True, capture_output=True, text=True)
+        out = subprocess.run(cmd, check=True, capture_output=True, text=True)
     except (OSError, subprocess.CalledProcessError):
         return None
     return out.stdout
@@ -44,7 +52,7 @@ def _raw_deps(text: str) -> list[str]:
 
         data = tomllib.loads(text)
         return data.get("project", {}).get("dependencies", []) or []
-    except ModuleNotFoundError:  # Python 3.10 has no tomllib; parse the array directly.
+    except ModuleNotFoundError:  # Python 3.10 has no tomllib; parse the array.
         match = _DEPS_ARRAY_RE.search(text)
         return re.findall(r"""["']([^"']+)["']""", match.group(1)) if match else []
     except Exception:
@@ -54,6 +62,90 @@ def _raw_deps(text: str) -> list[str]:
 def dep_names(text: str) -> set[str]:
     """Normalized names in ``[project.dependencies]`` of a pyproject.toml string."""
     return {name for spec in _raw_deps(text) if (name := _normalize(spec))}
+
+
+def dep_names_package_json(text: str) -> set[str]:
+    """Names under dependencies/devDependencies of a package.json string."""
+    try:
+        data = json.loads(text)
+    except ValueError:
+        return set()
+    if not isinstance(data, dict):
+        return set()
+    names: set[str] = set()
+    for key in ("dependencies", "devDependencies"):
+        section = data.get(key)
+        if isinstance(section, dict):
+            names |= set(section)
+    return names
+
+
+def dep_names_go_mod(text: str) -> set[str]:
+    """Module paths a go.mod string requires directly (`// indirect` skipped)."""
+    names: set[str] = set()
+    in_block = False
+    for raw in text.splitlines():
+        line = raw.strip()
+        if line.startswith("require ("):
+            in_block = True
+            continue
+        if in_block and line.startswith(")"):
+            in_block = False
+            continue
+        if line.startswith("require "):
+            line = line[len("require ") :]
+        elif not in_block:
+            continue
+        if line.startswith("//") or "// indirect" in line:
+            continue
+        parts = line.split()
+        if len(parts) >= 2 and parts[1].startswith("v"):
+            names.add(parts[0])
+    return names
+
+
+def _cargo_names_fallback(text: str) -> set[str]:
+    """Line-scan for Python 3.10 (no tomllib): [table] keys and [table.name] headers."""
+    names: set[str] = set()
+    table = ""
+    for raw in text.splitlines():
+        line = raw.strip()
+        if line.startswith("["):
+            table, _, sub = line.strip("[]").partition(".")
+            if table in _CARGO_DEP_TABLES and sub:
+                names.add(sub)
+                table = ""  # keys inside a dotted table aren't dependency names
+        elif table in _CARGO_DEP_TABLES and "=" in line:
+            if not line.startswith("#"):
+                names.add(line.split("=", 1)[0].strip().strip('"'))
+    return names
+
+
+def dep_names_cargo(text: str) -> set[str]:
+    """Crate names in a Cargo.toml string's dependency tables."""
+    try:
+        import tomllib
+
+        data = tomllib.loads(text)
+    except ModuleNotFoundError:  # Python 3.10 has no tomllib
+        return _cargo_names_fallback(text)
+    except Exception:
+        return set()
+    names: set[str] = set()
+    for table in _CARGO_DEP_TABLES:
+        section = data.get(table)
+        if isinstance(section, dict):
+            names |= set(section)
+    return names
+
+
+# manifest filename -> parser for the dependency names it declares
+MANIFEST_DEPS = {
+    "pyproject.toml": dep_names,
+    "package.json": dep_names_package_json,
+    "go.mod": dep_names_go_mod,
+    "Cargo.toml": dep_names_cargo,
+}
 
 
 def _staged() -> list[tuple[str, str]]:
@@ -67,26 +159,39 @@ def _staged() -> list[tuple[str, str]]:
     return changes
 
 
-def _added_dependencies() -> bool:
-    staged = _git("show", ":pyproject.toml")
+def _added_dependencies(manifest: str) -> set[str]:
+    """Dependency names the staged ``manifest`` adds relative to HEAD."""
+    staged = _git("show", f":{manifest}")
     if staged is None:
+        return set()
+    head = _git("show", f"HEAD:{manifest}") or ""
+    parse = MANIFEST_DEPS[manifest]
+    return parse(staged) - parse(head)
+
+
+def _is_new_src_package(status: str, path: str) -> bool:
+    parts = Path(path).parts
+    if status != "A" or len(parts) != 3:
         return False
-    head = _git("show", "HEAD:pyproject.toml") or ""
-    return bool(dep_names(staged) - dep_names(head))
+    return parts[0] == "src" and parts[2] == "__init__.py"
 
 
 def find_triggers(changes: list[tuple[str, str]]) -> list[str]:
     """Human-readable list of the structural triggers this commit hit."""
     triggers: list[str] = []
     paths = [p for _, p in changes]
-    if any(p == "pyproject.toml" for p in paths) and _added_dependencies():
-        triggers.append("new dependency in pyproject.toml")
+    for manifest in MANIFEST_DEPS:
+        if manifest in paths:
+            added = _added_dependencies(manifest)
+            if added:
+                names = ", ".join(sorted(added))
+                triggers.append(f"new dependency in {manifest} ({names})")
     if any(p.startswith("docs/architecture/") for p in paths):
         triggers.append("change under docs/architecture/")
     for status, path in changes:
-        parts = Path(path).parts
-        if status == "A" and len(parts) == 3 and parts[0] == "src" and parts[2] == "__init__.py":
-            triggers.append(f"new top-level src package ({parts[1]})")
+        if _is_new_src_package(status, path):
+            pkg = Path(path).parts[1]
+            triggers.append(f"new top-level src package ({pkg})")
     return triggers
 
 

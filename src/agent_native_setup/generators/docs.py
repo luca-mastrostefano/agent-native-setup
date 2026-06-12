@@ -5,6 +5,8 @@ from __future__ import annotations
 from datetime import date
 
 from agent_native_setup.config import WizardConfig
+from agent_native_setup.generators import quality
+from agent_native_setup.languages import get
 from agent_native_setup.scaffold import Scaffolder
 
 DOCS_README = """\
@@ -31,6 +33,10 @@ current state (so not `architecture/`). Keep entries concrete; promote anything
 that needs a real decision into an RFC in `docs/rfc/current/`.
 
 **Start each entry with {% if git %}the short commit you noted it at (`git rev-parse --short HEAD`){% else %}the date you noted it (`YYYY-MM-DD`){% endif %} in square brackets**, so every idea stays anchored to the state of the code it refers to.
+{% if improvement_cmd %}
+
+`{{ improvement_cmd }}` appends a correctly-stamped entry here.
+{% endif %}
 
 ## Known gaps
 
@@ -130,8 +136,10 @@ if __name__ == "__main__":
     raise SystemExit(main())
 '''
 
-# Python-shaped commit-msg gates (pyproject deps, src/<pkg> packages). Written only
-# for Python projects; wired into .pre-commit-config.yaml by the quality generator.
+# Commit-msg gate: RFC discipline for structural changes. The dependency trigger
+# reads every manifest the scaffold knows, so this ships for any language with one
+# (= a Dependabot ecosystem; see generate()). Kept <=88 cols / default-ruff-format
+# stable, like sync_rfc_status, since non-Python projects guard tools/ at defaults.
 RFC_NEEDED = r'''"""Force a decision when a commit makes a structural change (mechanical enforcement).
 
 `AGENTS.md` requires an RFC before changing architecture, adding a dependency, or
@@ -141,26 +149,34 @@ commit *or* a logged waiver in the commit message:
 
     RFC-Not-Needed: <reason>
 
-It never writes or moves RFCs — authoring stays with the contributor and
-`sync_rfc_status.py` handles moves. The RFC that introduced it lives in `docs/rfc/`.
+New dependencies are detected in every manifest the scaffold knows: pyproject.toml,
+package.json, go.mod and Cargo.toml. The hook never writes or moves RFCs —
+authoring stays with the contributor and `sync_rfc_status.py` handles moves. The
+RFCs that introduced and extended it live in `docs/rfc/`.
 """
 
 from __future__ import annotations
 
+import json
 import re
 import subprocess
 import sys
 from pathlib import Path
 
-WAIVER_RE = re.compile(r"^\s*RFC-Not-Needed:\s*(\S.*?)\s*$", re.IGNORECASE | re.MULTILINE)
+WAIVER_RE = re.compile(
+    r"^\s*RFC-Not-Needed:\s*(\S.*?)\s*$",
+    re.IGNORECASE | re.MULTILINE,
+)
 _NAME_RE = re.compile(r"^\s*([A-Za-z0-9][A-Za-z0-9._-]*)")
 _DEPS_ARRAY_RE = re.compile(r"(?ms)^\s*dependencies\s*=\s*\[(.*?)\]")
+_CARGO_DEP_TABLES = ("dependencies", "dev-dependencies", "build-dependencies")
 
 
 def _git(*args: str) -> str | None:
     """Run a git command; return stdout, or None if it fails."""
+    cmd = ["git", *args]
     try:
-        out = subprocess.run(["git", *args], check=True, capture_output=True, text=True)
+        out = subprocess.run(cmd, check=True, capture_output=True, text=True)
     except (OSError, subprocess.CalledProcessError):
         return None
     return out.stdout
@@ -178,7 +194,7 @@ def _raw_deps(text: str) -> list[str]:
 
         data = tomllib.loads(text)
         return data.get("project", {}).get("dependencies", []) or []
-    except ModuleNotFoundError:  # Python 3.10 has no tomllib; parse the array directly.
+    except ModuleNotFoundError:  # Python 3.10 has no tomllib; parse the array.
         match = _DEPS_ARRAY_RE.search(text)
         return re.findall(r"""["']([^"']+)["']""", match.group(1)) if match else []
     except Exception:
@@ -188,6 +204,90 @@ def _raw_deps(text: str) -> list[str]:
 def dep_names(text: str) -> set[str]:
     """Normalized names in ``[project.dependencies]`` of a pyproject.toml string."""
     return {name for spec in _raw_deps(text) if (name := _normalize(spec))}
+
+
+def dep_names_package_json(text: str) -> set[str]:
+    """Names under dependencies/devDependencies of a package.json string."""
+    try:
+        data = json.loads(text)
+    except ValueError:
+        return set()
+    if not isinstance(data, dict):
+        return set()
+    names: set[str] = set()
+    for key in ("dependencies", "devDependencies"):
+        section = data.get(key)
+        if isinstance(section, dict):
+            names |= set(section)
+    return names
+
+
+def dep_names_go_mod(text: str) -> set[str]:
+    """Module paths a go.mod string requires directly (`// indirect` skipped)."""
+    names: set[str] = set()
+    in_block = False
+    for raw in text.splitlines():
+        line = raw.strip()
+        if line.startswith("require ("):
+            in_block = True
+            continue
+        if in_block and line.startswith(")"):
+            in_block = False
+            continue
+        if line.startswith("require "):
+            line = line[len("require ") :]
+        elif not in_block:
+            continue
+        if line.startswith("//") or "// indirect" in line:
+            continue
+        parts = line.split()
+        if len(parts) >= 2 and parts[1].startswith("v"):
+            names.add(parts[0])
+    return names
+
+
+def _cargo_names_fallback(text: str) -> set[str]:
+    """Line-scan for Python 3.10 (no tomllib): [table] keys and [table.name] headers."""
+    names: set[str] = set()
+    table = ""
+    for raw in text.splitlines():
+        line = raw.strip()
+        if line.startswith("["):
+            table, _, sub = line.strip("[]").partition(".")
+            if table in _CARGO_DEP_TABLES and sub:
+                names.add(sub)
+                table = ""  # keys inside a dotted table aren't dependency names
+        elif table in _CARGO_DEP_TABLES and "=" in line:
+            if not line.startswith("#"):
+                names.add(line.split("=", 1)[0].strip().strip('"'))
+    return names
+
+
+def dep_names_cargo(text: str) -> set[str]:
+    """Crate names in a Cargo.toml string's dependency tables."""
+    try:
+        import tomllib
+
+        data = tomllib.loads(text)
+    except ModuleNotFoundError:  # Python 3.10 has no tomllib
+        return _cargo_names_fallback(text)
+    except Exception:
+        return set()
+    names: set[str] = set()
+    for table in _CARGO_DEP_TABLES:
+        section = data.get(table)
+        if isinstance(section, dict):
+            names |= set(section)
+    return names
+
+
+# manifest filename -> parser for the dependency names it declares
+MANIFEST_DEPS = {
+    "pyproject.toml": dep_names,
+    "package.json": dep_names_package_json,
+    "go.mod": dep_names_go_mod,
+    "Cargo.toml": dep_names_cargo,
+}
 
 
 def _staged() -> list[tuple[str, str]]:
@@ -201,26 +301,39 @@ def _staged() -> list[tuple[str, str]]:
     return changes
 
 
-def _added_dependencies() -> bool:
-    staged = _git("show", ":pyproject.toml")
+def _added_dependencies(manifest: str) -> set[str]:
+    """Dependency names the staged ``manifest`` adds relative to HEAD."""
+    staged = _git("show", f":{manifest}")
     if staged is None:
+        return set()
+    head = _git("show", f"HEAD:{manifest}") or ""
+    parse = MANIFEST_DEPS[manifest]
+    return parse(staged) - parse(head)
+
+
+def _is_new_src_package(status: str, path: str) -> bool:
+    parts = Path(path).parts
+    if status != "A" or len(parts) != 3:
         return False
-    head = _git("show", "HEAD:pyproject.toml") or ""
-    return bool(dep_names(staged) - dep_names(head))
+    return parts[0] == "src" and parts[2] == "__init__.py"
 
 
 def find_triggers(changes: list[tuple[str, str]]) -> list[str]:
     """Human-readable list of the structural triggers this commit hit."""
     triggers: list[str] = []
     paths = [p for _, p in changes]
-    if any(p == "pyproject.toml" for p in paths) and _added_dependencies():
-        triggers.append("new dependency in pyproject.toml")
+    for manifest in MANIFEST_DEPS:
+        if manifest in paths:
+            added = _added_dependencies(manifest)
+            if added:
+                names = ", ".join(sorted(added))
+                triggers.append(f"new dependency in {manifest} ({names})")
     if any(p.startswith("docs/architecture/") for p in paths):
         triggers.append("change under docs/architecture/")
     for status, path in changes:
-        parts = Path(path).parts
-        if status == "A" and len(parts) == 3 and parts[0] == "src" and parts[2] == "__init__.py":
-            triggers.append(f"new top-level src package ({parts[1]})")
+        if _is_new_src_package(status, path):
+            pkg = Path(path).parts[1]
+            triggers.append(f"new top-level src package ({pkg})")
     return triggers
 
 
@@ -343,6 +456,104 @@ if __name__ == "__main__":
     raise SystemExit(main(sys.argv[1:]))
 '''
 
+# Python-layout commit-msg gate (src/ + tests/): a source change must stage a test
+# or log a waiver. Same 88-col discipline as the other shipped helpers.
+TESTS_NEEDED = r'''"""Make "every change ships with a test" mechanical (commit-msg enforcement).
+
+`AGENTS.md` (Goal-Driven Execution) requires each change to ship with the test
+that proves it. This `commit-msg` hook fires when a commit changes source under
+`src/` but stages nothing test-like, and is satisfied by *either* a staged test
+*or* a logged waiver in the commit message:
+
+    Tests-Not-Needed: <reason>
+
+It checks presence, not quality — review still owns quality. The RFC that
+introduced it lives in `docs/rfc/`.
+"""
+
+from __future__ import annotations
+
+import re
+import subprocess
+import sys
+from pathlib import Path
+
+WAIVER_RE = re.compile(
+    r"^\s*Tests-Not-Needed:\s*(\S.*?)\s*$",
+    re.IGNORECASE | re.MULTILINE,
+)
+
+
+def _git(*args: str) -> str | None:
+    """Run a git command; return stdout, or None if it fails."""
+    cmd = ["git", *args]
+    try:
+        out = subprocess.run(cmd, check=True, capture_output=True, text=True)
+    except (OSError, subprocess.CalledProcessError):
+        return None
+    return out.stdout
+
+
+def _staged() -> list[tuple[str, str]]:
+    """(status, path) for each staged change; path is the post-rename name."""
+    out = _git("diff", "--cached", "--name-status") or ""
+    changes: list[tuple[str, str]] = []
+    for line in out.splitlines():
+        fields = line.split("\t")
+        if len(fields) >= 2:
+            changes.append((fields[0][0], fields[-1]))
+    return changes
+
+
+def is_test_path(path: str) -> bool:
+    """True for anything test-like: under tests/, or test_* / *_test.py files."""
+    parts = Path(path).parts
+    name = Path(path).name
+    if "tests" in parts:
+        return True
+    return name.startswith("test_") or name.endswith("_test.py")
+
+
+def find_triggers(changes: list[tuple[str, str]]) -> list[str]:
+    """Source files this commit changes without bringing a test along."""
+    triggers: list[str] = []
+    for status, path in changes:
+        if status == "D" or not path.startswith("src/"):
+            continue
+        if path.endswith(".py") and not is_test_path(path):
+            triggers.append(f"source change without a staged test ({path})")
+    return triggers
+
+
+def is_satisfied(changes: list[tuple[str, str]], message: str) -> bool:
+    staged_test = any(is_test_path(p) for status, p in changes if status != "D")
+    return staged_test or bool(WAIVER_RE.search(message))
+
+
+def main(argv: list[str]) -> int:
+    message = Path(argv[0]).read_text(encoding="utf-8") if argv else ""
+    changes = _staged()
+    triggers = find_triggers(changes)
+    if not triggers or is_satisfied(changes, message):
+        return 0
+
+    bullet = "\n".join(f"  - {t}" for t in triggers)
+    print(
+        "Tests check: this commit changes source code but stages no test.\n\n"
+        f"Triggered by:\n{bullet}\n\n"
+        "Do one of:\n"
+        "  - stage the test that proves the change (see AGENTS.md), or\n"
+        "  - record why none is needed with a commit-message trailer:\n"
+        "        Tests-Not-Needed: <reason>",
+        file=sys.stderr,
+    )
+    return 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main(sys.argv[1:]))
+'''
+
 # Stdlib-unittest tests shipped beside the helpers above, so the logic they carry isn't
 # scaffolded untested (AGENTS.md §4). Run by the `unittest discover` runner wired into
 # the command surface, a pre-push hook, and CI (quality.py / ci.py). unittest — not
@@ -421,6 +632,52 @@ class DepNames(unittest.TestCase):
         self.assertEqual(rfc_needed.dep_names(text), {"foo-bar", "baz"})
 
 
+class DepNamesPackageJson(unittest.TestCase):
+    def test_reads_deps_and_dev_deps(self) -> None:
+        text = '{"dependencies": {"react": "^19"}, "devDependencies": {"eslint": "^10"}}'
+        expected = {"react", "eslint"}
+        self.assertEqual(rfc_needed.dep_names_package_json(text), expected)
+
+    def test_invalid_json_is_empty(self) -> None:
+        self.assertEqual(rfc_needed.dep_names_package_json("{nope"), set())
+
+
+class DepNamesGoMod(unittest.TestCase):
+    def test_reads_block_and_skips_indirect(self) -> None:
+        text = (
+            "module example.com/m\n\nrequire (\n"
+            "\tgithub.com/pkg/errors v0.9.1\n"
+            "\tgolang.org/x/sys v0.1.0 // indirect\n)\n"
+        )
+        expected = {"github.com/pkg/errors"}
+        self.assertEqual(rfc_needed.dep_names_go_mod(text), expected)
+
+    def test_reads_single_line_require(self) -> None:
+        text = "require github.com/spf13/cobra v1.8.0\n"
+        expected = {"github.com/spf13/cobra"}
+        self.assertEqual(rfc_needed.dep_names_go_mod(text), expected)
+
+    def test_block_comment_is_not_a_dependency(self) -> None:
+        text = "require (\n\t// vendored deliberately\n\tgithub.com/a v1.0.0\n)\n"
+        self.assertEqual(rfc_needed.dep_names_go_mod(text), {"github.com/a"})
+
+
+class DepNamesCargo(unittest.TestCase):
+    def test_reads_dependency_tables(self) -> None:
+        text = '[dependencies]\nserde = "1"\n\n[dev-dependencies]\nrstest = "0.18"\n'
+        expected = {"serde", "rstest"}
+        self.assertEqual(rfc_needed.dep_names_cargo(text), expected)
+
+    def test_py310_fallback_matches_incl_dotted_tables(self) -> None:
+        text = (
+            '[dependencies.serde]\nversion = "1"\n\n'
+            '[dev-dependencies]\nrstest = "0.18"\n'
+        )
+        expected = {"serde", "rstest"}
+        self.assertEqual(rfc_needed._cargo_names_fallback(text), expected)
+        self.assertEqual(rfc_needed.dep_names_cargo(text), expected)
+
+
 class FindTriggers(unittest.TestCase):
     def test_new_top_level_src_package_fires(self) -> None:
         changes = [("A", "src/widget/__init__.py")]
@@ -496,6 +753,64 @@ class IsSatisfied(unittest.TestCase):
     def test_unsatisfied_without_doc_or_waiver(self) -> None:
         changes = [("A", "src/widget/__init__.py")]
         self.assertFalse(docs_sync.is_satisfied(changes, "feat: x"))
+
+
+if __name__ == "__main__":
+    unittest.main()
+'''
+
+TEST_TESTS_NEEDED = r'''"""Tests for the tests-needed commit-msg gate (stdlib unittest)."""
+
+import importlib.util
+import unittest
+from pathlib import Path
+
+_HELPER = Path(__file__).resolve().parent / "tests_needed.py"
+_spec = importlib.util.spec_from_file_location("tests_needed", _HELPER)
+assert _spec and _spec.loader
+tests_needed = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(tests_needed)
+
+
+class IsTestPath(unittest.TestCase):
+    def test_tests_dir_and_test_file_names_match(self) -> None:
+        self.assertTrue(tests_needed.is_test_path("tests/test_app.py"))
+        self.assertTrue(tests_needed.is_test_path("src/pkg/test_inline.py"))
+        self.assertTrue(tests_needed.is_test_path("src/pkg/app_test.py"))
+
+    def test_plain_source_does_not_match(self) -> None:
+        self.assertFalse(tests_needed.is_test_path("src/pkg/app.py"))
+
+
+class FindTriggers(unittest.TestCase):
+    def test_src_change_without_test_fires(self) -> None:
+        changes = [("M", "src/pkg/app.py")]
+        self.assertEqual(
+            tests_needed.find_triggers(changes),
+            ["source change without a staged test (src/pkg/app.py)"],
+        )
+
+    def test_deletion_does_not_fire(self) -> None:
+        changes = [("D", "src/pkg/app.py")]
+        self.assertEqual(tests_needed.find_triggers(changes), [])
+
+    def test_non_python_and_non_src_do_not_fire(self) -> None:
+        changes = [("M", "src/pkg/data.json"), ("M", "README.md")]
+        self.assertEqual(tests_needed.find_triggers(changes), [])
+
+
+class IsSatisfied(unittest.TestCase):
+    def test_staged_test_satisfies(self) -> None:
+        changes = [("M", "src/pkg/app.py"), ("A", "tests/test_app.py")]
+        self.assertTrue(tests_needed.is_satisfied(changes, "feat: x"))
+
+    def test_waiver_satisfies(self) -> None:
+        message = "chore: rename\n\nTests-Not-Needed: mechanical rename"
+        self.assertTrue(tests_needed.is_satisfied([], message))
+
+    def test_unsatisfied_without_test_or_waiver(self) -> None:
+        changes = [("M", "src/pkg/app.py")]
+        self.assertFalse(tests_needed.is_satisfied(changes, "feat: x"))
 
 
 if __name__ == "__main__":
@@ -642,17 +957,27 @@ def generate(config: WizardConfig, sc: Scaffolder) -> None:
     sc.render_write("docs/contributing.md", CONTRIBUTING, existing_project=config.existing_project)
     sc.render_write("docs/architecture/overview.md", ARCH_OVERVIEW, tooling=_arch_tooling(config))
     # Stamp entries with the commit they were noted at — or the date, when the scaffolded
-    # project won't be a git repo (no init and no existing .git).
+    # project won't be a git repo (no init and no existing .git). Point at the runner's
+    # `improvement` target when we generate a runner that carries it (quality.py).
     is_git = config.init_git or (config.target / ".git").exists()
-    sc.render_write("docs/improvements.md", IMPROVEMENTS, git=is_git)
+    owns_runner = config.include_quality and not config.existing_runner
+    improvement_cmd = quality.IMPROVEMENT_USAGE[config.runner] if owns_runner else ""
+    sc.render_write(
+        "docs/improvements.md", IMPROVEMENTS, git=is_git, improvement_cmd=improvement_cmd
+    )
     sc.write("docs/rfc/TEMPLATE.md", RFC_TEMPLATE)
     sc.write("tools/checks/sync_rfc_status.py", SYNC_RFC_STATUS)
     sc.write("tools/checks/test_sync_rfc_status.py", TEST_SYNC_RFC_STATUS)
-    if "python" in config.languages:  # triggers key on pyproject/src layout
+    # The RFC gate's dependency trigger reads manifests, so it ships for any selected
+    # language that has one (= declares a Dependabot ecosystem).
+    if any(lang.dependabot_ecosystem for lang in get(config.languages)):
         sc.write("tools/checks/rfc_needed.py", RFC_NEEDED)
         sc.write("tools/checks/test_rfc_needed.py", TEST_RFC_NEEDED)
+    if "python" in config.languages:  # gates keyed to the Python src/+tests/ layout
         sc.write("tools/checks/docs_sync.py", DOCS_SYNC)
         sc.write("tools/checks/test_docs_sync.py", TEST_DOCS_SYNC)
+        sc.write("tools/checks/tests_needed.py", TESTS_NEEDED)
+        sc.write("tools/checks/test_tests_needed.py", TEST_TESTS_NEEDED)
     for stage in ("current", "done", "superseded"):
         sc.write(f"docs/rfc/{stage}/.gitkeep", "")
     extras = []

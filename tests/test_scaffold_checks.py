@@ -8,8 +8,8 @@ from pathlib import Path
 
 from agent_native_setup import cli
 from agent_native_setup.config import WizardConfig
-from agent_native_setup.generators import docs
-from agent_native_setup.scaffold import Scaffolder
+from agent_native_setup.generators import agents, docs
+from agent_native_setup.scaffold import Scaffolder, render
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
@@ -24,19 +24,33 @@ def test_python_project_scaffolds_commit_msg_gates(tmp_path: Path) -> None:
     root = _build(tmp_path, languages=["python"])
     assert (root / "tools/checks/rfc_needed.py").exists()
     assert (root / "tools/checks/docs_sync.py").exists()
+    assert (root / "tools/checks/tests_needed.py").exists()
     cfg = (root / ".pre-commit-config.yaml").read_text(encoding="utf-8")
     assert "commit-msg" in cfg.splitlines()[0]  # in default_install_hook_types
     assert "id: rfc-needed" in cfg
     assert "id: docs-sync" in cfg
+    assert "id: tests-needed" in cfg
 
 
-def test_non_python_project_omits_commit_msg_gates(tmp_path: Path) -> None:
+def test_manifest_language_ships_rfc_gate_but_not_layout_gates(tmp_path: Path) -> None:
+    # go has a dependency manifest (go.mod), so the RFC gate ships; the src/+tests/
+    # layout gates (docs-sync, tests-needed) stay Python-only.
     root = _build(tmp_path, languages=["go"])
-    assert not (root / "tools/checks/rfc_needed.py").exists()
+    assert (root / "tools/checks/rfc_needed.py").exists()
     assert not (root / "tools/checks/docs_sync.py").exists()
+    assert not (root / "tools/checks/tests_needed.py").exists()
+    cfg = (root / ".pre-commit-config.yaml").read_text(encoding="utf-8")
+    assert "commit-msg" in cfg.splitlines()[0]
+    assert "id: rfc-needed" in cfg
+    assert "docs-sync" not in cfg and "tests-needed" not in cfg
+
+
+def test_no_manifest_language_omits_commit_msg_gates(tmp_path: Path) -> None:
+    # html declares no dependency manifest, so no commit-msg gate ships at all.
+    root = _build(tmp_path, languages=["html"])
+    assert not (root / "tools/checks/rfc_needed.py").exists()
     cfg = (root / ".pre-commit-config.yaml").read_text(encoding="utf-8")
     assert "commit-msg" not in cfg
-    assert "docs-sync" not in cfg
 
 
 def test_no_docs_omits_commit_msg_gates(tmp_path: Path) -> None:
@@ -123,26 +137,38 @@ def test_embedded_scripts_match_repo_files() -> None:
     """The wizard ships exactly the scripts this repo dogfoods and tests."""
     assert docs.RFC_NEEDED == (REPO_ROOT / "tools/checks/rfc_needed.py").read_text(encoding="utf-8")
     assert docs.DOCS_SYNC == (REPO_ROOT / "tools/checks/docs_sync.py").read_text(encoding="utf-8")
+    assert docs.TESTS_NEEDED == (REPO_ROOT / "tools/checks/tests_needed.py").read_text(
+        encoding="utf-8"
+    )
+    rendered = render(agents.FORMAT_ON_EDIT, formatters=[(".py", ["ruff", "format"])])
+    assert rendered == (REPO_ROOT / "tools/checks/format_on_edit.py").read_text(encoding="utf-8")
     # sync_rfc_status's test is dogfooded byte-for-byte (this repo runs it via discover).
-    # The Python-only helper tests (rfc_needed/docs_sync) aren't kept in-repo — they'd
-    # share a basename with this repo's existing tests/ suites — so they're verified
-    # end-to-end instead by test_shipped_tests_pass_against_shipped_helpers.
+    # The commit-gate helper tests (rfc_needed/docs_sync/tests_needed) aren't kept
+    # in-repo — they'd share a basename with this repo's existing tests/ suites — so
+    # they're verified end-to-end by test_shipped_tests_pass_against_shipped_helpers.
     assert docs.TEST_SYNC_RFC_STATUS == (
         REPO_ROOT / "tools/checks/test_sync_rfc_status.py"
+    ).read_text(encoding="utf-8")
+    assert agents.TEST_FORMAT_ON_EDIT == (
+        REPO_ROOT / "tools/checks/test_format_on_edit.py"
     ).read_text(encoding="utf-8")
 
 
 def test_ships_tests_for_the_helpers_it_ships(tmp_path: Path) -> None:
-    # Non-Python project: only sync_rfc_status ships, so only its test ships.
+    # node project: sync_rfc_status, the RFC gate (package.json manifest), and the
+    # format-on-edit helper ship — with their tests; the layout gates don't.
     node = _build(tmp_path / "node", languages=["node"])
     assert (node / "tools/checks/test_sync_rfc_status.py").exists()
-    assert not (node / "tools/checks/test_rfc_needed.py").exists()
+    assert (node / "tools/checks/test_rfc_needed.py").exists()
+    assert (node / "tools/checks/test_format_on_edit.py").exists()
     assert not (node / "tools/checks/test_docs_sync.py").exists()
-    # Python project: the commit-msg helpers ship too, so do their tests.
+    assert not (node / "tools/checks/test_tests_needed.py").exists()
+    # Python project: the layout gates ship too, so do their tests.
     py = _build(tmp_path / "py", languages=["python"])
     assert (py / "tools/checks/test_sync_rfc_status.py").exists()
     assert (py / "tools/checks/test_rfc_needed.py").exists()
     assert (py / "tools/checks/test_docs_sync.py").exists()
+    assert (py / "tools/checks/test_tests_needed.py").exists()
 
 
 def test_no_docs_omits_the_helper_tests(tmp_path: Path) -> None:

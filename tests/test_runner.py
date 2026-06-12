@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import re
+import subprocess
 from pathlib import Path
 
 from agent_native_setup import cli
@@ -27,6 +29,12 @@ def _hook_cmd(root: Path) -> str:
 
 def test_detect_runner_taskfile(tmp_path: Path) -> None:
     (tmp_path / "Taskfile.yml").write_text("version: '3'\n")
+    assert detect_runner(tmp_path) == ("task", True)
+
+
+def test_detect_runner_taskfile_yaml_spelling(tmp_path: Path) -> None:
+    # go-task also accepts taskfile.yaml (DefaultTaskfiles in its source).
+    (tmp_path / "taskfile.yaml").write_text("version: '3'\n")
     assert detect_runner(tmp_path) == ("task", True)
 
 
@@ -125,6 +133,64 @@ def test_hook_task_uses_task_list(tmp_path: Path) -> None:
     assert "command -v task" in cmd  # guarded
 
 
+def test_hook_task_falls_back_to_taskfile_grep_when_task_missing(tmp_path: Path) -> None:
+    # Without go-task installed, the hook must still surface the command set by
+    # reading the Taskfile itself — not just print an install hint.
+    root = _build(tmp_path, languages=["python"], runner="task")
+    cmd = _hook_cmd(root)
+    fallback = cmd.split("||", 1)[1].strip()  # the { echo ...; sed ...; } group
+    out = subprocess.run(
+        ["sh", "-c", fallback], cwd=root, capture_output=True, text=True, check=True
+    ).stdout
+    assert "taskfile.dev" in out  # the install hint survives
+    assert "lint" in out  # task names extracted from the Taskfile
+    assert out.count("run linters") == 1  # desc: shown — once, even on case-insensitive FS
+
+
 def test_hook_existing_make_greps_targets(tmp_path: Path) -> None:
     cmd = _hook_cmd(_build(tmp_path, languages=["python"], runner="make", existing_runner=True))
     assert "Makefile" in cmd and "## " in cmd
+
+
+# --- the `improvement` backlog target -------------------------------------------
+
+
+def test_improvement_target_in_both_runners_gated_on_docs(tmp_path: Path) -> None:
+    # The target encodes the improvements.md stamping convention; it exists exactly
+    # when docs (and so docs/improvements.md) are scaffolded.
+    mk = (_build(tmp_path / "m", languages=["python"]) / "Makefile").read_text(encoding="utf-8")
+    assert "improvement:" in mk
+    assert "$$(git rev-parse --short HEAD 2>/dev/null || date +%F)" in mk  # stamp, Make-escaped
+    assert "$(TEXT)" in mk
+    tf = (_build(tmp_path / "t", languages=["python"], runner="task") / "Taskfile.yml").read_text(
+        encoding="utf-8"
+    )
+    assert "improvement:" in tf
+    assert "{{.CLI_ARGS}}" in tf
+    no_docs = _build(tmp_path / "n", languages=["python"], include_docs=False)
+    assert "improvement:" not in (no_docs / "Makefile").read_text(encoding="utf-8")
+
+
+def test_improvement_target_appends_date_stamped_entry_without_git(tmp_path: Path) -> None:
+    root = _build(tmp_path, languages=["python"])  # no .git in tmp_path
+    subprocess.run(
+        ["make", "improvement", "TEXT=Test idea"], cwd=root, capture_output=True, check=True
+    )
+    last = (root / "docs/improvements.md").read_text(encoding="utf-8").splitlines()[-1]
+    assert re.fullmatch(r"- \[\d{4}-\d{2}-\d{2}\] Test idea", last)
+
+
+def test_improvement_target_stamps_the_commit_in_a_git_repo(tmp_path: Path) -> None:
+    root = _build(tmp_path, languages=["python"])
+    git = ["git", "-c", "user.email=t@t", "-c", "user.name=t"]
+    subprocess.run([*git, "init", "-q"], cwd=root, check=True)
+    subprocess.run([*git, "add", "-A"], cwd=root, check=True)
+    subprocess.run([*git, "commit", "-q", "-m", "x"], cwd=root, check=True)
+    head = subprocess.run(
+        ["git", "rev-parse", "--short", "HEAD"], cwd=root, capture_output=True, text=True
+    ).stdout.strip()
+    subprocess.run(
+        ["make", "improvement", "TEXT=Test idea"], cwd=root, capture_output=True, check=True
+    )
+    last = (root / "docs/improvements.md").read_text(encoding="utf-8").splitlines()[-1]
+    assert last == f"- [{head}] Test idea"

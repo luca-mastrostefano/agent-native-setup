@@ -1,0 +1,94 @@
+"""Make "every change ships with a test" mechanical (commit-msg enforcement).
+
+`AGENTS.md` (Goal-Driven Execution) requires each change to ship with the test
+that proves it. This `commit-msg` hook fires when a commit changes source under
+`src/` but stages nothing test-like, and is satisfied by *either* a staged test
+*or* a logged waiver in the commit message:
+
+    Tests-Not-Needed: <reason>
+
+It checks presence, not quality — review still owns quality. The RFC that
+introduced it lives in `docs/rfc/`.
+"""
+
+from __future__ import annotations
+
+import re
+import subprocess
+import sys
+from pathlib import Path
+
+WAIVER_RE = re.compile(
+    r"^\s*Tests-Not-Needed:\s*(\S.*?)\s*$",
+    re.IGNORECASE | re.MULTILINE,
+)
+
+
+def _git(*args: str) -> str | None:
+    """Run a git command; return stdout, or None if it fails."""
+    cmd = ["git", *args]
+    try:
+        out = subprocess.run(cmd, check=True, capture_output=True, text=True)
+    except (OSError, subprocess.CalledProcessError):
+        return None
+    return out.stdout
+
+
+def _staged() -> list[tuple[str, str]]:
+    """(status, path) for each staged change; path is the post-rename name."""
+    out = _git("diff", "--cached", "--name-status") or ""
+    changes: list[tuple[str, str]] = []
+    for line in out.splitlines():
+        fields = line.split("\t")
+        if len(fields) >= 2:
+            changes.append((fields[0][0], fields[-1]))
+    return changes
+
+
+def is_test_path(path: str) -> bool:
+    """True for anything test-like: under tests/, or test_* / *_test.py files."""
+    parts = Path(path).parts
+    name = Path(path).name
+    if "tests" in parts:
+        return True
+    return name.startswith("test_") or name.endswith("_test.py")
+
+
+def find_triggers(changes: list[tuple[str, str]]) -> list[str]:
+    """Source files this commit changes without bringing a test along."""
+    triggers: list[str] = []
+    for status, path in changes:
+        if status == "D" or not path.startswith("src/"):
+            continue
+        if path.endswith(".py") and not is_test_path(path):
+            triggers.append(f"source change without a staged test ({path})")
+    return triggers
+
+
+def is_satisfied(changes: list[tuple[str, str]], message: str) -> bool:
+    staged_test = any(is_test_path(p) for status, p in changes if status != "D")
+    return staged_test or bool(WAIVER_RE.search(message))
+
+
+def main(argv: list[str]) -> int:
+    message = Path(argv[0]).read_text(encoding="utf-8") if argv else ""
+    changes = _staged()
+    triggers = find_triggers(changes)
+    if not triggers or is_satisfied(changes, message):
+        return 0
+
+    bullet = "\n".join(f"  - {t}" for t in triggers)
+    print(
+        "Tests check: this commit changes source code but stages no test.\n\n"
+        f"Triggered by:\n{bullet}\n\n"
+        "Do one of:\n"
+        "  - stage the test that proves the change (see AGENTS.md), or\n"
+        "  - record why none is needed with a commit-message trailer:\n"
+        "        Tests-Not-Needed: <reason>",
+        file=sys.stderr,
+    )
+    return 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main(sys.argv[1:]))

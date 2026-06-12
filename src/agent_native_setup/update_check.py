@@ -18,6 +18,9 @@ from typing import Any
 _REPO = "luca-mastrostefano/agent-native-setup"
 _RELEASES_API = f"https://api.github.com/repos/{_REPO}/releases/latest"
 _CACHE_TTL = 24 * 60 * 60  # check GitHub at most once a day
+# Failures are cached too (with a shorter TTL) so an offline machine pays the
+# network timeout once an hour, not on every run.
+_FAILURE_TTL = 60 * 60
 _TIMEOUT = 1.5  # seconds — fail fast rather than make the user wait
 
 
@@ -47,17 +50,20 @@ def _latest_with_cache(now: float) -> str | None:
     path = _cache_path()
     try:
         cached: dict[str, Any] = json.loads(path.read_text(encoding="utf-8"))
-        if now - cached.get("checked_at", 0) < _CACHE_TTL:
+        ttl = _CACHE_TTL if cached.get("latest") else _FAILURE_TTL
+        if now - cached.get("checked_at", 0) < ttl:
             return cached.get("latest")
     except (OSError, ValueError):
         pass
-    latest = _fetch_latest_tag()
-    if latest is not None:
-        try:
-            path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_text(json.dumps({"checked_at": now, "latest": latest}), encoding="utf-8")
-        except OSError:
-            pass
+    try:
+        latest = _fetch_latest_tag()
+    except Exception:  # network/API failure — cache it so we don't re-pay the timeout
+        latest = None
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps({"checked_at": now, "latest": latest}), encoding="utf-8")
+    except OSError:
+        pass
     return latest
 
 

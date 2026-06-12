@@ -6,11 +6,12 @@ import textwrap
 
 from agent_native_setup.config import WizardConfig
 from agent_native_setup.languages import Language, get
+from agent_native_setup.pins import sub
 from agent_native_setup.scaffold import Scaffolder
 
-BASE_HOOKS = """\
+BASE_HOOKS = sub("""\
 - repo: https://github.com/pre-commit/pre-commit-hooks
-  rev: v5.0.0
+  rev: @PRE_COMMIT_HOOKS_REV@
   hooks:
     - id: trailing-whitespace
     - id: end-of-file-fixer
@@ -19,41 +20,41 @@ BASE_HOOKS = """\
     - id: check-merge-conflict
     - id: check-added-large-files
       args: [--maxkb=4096]
-"""
+""")
 
 # Secrets scanning, language-agnostic — runs on every commit.
-GITLEAKS_HOOK = """\
+GITLEAKS_HOOK = sub("""\
 - repo: https://github.com/gitleaks/gitleaks
-  rev: v8.24.2
+  rev: @GITLEAKS_REV@
   hooks:
     - id: gitleaks
-"""
+""")
 
 # Lints the generated workflows; only added when GitHub Actions are scaffolded. Runs
 # only on .github/workflows/ changes. actionlint-py self-installs via pre-commit's
 # Python backend (no Go/Docker).
-ACTIONLINT_HOOK = """\
+ACTIONLINT_HOOK = sub("""\
 - repo: https://github.com/Mateusz-Grzelinski/actionlint-py
-  rev: v1.7.12.24
+  rev: @ACTIONLINT_PY_REV@
   hooks:
     - id: actionlint
       files: ^\\.github/workflows/
-"""
+""")
 
 # Guards the Python helpers the docs machinery ships (tools/checks/*.py) when Python
 # isn't a selected language — otherwise they'd ship unlinted, breaking the contract's
 # "wire up every language" rule. Scoped to tools/ and run via pre-commit's managed env
 # (no manual install); ruff's defaults apply, so no pyproject is needed.
-TOOLS_RUFF_HOOK = """\
+TOOLS_RUFF_HOOK = sub("""\
 - repo: https://github.com/astral-sh/ruff-pre-commit
-  rev: v0.15.15
+  rev: @RUFF_PRE_COMMIT_REV@
   hooks:
     - id: ruff-check
       args: [--fix]
       files: ^tools/.*\\.py$
     - id: ruff-format
       files: ^tools/.*\\.py$
-"""
+""")
 
 # Mechanical enforcement: a changed RFC's Status drives which folder it lives in.
 RFC_STATUS_HOOK = """\
@@ -67,9 +68,9 @@ RFC_STATUS_HOOK = """\
       files: ^docs/rfc/.*\\.md$
 """
 
-# commit-msg gates for RFC + architecture-doc discipline. Triggers key on the
-# pyproject/src layout, so these ship only for Python projects (see docs.generate).
-COMMIT_MSG_HOOKS = """\
+# commit-msg gate: RFC discipline for structural changes (incl. new dependencies in
+# any manifest). Ships for every language with a Dependabot ecosystem (see docs.generate).
+RFC_NEEDED_HOOK = """\
 - repo: local
   hooks:
     - id: rfc-needed
@@ -77,9 +78,21 @@ COMMIT_MSG_HOOKS = """\
       entry: python tools/checks/rfc_needed.py
       language: system
       stages: [commit-msg]
+"""
+
+# commit-msg gates keyed to the Python src/+tests/ layout, so they ship only for
+# Python projects (see docs.generate): architecture-doc sync and test accompaniment.
+PY_LAYOUT_COMMIT_HOOKS = """\
+- repo: local
+  hooks:
     - id: docs-sync
       name: architecture docs for new components
       entry: python tools/checks/docs_sync.py
+      language: system
+      stages: [commit-msg]
+    - id: tests-needed
+      name: tests accompany code changes
+      entry: python tools/checks/tests_needed.py
       language: system
       stages: [commit-msg]
 """
@@ -148,6 +161,24 @@ _TOOLS_RUFF_CMDS = {
 # works even when Python isn't a selected language (no pytest to install).
 TOOLS_TESTS_CMD = "python -m unittest discover -s tools/checks"
 
+# Appends a stamped entry to the improvements backlog, encoding its convention (anchor
+# each idea to the commit it was noted at, or the date when there's no git) as a runner
+# target so agents log ideas the right way instead of re-deriving the format. The
+# argument placeholder differs per runner: Task's {{.CLI_ARGS}} vs a Make variable.
+# Deliberately no empty-input guard: a blank idea appends a visible dangling bullet
+# that's trivially fixed, and the target's desc/usage already shows the syntax.
+_IMPROVEMENT_STAMP = "$(git rev-parse --short HEAD 2>/dev/null || date +%F)"
+_IMPROVEMENT_CMD_TASK = f'echo "- [{_IMPROVEMENT_STAMP}] {{{{.CLI_ARGS}}}}" >> docs/improvements.md'
+_IMPROVEMENT_CMD_MAKE = (
+    f'echo "- [{_IMPROVEMENT_STAMP.replace("$(", "$$(")}] $(TEXT)" >> docs/improvements.md'
+)
+# The calling convention per runner — the single source for the desc strings here, the
+# AGENTS.md command surface (ai_context.py), and the improvements.md pointer (docs.py).
+IMPROVEMENT_USAGE = {
+    "task": 'task improvement -- "<idea>"',
+    "make": 'make improvement TEXT="<idea>"',
+}
+
 # git exports GIT_DIR / GIT_WORK_TREE / GIT_INDEX_FILE into every hook it runs, and those
 # override `cwd` — so a test suite wired into a pre-push hook that shells out to git in a
 # temp dir would operate on THIS repo, not the temp one (a silent trap: the same command
@@ -191,8 +222,11 @@ def _test_hook(lang: Language) -> str:
 
 
 def _pre_commit_config(config: WizardConfig, langs: list[Language]) -> str:
-    # The RFC/docs commit-msg gates only make sense with docs and a Python layout.
-    commit_msg = config.include_docs and any(lang.key == "python" for lang in langs)
+    # Commit-msg gates need docs (the helpers ship with the docs machinery). The RFC
+    # gate also needs a dependency manifest; the layout gates need Python itself.
+    rfc_gate = config.include_docs and any(lang.dependabot_ecosystem for lang in langs)
+    py_gates = config.include_docs and any(lang.key == "python" for lang in langs)
+    commit_msg = rfc_gate or py_gates
     blocks = [BASE_HOOKS] + ([GITLEAKS_HOOK] if config.include_security else [])
     if config.include_ci and config.use_github_actions:
         blocks.append(ACTIONLINT_HOOK)  # lint the workflows we generate
@@ -201,8 +235,10 @@ def _pre_commit_config(config: WizardConfig, langs: list[Language]) -> str:
         blocks.append(TOOLS_RUFF_HOOK)
     if config.include_docs:
         blocks.append(RFC_STATUS_HOOK)
-    if commit_msg:
-        blocks.append(COMMIT_MSG_HOOKS)
+    if rfc_gate:
+        blocks.append(RFC_NEEDED_HOOK)
+    if py_gates:
+        blocks.append(PY_LAYOUT_COMMIT_HOOKS)
     blocks += [h for h in (_test_hook(lang) for lang in langs) if h]
     if config.include_docs:  # exercise the shipped tools/checks helpers before push
         blocks.append(TOOLS_TESTS_HOOK)
@@ -263,6 +299,11 @@ def _taskfile(config: WizardConfig, langs: list[Language], hooks: bool) -> str:
             "move RFCs into the folder matching their Status",
             ["python tools/checks/sync_rfc_status.py"],
         )
+        lines += task(
+            "improvement",
+            f"append a commit-stamped idea to docs/improvements.md ({IMPROVEMENT_USAGE['task']})",
+            [_IMPROVEMENT_CMD_TASK],
+        )
     return "\n".join(lines) + "\n"
 
 
@@ -295,7 +336,7 @@ def _makefile(config: WizardConfig, langs: list[Language], hooks: bool) -> str:
         phony.append("test")
     phony.append("quality")
     if config.include_docs:
-        phony.append("rfc-sync")
+        phony += ["rfc-sync", "improvement"]
 
     out = [f".PHONY: {' '.join(phony)}", ""]
     out += [
@@ -331,6 +372,11 @@ def _makefile(config: WizardConfig, langs: list[Language], hooks: bool) -> str:
             "rfc-sync",
             "move RFCs into the folder matching their Status",
             ["python tools/checks/sync_rfc_status.py"],
+        )
+        out += target(
+            "improvement",
+            f"append a commit-stamped idea to docs/improvements.md ({IMPROVEMENT_USAGE['make']})",
+            [_IMPROVEMENT_CMD_MAKE],
         )
     return "\n".join(out).rstrip() + "\n"
 

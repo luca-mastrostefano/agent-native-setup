@@ -349,7 +349,8 @@ def _intro() -> None:
 
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(sys.argv[1:] if argv is None else argv)
-    out = Path(args.output).expanduser()
+    # resolve() so the default project name works for `-o .` (Path(".").name is "").
+    out = Path(args.output).expanduser().resolve()
     interactive = not args.yes and sys.stdin.isatty()
     if interactive:
         _intro()
@@ -380,6 +381,13 @@ def main(argv: list[str] | None = None) -> int:
             f"Choose from: {', '.join(LANG_KEYS)}"
         )
         return 2
+    unknown_tools = set(config.ai_tools) - set(AI_TOOLS)
+    if unknown_tools:
+        console.print(
+            f"[red]Unknown AI tool(s): {', '.join(sorted(unknown_tools))}[/]. "
+            f"Choose from: {', '.join(AI_TOOLS)}"
+        )
+        return 2
 
     config.existing_runner = existing_runner
     if existing_runner:
@@ -402,8 +410,8 @@ def main(argv: list[str] | None = None) -> int:
         build(config, sc)
     except (KeyboardInterrupt, EOFError):
         console.print("\n[yellow]Cancelled.[/]")
-        if removed := sc.rollback():
-            console.print(f"[yellow]Rolled back {removed} newly created item(s).[/]")
+        if rolled_back := sc.rollback():
+            console.print(f"[yellow]Rolled back {rolled_back} created or overwritten item(s).[/]")
         return 130
     _summary(config, sc)
     # Advisory, interactive-only: never in scripted/CI runs, and never blocks or fails.

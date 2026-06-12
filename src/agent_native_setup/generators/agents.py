@@ -9,12 +9,24 @@ from __future__ import annotations
 import json
 
 from agent_native_setup.config import WizardConfig
+from agent_native_setup.languages import get
 from agent_native_setup.scaffold import Scaffolder
 
 # Make has no built-in target lister; grep self-documenting `## ` targets, else names.
 _MAKE_LIST_GREP = (
     "grep -E '^[A-Za-z0-9_.-]+:.*## ' Makefile | sed -E 's/:.*## /  /' "
     "|| grep -E '^[A-Za-z0-9_.-]+:' Makefile | cut -d: -f1 | sort -u"
+)
+
+# No-binary fallback: pull task names (and their desc: lines, indented) straight from
+# the Taskfile, so the agent still gets the command surface when go-task isn't installed.
+# First-match-only loop, not `cat` over all spellings: on a case-insensitive filesystem
+# (macOS, Windows) Taskfile.yml and taskfile.yml are the same file and would list twice.
+# The trailing pipeline exits 0 either way, so the hook never reports failure.
+_TASKFILE_LIST_SED = (
+    "for f in Taskfile.yml taskfile.yml Taskfile.yaml taskfile.yaml; do "
+    'if [ -f "$f" ]; then cat "$f"; break; fi; done '
+    "| sed -n -E 's/^  ([A-Za-z0-9_.-]+):$/\\1/p; s/^    desc: */  /p'"
 )
 
 
@@ -25,14 +37,123 @@ def _session_list_command(config: WizardConfig) -> str:
     """
     if config.runner == "task":
         return (
-            "command -v task >/dev/null 2>&1 && task --list "
-            "|| echo 'task not found - install go-task: https://taskfile.dev'"
+            "command -v task >/dev/null 2>&1 && task --list || { "
+            "echo 'task not found (install go-task: https://taskfile.dev) "
+            "- targets from the Taskfile:'; "
+            f"{_TASKFILE_LIST_SED}; }}"
         )
     if config.existing_runner:  # unknown Makefile — grep targets (no make binary needed)
         return _MAKE_LIST_GREP
     # our generated Makefile is self-documenting via a `help` target
     return "command -v make >/dev/null 2>&1 && make help || echo 'make not found on PATH'"
 
+
+# PostToolUse helper: format the file the agent just edited, so an edit never reaches
+# the format gate unformatted. Lives in tools/checks/ so the docs machinery's guards
+# (the scoped ruff hook and the unittest pre-push/CI runner, where hooks/CI are on)
+# cover it — which is why it ships only with include_docs (see generate()). Kept
+# <=88 cols / default-ruff-format stable like the other shipped helpers.
+FORMAT_ON_EDIT = '''"""Auto-format a just-edited file (a Claude Code PostToolUse hook helper).
+
+Reads the hook event JSON from stdin, pulls the edited file's path, and runs
+the project's formatter for that file type, so an agent's edit never reaches
+the format gate unformatted. Best-effort by design: any miss (no formatter on
+PATH, unknown extension, missing file, bad JSON) exits 0 silently — pre-commit
+remains the enforcer; this hook only saves the round-trip.
+"""
+
+from __future__ import annotations
+
+import json
+import shutil
+import subprocess
+import sys
+from pathlib import Path
+
+# file extension -> formatter argv (the file's path is appended)
+FORMATTERS: dict[str, list[str]] = {
+{% for ext, cmd in formatters %}    "{{ ext }}": {{ cmd | tojson }},
+{% endfor %}}
+
+
+def format_command(path_str: str) -> list[str] | None:
+    """The formatter invocation for ``path_str``, or None when nothing applies."""
+    path = Path(path_str)
+    cmd = FORMATTERS.get(path.suffix)
+    if not cmd or not path.is_file() or shutil.which(cmd[0]) is None:
+        return None
+    return [*cmd, path_str]
+
+
+def main() -> int:
+    try:
+        event = json.load(sys.stdin)
+    except ValueError:
+        return 0
+    if not isinstance(event, dict):
+        return 0
+    tool_input = event.get("tool_input") or {}
+    cmd = format_command(str(tool_input.get("file_path") or ""))
+    if cmd:
+        subprocess.run(cmd, capture_output=True, check=False)
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
+'''
+
+TEST_FORMAT_ON_EDIT = '''"""Tests for the format-on-edit hook helper (stdlib unittest)."""
+
+import importlib.util
+import io
+import tempfile
+import unittest
+from pathlib import Path
+from unittest import mock
+
+_HELPER = Path(__file__).resolve().parent / "format_on_edit.py"
+_spec = importlib.util.spec_from_file_location("format_on_edit", _HELPER)
+assert _spec and _spec.loader
+format_on_edit = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(format_on_edit)
+
+EXT, CMD = sorted(format_on_edit.FORMATTERS.items())[0]
+
+
+class FormatCommand(unittest.TestCase):
+    def test_known_extension_gets_formatter_plus_path(self) -> None:
+        with tempfile.NamedTemporaryFile(suffix=EXT) as f:
+            with mock.patch.object(format_on_edit.shutil, "which", lambda _: "/bin/x"):
+                cmd = format_on_edit.format_command(f.name)
+        self.assertEqual(cmd, [*CMD, f.name])
+
+    def test_unknown_extension_is_skipped(self) -> None:
+        with tempfile.NamedTemporaryFile(suffix=".nope") as f:
+            self.assertIsNone(format_on_edit.format_command(f.name))
+
+    def test_missing_file_is_skipped(self) -> None:
+        self.assertIsNone(format_on_edit.format_command("no/such/file" + EXT))
+
+    def test_missing_formatter_binary_is_skipped(self) -> None:
+        with tempfile.NamedTemporaryFile(suffix=EXT) as f:
+            with mock.patch.object(format_on_edit.shutil, "which", lambda _: None):
+                self.assertIsNone(format_on_edit.format_command(f.name))
+
+
+class Main(unittest.TestCase):
+    def test_bad_json_on_stdin_still_exits_zero(self) -> None:
+        with mock.patch.object(format_on_edit.sys, "stdin", io.StringIO("{nope")):
+            self.assertEqual(format_on_edit.main(), 0)
+
+    def test_event_without_file_path_exits_zero(self) -> None:
+        with mock.patch.object(format_on_edit.sys, "stdin", io.StringIO("{}")):
+            self.assertEqual(format_on_edit.main(), 0)
+
+
+if __name__ == "__main__":
+    unittest.main()
+'''
 
 AGENTS_README = """\
 # Agents & commands
@@ -125,6 +246,34 @@ secrets, repo-wide reformatting). When every step passes, delete `ONBOARDING.md`
 """
 
 
+def _file_formatters(config: WizardConfig) -> list[tuple[str, list[str]]]:
+    """(extension, formatter argv) pairs for the selected languages, sorted."""
+    pairs = [
+        (ext, lang.format_file_cmd)
+        for lang in get(config.languages)
+        if lang.format_file_cmd
+        for ext in lang.detect_exts
+    ]
+    return sorted(pairs)
+
+
+def _permission_allow(config: WizardConfig) -> list[str]:
+    """Pre-approve what the contract itself tells the agent to run.
+
+    Only the runner the wizard authored is blanket-approved — its targets are known
+    benign (lint/format/test/...). A pre-existing runner's targets are unknown
+    (`make deploy`? `task release`?), so those still prompt. `pre-commit` includes
+    `uninstall`/`autoupdate`; accepted — any effect lands in the reviewable diff.
+    """
+    rules = []
+    if config.include_quality and not config.existing_runner:
+        rules.append(f"Bash({config.runner}:*)")  # the command surface we generated
+    if config.include_quality and config.git_hooks:
+        rules.append("Bash(pre-commit:*)")
+    rules += ["Bash(git status:*)", "Bash(git diff:*)", "Bash(git log:*)", "Bash(git show:*)"]
+    return rules
+
+
 def generate(config: WizardConfig, sc: Scaffolder) -> None:
     if "claude" not in config.ai_tools:
         return
@@ -141,10 +290,28 @@ def generate(config: WizardConfig, sc: Scaffolder) -> None:
     if config.include_quality or config.include_ci:
         sc.write(".claude/commands/onboard.md", ONBOARD_COMMAND)
 
+    # Format-on-edit needs a formatter-capable language, the quality tooling it feeds,
+    # and docs — the docs machinery's guards (scoped ruff + the unittest runner) are
+    # what keep the shipped helper linted and tested.
+    formatters = _file_formatters(config)
+    format_hook = bool(formatters) and config.include_quality and config.include_docs
+    if format_hook:
+        sc.render_write("tools/checks/format_on_edit.py", FORMAT_ON_EDIT, formatters=formatters)
+        sc.write("tools/checks/test_format_on_edit.py", TEST_FORMAT_ON_EDIT)
+
+    settings: dict[str, object] = {"permissions": {"allow": _permission_allow(config)}}
+    hooks: dict[str, object] = {}
     # SessionStart hook: inject the live command surface into the agent's context.
     if config.include_quality or config.existing_runner:
         list_cmd = _session_list_command(config)
-        settings = {
-            "hooks": {"SessionStart": [{"hooks": [{"type": "command", "command": list_cmd}]}]}
-        }
-        sc.write(".claude/settings.json", json.dumps(settings, indent=2) + "\n")
+        hooks["SessionStart"] = [{"hooks": [{"type": "command", "command": list_cmd}]}]
+    if format_hook:
+        hooks["PostToolUse"] = [
+            {
+                "matcher": "Edit|Write",
+                "hooks": [{"type": "command", "command": "python tools/checks/format_on_edit.py"}],
+            }
+        ]
+    if hooks:
+        settings["hooks"] = hooks
+    sc.write(".claude/settings.json", json.dumps(settings, indent=2) + "\n")

@@ -82,21 +82,21 @@ def _steps(config: WizardConfig) -> list[str]:
     # there are deps to fetch (e.g. node's npm install / lockfile).
     if config.git_hooks or has_setup:
         # The pipx prereq + the hook-specific notes only apply to the hooks, which exist
-        # only with git_hooks. (lychee's hook is language: system; the RFC/docs hooks run
-        # `python tools/checks/*.py`.)
+        # only with git_hooks. (The RFC/docs hooks run `python tools/checks/*.py`.)
         if config.git_hooks:
             pre = (
                 "if `pre-commit` isn't on your PATH, install it first "
                 "(`pipx install pre-commit`, or `pip install pre-commit`), then "
             )
             py_clause = (
-                " The RFC/docs hooks run `python` helpers, so `python` must be on your PATH too."
+                " The commit-time guard hooks run `python` helpers, so `python` must "
+                "be on your PATH too."
                 if config.include_docs
                 else ""
             )
             lychee_clause = (
-                " The HTML link-check hook needs `lychee` on your PATH too "
-                "(`brew install lychee` or `cargo install lychee`)."
+                " The HTML link-check hook downloads its `lychee` binary on the first "
+                "hook run (one-time, needs network) — expect that run to take a moment."
                 if "html" in config.languages
                 else ""
             )

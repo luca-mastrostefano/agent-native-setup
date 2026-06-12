@@ -48,6 +48,11 @@ repos:
         entry: python tools/checks/docs_sync.py
         language: system
         stages: [commit-msg]  # the commit message file is passed as the argument
+      - id: tests-needed
+        name: tests accompany code changes
+        entry: python tools/checks/tests_needed.py
+        language: system
+        stages: [commit-msg]  # the commit message file is passed as the argument
   - repo: local
     hooks:
       # env -u … scrubs git's GIT_DIR/GIT_WORK_TREE/GIT_INDEX_FILE (exported into every

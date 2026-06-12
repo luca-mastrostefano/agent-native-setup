@@ -58,6 +58,28 @@ def test_network_error_is_a_silent_noop(monkeypatch: pytest.MonkeyPatch, tmp_pat
     assert con.printed == []
 
 
+def test_offline_failure_is_cached_with_short_ttl(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # An offline machine must pay the network timeout once an hour, not every run.
+    monkeypatch.setattr(update_check, "_cache_path", lambda: tmp_path / "c.json")
+    monkeypatch.setattr(update_check, "_installed_version", lambda: "0.1.0")
+    calls = {"n": 0}
+
+    def boom() -> str:
+        calls["n"] += 1
+        raise OSError("offline")
+
+    monkeypatch.setattr(update_check, "_fetch_latest_tag", boom)
+    con = _Console()
+    update_check.maybe_notify(con, now=1000.0)
+    update_check.maybe_notify(con, now=1000.0 + 60)  # within failure TTL -> no refetch
+    assert calls["n"] == 1
+    update_check.maybe_notify(con, now=1000.0 + update_check._FAILURE_TTL + 1)  # expired
+    assert calls["n"] == 2
+    assert con.printed == []  # still a silent no-op throughout
+
+
 def test_cache_avoids_a_second_fetch_within_the_day(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:

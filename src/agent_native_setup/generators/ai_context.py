@@ -9,6 +9,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from agent_native_setup.config import WizardConfig
+from agent_native_setup.generators import quality
 from agent_native_setup.languages import get
 from agent_native_setup.scaffold import Scaffolder, render
 
@@ -166,7 +167,7 @@ This repository follows an agent-native setup. **Start with
 [`AGENTS.md`](./AGENTS.md)** — the single source of truth for conventions, the
 command surface, and the four execution principles.
 
-{% if show_quickstart %}Requires [`pre-commit`](https://pre-commit.com){% if runner == "task" %} and [`task`](https://taskfile.dev){% endif %}{% if needs_lychee %}; the HTML link-check hook also needs [`lychee`](https://lychee.cli.rs) on your PATH (`brew install lychee`, `cargo install lychee`, or a release binary){% endif %}{% if surface_tools %}; the command surface also calls {{ surface_tools }} directly, so put {{ surface_pron }} on your PATH (pipx/uv/pip){% endif %}.
+{% if show_quickstart %}Requires [`pre-commit`](https://pre-commit.com){% if runner == "task" %} and [`task`](https://taskfile.dev){% endif %}{% if surface_tools %}; the command surface also calls {{ surface_tools }} directly, so put {{ surface_pron }} on your PATH (pipx/uv/pip){% endif %}{% if needs_lychee %}. The HTML link-check hook downloads its [`lychee`](https://lychee.cli.rs) binary on the first hook run (one-time, needs network){% endif %}.
 
 ```bash
 {{ runner }} install   # set up git hooks (once)
@@ -245,6 +246,9 @@ def generate(config: WizardConfig, sc: Scaffolder) -> None:
         quality_commands.append(("full local gate", f"{verb} quality"))
         if config.include_docs:
             quality_commands.append(("sync RFCs to their Status folder", f"{verb} rfc-sync"))
+            quality_commands.append(
+                ("log an idea in docs/improvements.md", quality.IMPROVEMENT_USAGE[verb])
+            )
         surface_note = (
             "Run `task --list` for the full, current set."
             if verb == "task"

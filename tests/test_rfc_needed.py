@@ -118,3 +118,50 @@ def test_dep_names_normalizes_and_strips_specifiers() -> None:
         'dependencies = ["Foo_Bar>=1.0", "baz[extra]~=2", "qux ; python_version<\'3.11\'"]\n'
     )
     assert rfc_needed.dep_names(text) == {"foo-bar", "baz", "qux"}
+
+
+# --- the other manifests (RFC gate ships for any language with one) -------------
+
+
+def _setup_package_json(repo: Path) -> None:
+    (repo / "package.json").write_text('{"dependencies": {"react": "^19.0.0"}}\n')
+    git(repo, "add", "package.json")
+    git(repo, "commit", "-q", "-m", "base")
+
+
+def test_package_json_dependency_add_without_rfc_fails(repo: Path) -> None:
+    _setup_package_json(repo)
+    (repo / "package.json").write_text('{"dependencies": {"react": "^19.0.0", "zod": "^3.0.0"}}\n')
+    git(repo, "add", "package.json")
+    assert run_hook(repo, "feat: add zod") == 1
+
+
+def test_package_json_version_bump_does_not_fire(repo: Path) -> None:
+    _setup_package_json(repo)
+    (repo / "package.json").write_text('{"dependencies": {"react": "^19.1.0"}}\n')
+    git(repo, "add", "package.json")
+    assert run_hook(repo, "chore: bump react") == 0
+
+
+def test_dep_names_go_mod_skips_indirect() -> None:
+    text = "require (\n\tgithub.com/pkg/errors v0.9.1\n\tgolang.org/x/sys v0.1.0 // indirect\n)\n"
+    assert rfc_needed.dep_names_go_mod(text) == {"github.com/pkg/errors"}
+
+
+def test_dep_names_go_mod_ignores_block_comments() -> None:
+    # A comment whose second word starts with "v" must not become a phantom dep.
+    text = "require (\n\t// vendored deliberately\n\tgithub.com/a v1.0.0\n)\n"
+    assert rfc_needed.dep_names_go_mod(text) == {"github.com/a"}
+
+
+def test_dep_names_cargo_reads_dependency_tables() -> None:
+    text = '[dependencies]\nserde = "1"\n[dev-dependencies]\nrstest = "0.18"\n'
+    assert rfc_needed.dep_names_cargo(text) == {"serde", "rstest"}
+
+
+def test_dep_names_cargo_py310_fallback_handles_dotted_tables() -> None:
+    # The line-scan fallback must agree with the tomllib path, incl. [dependencies.x].
+    text = '[dependencies.serde]\nversion = "1"\n[dev-dependencies]\nrstest = "0.18"\n'
+    expected = {"serde", "rstest"}
+    assert rfc_needed._cargo_names_fallback(text) == expected
+    assert rfc_needed.dep_names_cargo(text) == expected

@@ -10,6 +10,8 @@ import os
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from agent_native_setup.pins import sub
+
 PYPROJECT_TOML = """\
 [project]
 name = "{{ slug }}"
@@ -108,19 +110,19 @@ PRETTIER_CONFIG = """\
 # The JS/TS toolchain the eslint config, CI, and the command surface all assume.
 # Without this, `npm ci`/`npx eslint` can't resolve typescript-eslint and the gate
 # fails immediately; `npm install` writes the lockfile on first run.
-PACKAGE_JSON = """\
+PACKAGE_JSON = sub("""\
 {
   "name": "{{ slug }}",
   "version": "0.1.0",
   "private": true,
   "devDependencies": {
-    "eslint": "^9.18.0",
-    "prettier": "^3.4.2",
-    "typescript": "^5.7.3",
-    "typescript-eslint": "^8.21.0"
+    "eslint": "@ESLINT_RANGE@",
+    "prettier": "@PRETTIER_RANGE@",
+    "typescript": "@TYPESCRIPT_RANGE@",
+    "typescript-eslint": "@TYPESCRIPT_ESLINT_RANGE@"
   }
 }
-"""
+""")
 
 # Strict, no-emit config so `tsc` type-checks without producing output. The gate
 # guards `tsc` (see TS_TYPECHECK) so an empty repo with no .ts files stays green.
@@ -202,6 +204,9 @@ class Language:
     # Local dependency install (e.g. `npm install`), run by the `bootstrap` target so
     # the gate's tools resolve and any lockfile is written. "" if nothing to fetch.
     setup_command: str = ""
+    # Single-file formatter argv (the file's path is appended) — powers the Claude
+    # format-on-edit hook (generators/agents.py). Empty if no formatter is scaffolded.
+    format_file_cmd: list[str] = field(default_factory=list)
     # (label, shell command) pairs surfaced in the task runner / README
     quality_commands: list[tuple[str, str]] = field(default_factory=list)
     # Auto-detection signals for existing projects:
@@ -217,32 +222,32 @@ REGISTRY: dict[str, Language] = {
             "pyproject.toml": PYPROJECT_TOML,
             "tests/test_architecture.py": ARCH_TEST,
         },
-        pre_commit_block="""\
+        pre_commit_block=sub("""\
 - repo: https://github.com/astral-sh/ruff-pre-commit
-  rev: v0.15.15
+  rev: @RUFF_PRE_COMMIT_REV@
   hooks:
     - id: ruff-check
       args: [--fix]
     - id: ruff-format
 - repo: https://github.com/pre-commit/mirrors-mypy
-  rev: v1.18.2
+  rev: @MIRRORS_MYPY_REV@
   hooks:
     - id: mypy
-""",
-        ci_steps="""\
+"""),
+        ci_steps=sub("""\
 - uses: actions/setup-python@v6
   with:
-    python-version: "3.12"
+    python-version: "@PYTHON_VERSION@"
 - run: pipx install ruff
 - run: ruff check .
 - run: ruff format --check .
 - run: python -m pip install -e . pytest
 - run: pytest
-""",
-        ci_ratchet_steps="""\
+"""),
+        ci_ratchet_steps=sub("""\
 - uses: actions/setup-python@v6
   with:
-    python-version: "3.12"
+    python-version: "@PYTHON_VERSION@"
 - run: pipx install ruff
 - name: ruff (changed files)
   run: |
@@ -250,12 +255,12 @@ REGISTRY: dict[str, Language] = {
     [ -z "$files" ] && { echo "no Python changes"; exit 0; }
     ruff check $files
     ruff format --check $files
-""",
-        ci_security_steps="""\
-- uses: pypa/gh-action-pip-audit@v1.1.0
+"""),
+        ci_security_steps=sub("""\
+- uses: pypa/gh-action-pip-audit@@PIP_AUDIT_ACTION_REV@
   with:
     inputs: .
-""",
+"""),
         gitignore=[
             "__pycache__/",
             "*.py[cod]",
@@ -271,6 +276,7 @@ REGISTRY: dict[str, Language] = {
             ("typecheck", "mypy ."),
             ("test", "pytest"),
         ],
+        format_file_cmd=["ruff", "format"],
         dependabot_ecosystem="pip",
         detect_files=["pyproject.toml", "setup.py", "setup.cfg", "requirements*.txt", "Pipfile"],
         detect_exts=[".py"],
@@ -299,10 +305,10 @@ REGISTRY: dict[str, Language] = {
       language: system
       files: \\.(js|jsx|mjs|cjs|ts|tsx)$
 """,
-        ci_steps=f"""\
+        ci_steps=sub(f"""\
 - uses: actions/setup-node@v6
   with:
-    node-version: "20"
+    node-version: "@NODE_VERSION@"
 - run: npm ci || npm install
 - run: npx prettier --check .
 - run: npx eslint .
@@ -310,11 +316,11 @@ REGISTRY: dict[str, Language] = {
   run: |
     {TS_TYPECHECK}
 - run: npm test --if-present
-""",
-        ci_ratchet_steps="""\
+"""),
+        ci_ratchet_steps=sub("""\
 - uses: actions/setup-node@v6
   with:
-    node-version: "20"
+    node-version: "@NODE_VERSION@"
 - run: npm ci || npm install
 - name: prettier + eslint (changed files)
   run: |
@@ -322,14 +328,14 @@ REGISTRY: dict[str, Language] = {
     [ -z "$files" ] && { echo "no JS/TS changes"; exit 0; }
     npx prettier --check $files
     npx eslint $files
-""",
-        ci_security_steps="""\
+"""),
+        ci_security_steps=sub("""\
 - uses: actions/setup-node@v6
   with:
-    node-version: "20"
+    node-version: "@NODE_VERSION@"
 - run: npm ci || npm install
 - run: npm audit --audit-level=high
-""",
+"""),
         gitignore=["node_modules/", "dist/", ".next/", "*.tsbuildinfo"],
         setup_command="npm install",  # installs the pinned toolchain + writes package-lock.json
         quality_commands=[
@@ -339,6 +345,7 @@ REGISTRY: dict[str, Language] = {
             ("typecheck", TS_TYPECHECK),
             ("test", "npm test --if-present"),
         ],
+        format_file_cmd=["npx", "prettier", "--write"],
         dependabot_ecosystem="npm",
         detect_files=["package.json", "tsconfig.json"],
         detect_exts=[".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs"],
@@ -362,18 +369,18 @@ REGISTRY: dict[str, Language] = {
       pass_filenames: false
       types: [go]
 """,
-        ci_steps="""\
+        ci_steps=sub("""\
 - uses: actions/setup-go@v6
   with:
-    go-version: "1.22"
+    go-version: "@GO_VERSION@"
 - uses: golangci/golangci-lint-action@v6
 - run: test -z "$(gofmt -l .)"
 - run: go test ./...
-""",
-        ci_ratchet_steps="""\
+"""),
+        ci_ratchet_steps=sub("""\
 - uses: actions/setup-go@v6
   with:
-    go-version: "1.22"
+    go-version: "@GO_VERSION@"
 - uses: golangci/golangci-lint-action@v6
   with:
     args: --new-from-rev=${{ github.event.pull_request.base.sha }}
@@ -383,7 +390,7 @@ REGISTRY: dict[str, Language] = {
     [ -z "$files" ] && { echo "no Go changes"; exit 0; }
     unformatted=$(gofmt -l $files)
     [ -z "$unformatted" ] || { echo "gofmt needed:"; echo "$unformatted"; exit 1; }
-""",
+"""),
         ci_security_steps="""\
 - uses: golang/govulncheck-action@v1
 """,
@@ -396,6 +403,7 @@ REGISTRY: dict[str, Language] = {
             ("typecheck", "go vet ./..."),
             ("test", "go test ./..."),
         ],
+        format_file_cmd=["gofmt", "-w"],
         dependabot_ecosystem="gomod",
         detect_files=["go.mod"],
         detect_exts=[".go"],
@@ -454,6 +462,8 @@ REGISTRY: dict[str, Language] = {
             ("typecheck", "cargo check"),
             ("test", "cargo test"),
         ],
+        # rustfmt formats one file; edition matches the scaffolded rustfmt.toml.
+        format_file_cmd=["rustfmt", "--edition", "2021"],
         dependabot_ecosystem="cargo",
         detect_files=["Cargo.toml"],
         detect_exts=[".rs"],
@@ -462,34 +472,35 @@ REGISTRY: dict[str, Language] = {
         key="html",
         label="HTML",
         config_files={".htmlhintrc": HTMLHINTRC},
-        # htmlhint self-installs via pre-commit's node backend, but lychee's hook is
-        # `language: system` — it needs a `lychee` binary already on PATH (README and
-        # ONBOARDING flag the install; `lychee-docker` is the no-binary alternative).
-        pre_commit_block="""\
+        # Both hooks self-install: htmlhint via pre-commit's node backend, lychee via
+        # the hook's own script (`language: script`, lychee >= 0.16), which downloads
+        # the binary with cargo-binstall on the first hook run — no pre-installed
+        # `lychee` needed, just network once (README and ONBOARDING flag it).
+        pre_commit_block=sub("""\
 - repo: https://github.com/Lucas-C/pre-commit-hooks-nodejs
-  rev: v1.1.2
+  rev: @HTML_HOOKS_NODEJS_REV@
   hooks:
     - id: htmlhint
 - repo: https://github.com/lycheeverse/lychee.git
-  rev: v0.15.1
+  rev: @LYCHEE_HOOK_REV@
   hooks:
     - id: lychee
       args: [--offline, --no-progress]
-""",
-        ci_steps="""\
+"""),
+        ci_steps=sub("""\
 - uses: actions/setup-node@v6
   with:
-    node-version: "20"
-- run: npx --yes htmlhint@1.1.4 "**/*.html"
+    node-version: "@NODE_VERSION@"
+- run: npx --yes htmlhint@@HTMLHINT_VERSION@ "**/*.html"
 - uses: lycheeverse/lychee-action@v2
   with:
     args: --offline --no-progress .
     fail: true
-""",
-        ci_ratchet_steps="""\
+"""),
+        ci_ratchet_steps=sub("""\
 - uses: actions/setup-node@v6
   with:
-    node-version: "20"
+    node-version: "@NODE_VERSION@"
 - name: Collect changed HTML
   id: html
   run: |
@@ -497,14 +508,14 @@ REGISTRY: dict[str, Language] = {
     echo "files=$files" >> "$GITHUB_OUTPUT"
 - name: htmlhint (changed files)
   if: steps.html.outputs.files != ''
-  run: npx --yes htmlhint@1.1.4 ${{ steps.html.outputs.files }}
+  run: npx --yes htmlhint@@HTMLHINT_VERSION@ ${{ steps.html.outputs.files }}
 - uses: lycheeverse/lychee-action@v2
   if: steps.html.outputs.files != ''
   with:
     args: --offline --no-progress ${{ steps.html.outputs.files }}
     fail: true
-""",
-        quality_commands=[("lint", 'npx --yes htmlhint@1.1.4 "**/*.html"')],
+"""),
+        quality_commands=[("lint", sub('npx --yes htmlhint@@HTMLHINT_VERSION@ "**/*.html"'))],
         detect_exts=[".html", ".htm"],
     ),
 }
@@ -543,7 +554,10 @@ def detect_runner(root: Path) -> tuple[str, bool]:
     — the zero-install default, where the wizard generates its own Makefile.
     """
     root = Path(root)
-    if any((root / n).is_file() for n in ("Taskfile.yml", "Taskfile.yaml", "taskfile.yml")):
+    # go-task's four base spellings (taskfile/taskfile.go DefaultTaskfiles; the
+    # `.dist` fallback variants are deliberately not treated as "uses task").
+    task_names = ("Taskfile.yml", "taskfile.yml", "Taskfile.yaml", "taskfile.yaml")
+    if any((root / n).is_file() for n in task_names):
         return "task", True
     if any((root / n).is_file() for n in ("Makefile", "makefile", "GNUmakefile")):
         return "make", True

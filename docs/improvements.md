@@ -6,6 +6,8 @@ that needs a real decision into an RFC in `docs/rfc/current/`.
 
 **Start each entry with the short commit you noted it at (`git rev-parse --short HEAD`) in square brackets**, so every idea stays anchored to the state of the code it refers to.
 
+`task improvement -- "<idea>"` appends a correctly-stamped entry here.
+
 ## Known gaps
 
 - **Aggregator as an opt-in CI layer** — a `--megalinter`-style flag adding MegaLinter
@@ -16,10 +18,6 @@ that needs a real decision into an RFC in `docs/rfc/current/`.
   covers JS/TS but nothing lints CSS.
 - **Prettier-for-HTML formatting** — markup formatting in the `html` entry; deferred
   (overlaps the `node` entry's Prettier, lower value than the link/resource gate).
-- **lychee no-binary fallback** — the `html` link-check pre-commit hook is
-  `language: system`, so it needs a `lychee` binary on PATH (now flagged in README +
-  ONBOARDING). For contributors who can't install it, offer the `lychee-docker` hook
-  (needs Docker) or drop the link check to CI-only.
 - **mypy in CI** — `mypy` runs via pre-commit and the `typecheck` target, not in the
   generated CI job (mypy in CI needs a project install). Add once the friction is worth
   it. (`tsc` is now wired into node's CI, guarded for the no-TypeScript-yet case.)
@@ -29,6 +27,12 @@ that needs a real decision into an RFC in `docs/rfc/current/`.
   (npm audit needs a lockfile, pip-audit a resolvable env) may need per-project tuning.
 - **Refresh the remaining CI action pins** — `actions/*` and `gitleaks-action@v3` are on
   Node-24, but `golangci-lint-action@v6` (bumping to v8 forces a golangci-lint **v2 config**
-  migration of `GOLANGCI_CONFIG`), and the other third-party actions (`lychee-action`,
-  `rustsec/audit-check`, `govulncheck-action`) should get a periodic
+  migration of `GOLANGCI_CONFIG`; that migration also unlocks `GO_VERSION` ≥ 1.25 in
+  `pins.py` — golangci-lint v1 tops out at Go 1.24), and the other third-party actions
+  (`lychee-action`, `rustsec/audit-check`, `govulncheck-action`) should get a periodic
   Node-24 / SHA-pin audit. Dependabot's `github-actions` ecosystem will surface these.
+- [b9ede32] **Automate pin freshness** — every version the wizard stamps into generated
+  output now lives in `src/agent_native_setup/pins.py`, but refreshing it is still a
+  manual sweep (check each upstream's releases, e.g. via the GitHub/npm APIs or
+  endoflife.date). A `task`/CI check that diffs `PINS` against latest upstream releases
+  would catch rot (like Node 20 going EOL) without anyone remembering to look.

@@ -27,6 +27,26 @@ def test_interrupt_during_prompts_exits_cleanly(
     assert not (tmp_path / "AGENTS.md").exists()  # nothing scaffolded on cancel
 
 
+def test_default_name_comes_from_cwd_when_output_is_dot(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Regression: Path(".").name is "" — scaffolding into the cwd (the default -o)
+    # without a name argument must still title the project after the directory.
+    project = tmp_path / "my-project"
+    project.mkdir()
+    monkeypatch.chdir(project)
+    assert cli.main(["-y", "--no-git"]) == 0
+    agents = (project / "AGENTS.md").read_text(encoding="utf-8")
+    assert "# my-project — Agent Contract" in agents
+
+
+def test_unknown_tool_exits_2_without_scaffolding(tmp_path: Path) -> None:
+    # --languages typos are rejected; --tools typos must not silently no-op.
+    rc = cli.main(["demo", "-o", str(tmp_path), "-y", "--no-git", "--tools", "cluade"])
+    assert rc == 2
+    assert not (tmp_path / "AGENTS.md").exists()
+
+
 def test_intro_shown_at_start_of_interactive_run(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:

@@ -28,3 +28,20 @@ def test_improvements_falls_back_to_date_without_git(tmp_path: Path) -> None:
     body = _improvements(tmp_path, init_git=False)
     assert "[YYYY-MM-DD]" in body
     assert "git rev-parse" not in body  # not the commit form
+
+
+def test_improvements_points_at_the_runner_target_when_one_is_generated(tmp_path: Path) -> None:
+    # With a generated runner, the header names the `improvement` target so agents use
+    # it instead of re-deriving the stamp format; without one there's nothing to name.
+    body = _improvements(tmp_path / "a", init_git=True)  # default: quality on, make
+    assert 'make improvement TEXT="<idea>"' in body
+    for sub, overrides in (
+        ("b", {"include_quality": False}),  # no quality -> no runner file at all
+        ("c", {"existing_runner": True}),  # their runner -> we never wrote the target
+    ):
+        config = WizardConfig(
+            project_name="demo", output_dir=tmp_path / sub, init_git=True, **overrides
+        )
+        docs.generate(config, Scaffolder(config.target))
+        body = (tmp_path / sub / "docs/improvements.md").read_text(encoding="utf-8")
+        assert "make improvement" not in body and "task improvement" not in body
