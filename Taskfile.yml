@@ -32,9 +32,9 @@ tasks:
     cmds:
       - python tools/checks/sync_rfc_status.py
   improvement:
-    desc: append a commit-stamped idea to docs/improvements.md (task improvement -- "<idea>")
+    desc: append a commit+date-stamped idea to docs/improvements.md (task improvement -- "<idea>")
     cmds:
-      - echo "- [$(git rev-parse --short HEAD 2>/dev/null || date +%F)] {{.CLI_ARGS}}" >> docs/improvements.md
+      - sha=$(git rev-parse --short HEAD 2>/dev/null); echo "- [${sha:+$sha · }$(date +%F)] {{.CLI_ARGS}}" >> docs/improvements.md
   release:
     desc: 'cut a release (tag + GitHub release) — usage: task release VERSION=0.2.0'
     cmds:

@@ -1,4 +1,4 @@
-"""docs/improvements.md tells the agent to stamp each entry (commit, or date if no git)."""
+"""docs/improvements.md tells the agent to stamp each entry (commit + date, or date if no git)."""
 
 from __future__ import annotations
 
@@ -15,19 +15,20 @@ def _improvements(tmp_path: Path, *, init_git: bool) -> str:
     return (tmp_path / "docs/improvements.md").read_text(encoding="utf-8")
 
 
-def test_improvements_stamps_each_entry_with_the_commit_in_a_git_repo(tmp_path: Path) -> None:
+def test_improvements_stamps_each_entry_with_commit_and_date_in_a_git_repo(tmp_path: Path) -> None:
     body = _improvements(tmp_path, init_git=True)
-    assert "git rev-parse --short HEAD" in body  # stamp with the commit you noted it at
-    assert "[a1b2c3d]" in body  # the seed entry models the bracketed format
-    assert "YYYY-MM-DD" not in body  # not the date form
+    assert "git rev-parse --short HEAD" in body  # anchor to the commit you're at
+    assert "[a1b2c3d · YYYY-MM-DD]" in body  # seed models the commit · date format
+    assert "today's date" in body  # the header asks for the date too
 
 
-def test_improvements_falls_back_to_date_without_git(tmp_path: Path) -> None:
+def test_improvements_falls_back_to_date_only_without_git(tmp_path: Path) -> None:
     # init_git=False and no existing .git -> the project won't be a git repo, so there's no
-    # commit to anchor to; stamp with the date instead.
+    # commit to anchor to; stamp with the date alone.
     body = _improvements(tmp_path, init_git=False)
     assert "[YYYY-MM-DD]" in body
-    assert "git rev-parse" not in body  # not the commit form
+    assert "git rev-parse" not in body  # no commit form
+    assert " · " not in body  # no commit·date separator in the date-only form
 
 
 def test_improvements_points_at_the_runner_target_when_one_is_generated(tmp_path: Path) -> None:

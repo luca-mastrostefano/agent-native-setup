@@ -161,17 +161,21 @@ _TOOLS_RUFF_CMDS = {
 # works even when Python isn't a selected language (no pytest to install).
 TOOLS_TESTS_CMD = "python -m unittest discover -s tools/checks"
 
-# Appends a stamped entry to the improvements backlog, encoding its convention (anchor
-# each idea to the commit it was noted at, or the date when there's no git) as a runner
-# target so agents log ideas the right way instead of re-deriving the format. The
-# argument placeholder differs per runner: Task's {{.CLI_ARGS}} vs a Make variable.
-# Deliberately no empty-input guard: a blank idea appends a visible dangling bullet
-# that's trivially fixed, and the target's desc/usage already shows the syntax.
-_IMPROVEMENT_STAMP = "$(git rev-parse --short HEAD 2>/dev/null || date +%F)"
-_IMPROVEMENT_CMD_TASK = f'echo "- [{_IMPROVEMENT_STAMP}] {{{{.CLI_ARGS}}}}" >> docs/improvements.md'
-_IMPROVEMENT_CMD_MAKE = (
-    f'echo "- [{_IMPROVEMENT_STAMP.replace("$(", "$$(")}] $(TEXT)" >> docs/improvements.md'
+# Appends a stamped entry to the improvements backlog, encoding its convention as a
+# runner target so agents log ideas the right way instead of re-deriving the format.
+# The stamp anchors each idea to both the code state and when it was raised: the short
+# commit and today's date ("[b9ede32 · 2026-06-12]") in a git repo, or just the date
+# outside one — `${sha:+...}` drops the commit and separator when `git rev-parse` finds
+# no repo. Deliberately no empty-input guard: a blank idea appends a visible dangling
+# bullet that's trivially fixed, and the target's desc/usage already shows the syntax.
+# `@ARG@` is the per-runner placeholder (Task's {{.CLI_ARGS}} vs a Make variable); for
+# Make every shell `$` is doubled, then the arg (its own single-`$` var) is inserted.
+_IMPROVEMENT_SH = (
+    "sha=$(git rev-parse --short HEAD 2>/dev/null); "
+    'echo "- [${sha:+$sha · }$(date +%F)] @ARG@" >> docs/improvements.md'
 )
+_IMPROVEMENT_CMD_TASK = _IMPROVEMENT_SH.replace("@ARG@", "{{.CLI_ARGS}}")
+_IMPROVEMENT_CMD_MAKE = _IMPROVEMENT_SH.replace("$", "$$").replace("@ARG@", "$(TEXT)")
 # The calling convention per runner — the single source for the desc strings here, the
 # AGENTS.md command surface (ai_context.py), and the improvements.md pointer (docs.py).
 IMPROVEMENT_USAGE = {
@@ -301,7 +305,7 @@ def _taskfile(config: WizardConfig, langs: list[Language], hooks: bool) -> str:
         )
         lines += task(
             "improvement",
-            f"append a commit-stamped idea to docs/improvements.md ({IMPROVEMENT_USAGE['task']})",
+            f"append a commit+date-stamped idea to docs/improvements.md ({IMPROVEMENT_USAGE['task']})",
             [_IMPROVEMENT_CMD_TASK],
         )
     return "\n".join(lines) + "\n"
@@ -375,7 +379,7 @@ def _makefile(config: WizardConfig, langs: list[Language], hooks: bool) -> str:
         )
         out += target(
             "improvement",
-            f"append a commit-stamped idea to docs/improvements.md ({IMPROVEMENT_USAGE['make']})",
+            f"append a commit+date-stamped idea to docs/improvements.md ({IMPROVEMENT_USAGE['make']})",
             [_IMPROVEMENT_CMD_MAKE],
         )
     return "\n".join(out).rstrip() + "\n"

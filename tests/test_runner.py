@@ -160,8 +160,9 @@ def test_improvement_target_in_both_runners_gated_on_docs(tmp_path: Path) -> Non
     # when docs (and so docs/improvements.md) are scaffolded.
     mk = (_build(tmp_path / "m", languages=["python"]) / "Makefile").read_text(encoding="utf-8")
     assert "improvement:" in mk
-    assert "$$(git rev-parse --short HEAD 2>/dev/null || date +%F)" in mk  # stamp, Make-escaped
-    assert "$(TEXT)" in mk
+    assert "sha=$$(git rev-parse --short HEAD 2>/dev/null)" in mk  # commit, Make-escaped
+    assert "$${sha:+$$sha · }$$(date +%F)" in mk  # commit · date, dropping commit if no repo
+    assert "$(TEXT)" in mk  # the Make variable keeps its single `$`
     tf = (_build(tmp_path / "t", languages=["python"], runner="task") / "Taskfile.yml").read_text(
         encoding="utf-8"
     )
@@ -171,16 +172,17 @@ def test_improvement_target_in_both_runners_gated_on_docs(tmp_path: Path) -> Non
     assert "improvement:" not in (no_docs / "Makefile").read_text(encoding="utf-8")
 
 
-def test_improvement_target_appends_date_stamped_entry_without_git(tmp_path: Path) -> None:
+def test_improvement_target_appends_date_only_entry_without_git(tmp_path: Path) -> None:
     root = _build(tmp_path, languages=["python"])  # no .git in tmp_path
     subprocess.run(
         ["make", "improvement", "TEXT=Test idea"], cwd=root, capture_output=True, check=True
     )
     last = (root / "docs/improvements.md").read_text(encoding="utf-8").splitlines()[-1]
+    # No repo -> no commit to anchor to, so just the date (no ` · ` separator).
     assert re.fullmatch(r"- \[\d{4}-\d{2}-\d{2}\] Test idea", last)
 
 
-def test_improvement_target_stamps_the_commit_in_a_git_repo(tmp_path: Path) -> None:
+def test_improvement_target_stamps_commit_and_date_in_a_git_repo(tmp_path: Path) -> None:
     root = _build(tmp_path, languages=["python"])
     git = ["git", "-c", "user.email=t@t", "-c", "user.name=t"]
     subprocess.run([*git, "init", "-q"], cwd=root, check=True)
@@ -193,4 +195,5 @@ def test_improvement_target_stamps_the_commit_in_a_git_repo(tmp_path: Path) -> N
         ["make", "improvement", "TEXT=Test idea"], cwd=root, capture_output=True, check=True
     )
     last = (root / "docs/improvements.md").read_text(encoding="utf-8").splitlines()[-1]
-    assert last == f"- [{head}] Test idea"
+    # Both anchors: the short commit and today's date, separated by ` · `.
+    assert re.fullmatch(rf"- \[{head} · \d{{4}}-\d{{2}}-\d{{2}}\] Test idea", last)

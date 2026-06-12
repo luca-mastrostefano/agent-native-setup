@@ -32,7 +32,7 @@ Deferred ideas and known gaps — things not yet decided (so not an RFC) and not
 current state (so not `architecture/`). Keep entries concrete; promote anything
 that needs a real decision into an RFC in `docs/rfc/current/`.
 
-**Start each entry with {% if git %}the short commit you noted it at (`git rev-parse --short HEAD`){% else %}the date you noted it (`YYYY-MM-DD`){% endif %} in square brackets**, so every idea stays anchored to the state of the code it refers to.
+**Start each entry with {% if git %}the short commit you're at (`git rev-parse --short HEAD`) and today's date, separated by ` · `,{% else %}the date you noted it (`YYYY-MM-DD`){% endif %} in square brackets**, so every idea is anchored to both the code it refers to and when it was raised.
 {% if improvement_cmd %}
 
 `{{ improvement_cmd }}` appends a correctly-stamped entry here.
@@ -40,7 +40,7 @@ that needs a real decision into an RFC in `docs/rfc/current/`.
 
 ## Known gaps
 
-- [{% if git %}a1b2c3d{% else %}YYYY-MM-DD{% endif %}] _Add the first gap or deferred idea here._
+- [{% if git %}a1b2c3d · YYYY-MM-DD{% else %}YYYY-MM-DD{% endif %}] _Add the first gap or deferred idea here._
 """
 
 SYNC_RFC_STATUS = '''\
