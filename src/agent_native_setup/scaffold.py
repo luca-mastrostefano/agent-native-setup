@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import os
 import shutil
 from pathlib import Path
@@ -32,12 +33,22 @@ class Scaffolder:
         # original file may not be UTF-8.
         self.replaced_files: list[tuple[Path, bytes]] = []
         self.replaced_links: list[tuple[Path, str]] = []  # (link path, original target)
+        # rel path -> fingerprint of what this run wrote there ("sha256:<hex>" for a
+        # file, "symlink:<target>" for a link). The provenance manifest serializes this
+        # so a later `update` can tell a pristine generated file from a user-edited one.
+        self.recorded: dict[str, str] = {}
+
+    def record(self, rel: str, content: str) -> None:
+        """Fingerprint generated content for the manifest (call when writing directly)."""
+        self.recorded[rel] = "sha256:" + hashlib.sha256(content.encode("utf-8")).hexdigest()
 
     def track_new(self, path: Path, *, existed: bool) -> None:
         if not existed:
             self.new_paths.append(path)
 
-    def write(self, rel: str, content: str, *, preserve: bool = False) -> None:
+    def write(
+        self, rel: str, content: str, *, preserve: bool = False, transient: bool = False
+    ) -> None:
         path = self.target / rel
         # `preserve` protects human-owned files (e.g. README.md) even under --force.
         if path.exists() and (preserve or not self.force):
@@ -54,6 +65,11 @@ class Scaffolder:
         path.write_text(content, encoding="utf-8")
         self.created.append(rel)
         self.track_new(path, existed=existed)
+        # `transient` files (ONBOARDING.md, the /onboard command) are deleted during
+        # onboarding, so they're left out of the manifest — a baseline must never list a
+        # file destined to vanish, or a later update would try to resurrect it.
+        if not transient:
+            self.record(rel, content)
 
     def render_write(
         self, rel: str, template: str, *, preserve: bool = False, **ctx: object
@@ -79,6 +95,7 @@ class Scaffolder:
         link.symlink_to(rel_dest)
         self.created.append(f"{link_rel} -> {rel_dest}")
         self.track_new(link, existed=existed)
+        self.recorded[link_rel] = f"symlink:{rel_dest}"
 
     def rollback(self) -> int:
         """Undo this run: delete what it created, restore what it overwrote,

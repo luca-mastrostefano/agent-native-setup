@@ -11,7 +11,7 @@ from pathlib import Path
 from rich.console import Console
 from rich.panel import Panel
 
-from agent_native_setup import __version__, update_check
+from agent_native_setup import __version__, manifest, update_check
 from agent_native_setup.config import AI_TOOLS, WizardConfig
 from agent_native_setup.generators import agents, ai_context, ci, docs, onboarding, quality
 from agent_native_setup.languages import REGISTRY, detect_languages, detect_runner
@@ -268,6 +268,9 @@ def build(config: WizardConfig, sc: Scaffolder) -> Scaffolder:
             sc.track_new(git_dir, existed=False)
         except (OSError, subprocess.CalledProcessError):
             pass
+    # Last: record provenance for everything written above, so a future `update` can
+    # refresh pristine generated files without touching the user's edits.
+    manifest.write(config, sc)
     return sc
 
 

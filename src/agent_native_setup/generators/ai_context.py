@@ -298,11 +298,13 @@ def generate(config: WizardConfig, sc: Scaffolder) -> None:
         blocks = [rendered.rstrip()]
         for label, text in preserved:
             blocks.append(f"---\n\n<!-- Preserved from your original {label} -->\n\n{text}")
+        merged = "\n\n".join(blocks) + "\n"
         agents_path.parent.mkdir(parents=True, exist_ok=True)
-        agents_path.write_text("\n\n".join(blocks) + "\n", encoding="utf-8")
+        agents_path.write_text(merged, encoding="utf-8")
         names = ", ".join(label for label, _ in preserved)
         sc.created.append(f"AGENTS.md (merged existing {names})")
         sc.track_new(agents_path, existed=agents_existed)
+        sc.record("AGENTS.md", merged)  # this path bypasses sc.write; fingerprint it too
     else:
         sc.write("AGENTS.md", rendered)
 

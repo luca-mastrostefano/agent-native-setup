@@ -246,4 +246,4 @@ def generate(config: WizardConfig, sc: Scaffolder) -> None:
         return
     body = HEADER.format(name=config.project_name)
     body += "\n".join(f"{i}. {step}" for i, step in enumerate(_steps(config), 1)) + "\n"
-    sc.write("ONBOARDING.md", body)
+    sc.write("ONBOARDING.md", body, transient=True)  # self-deletes during onboarding

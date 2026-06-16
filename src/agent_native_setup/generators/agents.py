@@ -318,7 +318,9 @@ def generate(config: WizardConfig, sc: Scaffolder) -> None:
     # Matches when generators/onboarding.py writes ONBOARDING.md, so the command
     # never points at a file that wasn't scaffolded.
     if config.include_quality or config.include_ci:
-        sc.write(".claude/commands/onboard.md", ONBOARD_COMMAND)
+        sc.write(
+            ".claude/commands/onboard.md", ONBOARD_COMMAND, transient=True
+        )  # removed post-onboarding
 
     # Format-on-edit needs a formatter-capable language, the quality tooling it feeds,
     # and docs — the docs machinery's guards (scoped ruff + the unittest runner) are

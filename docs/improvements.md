@@ -36,3 +36,40 @@ that needs a real decision into an RFC in `docs/rfc/current/`.
   manual sweep (check each upstream's releases, e.g. via the GitHub/npm APIs or
   endoflife.date). A `task`/CI check that diffs `PINS` against latest upstream releases
   would catch rot (like Node 20 going EOL) without anyone remembering to look.
+- [127b11c · 2026-06-16] **Opt-in, git-gated `release` task** — scaffolded projects get a
+  static `version` and no release path, so an agent improvises `git tag`/`gh release` each
+  time. Offer (a prompt, default off; only when git is detected or created) a `release`
+  task that cuts a tag and optionally a GitHub release (`gh release create
+  --generate-notes`), degrading to tag-only without a remote/`gh`. Not a git hook — a
+  deliberate, explicit task. Tier 1 (cut the tag) is language-agnostic; the bigger Tier 2
+  — making the build *derive* its version from the tag (hatch-vcs for Python, `npm
+  version`, tags for Go, cargo-release for Rust) to kill version-drift — is per-`Language`
+  registry work, deferred. Keep it policy-light (no enforced semver/changelog). RFC-worthy.
+- [127b11c · 2026-06-16] **`agent-native-setup update` command** — the provenance manifest
+  (`.agent-native-setup.json`: version + resolved config + per-file fingerprint, written by
+  `manifest.py`) now lands in every scaffold, but nothing consumes it yet. Build the updater:
+  read the manifest, regenerate managed files from the current templates using the recorded
+  config, overwrite the ones whose on-disk hash still matches the manifest (pristine), drop a
+  `*.ans-new` sidecar for the ones that don't (user-edited), add newly-managed files, then
+  rewrite the manifest. Additive only — never moves or deletes directories. Require a clean git
+  tree so the update is a reviewable diff. **Settled-baseline problem:** the manifest captures
+  the *scaffold-time* state, but onboarding then mutates recorded files as part of setup — it
+  strips the first-run banner from `AGENTS.md` (transient files like ONBOARDING.md and the
+  `/onboard` command are already excluded from the manifest, so they're handled), and pre-commit
+  formatters (prettier/eslint/ruff) can rewrite generated files on first commit. So the baseline
+  should be **re-captured once setup settles** (an end-of-onboarding `update --refresh-baseline`
+  / `manifest` step), or the updater should normalize through the project's formatter and ignore
+  the banner block before comparing — else those files all read as edited. **Legacy repos** get a
+  partial baseline by design (only files the wizard actually wrote; a merged `AGENTS.md` always
+  reads as edited until markers exist). RFC-worthy (locks the manifest format + the update policy).
+- [127b11c · 2026-06-16] **Managed-block markers + a file taxonomy for updates** — whole-file
+  regeneration only safely covers files the user doesn't co-own (`.claude/agents|commands/*`,
+  `tools/checks/*`, editorconfig, dependabot, PR template). The mixed files — `AGENTS.md`
+  (template boilerplate + the user's navigation/command surface) and `.pre-commit-config.yaml`
+  (template blocks + user-added hooks) — need managed-block markers (the
+  `<!-- agent-native-setup:… -->` pattern the first-run banner already uses) so the updater can
+  refresh just the marked regions. Tradeoff to settle: markers in `AGENTS.md` (refresh boilerplate
+  in place) vs. treating it as human-owned/advisory-only after creation. Human-owned files (README,
+  docs, src, runner, pyproject/package.json) and one-time files (ONBOARDING) stay untouched. Add
+  the markers to the generators sooner rather than later — retrofitting them reintroduces the
+  no-provenance problem the manifest just solved.
