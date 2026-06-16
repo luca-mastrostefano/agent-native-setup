@@ -91,6 +91,39 @@ def test_code_reviewer_omits_docs_check_without_docs(tmp_path: Path) -> None:
     assert "4. Goal-driven" in body  # the other checks survive
 
 
+def test_rfc_reviewer_ships_with_docs_and_is_wired_into_the_rfc_command(tmp_path: Path) -> None:
+    # The RFC review pass: an agent judging decision quality, invoked by /rfc before
+    # the draft is shown. Ships with docs (RFCs only exist then).
+    root = _build(tmp_path, languages=["python"])
+    agent = (root / ".claude/agents/rfc-reviewer.md").read_text(encoding="utf-8")
+    assert "name: rfc-reviewer" in agent
+    assert "Simplest viable option" in agent  # the decision-quality lens, not code
+    rfc_cmd = (root / ".claude/commands/rfc.md").read_text(encoding="utf-8")
+    assert "rfc-reviewer" in rfc_cmd  # the /rfc flow runs the review before showing
+
+
+def test_rfc_reviewer_omitted_without_docs(tmp_path: Path) -> None:
+    # No docs -> no RFCs -> neither the agent nor the /rfc command ships.
+    root = _build(tmp_path, languages=["python"], include_docs=False)
+    assert not (root / ".claude/agents/rfc-reviewer.md").exists()
+    assert not (root / ".claude/commands/rfc.md").exists()
+
+
+def test_contract_points_at_rfc_reviewer_with_agents_and_docs(tmp_path: Path) -> None:
+    # The "When to write an RFC" section names the agent (gated on agents, like the
+    # code-reviewer line); a no-agents project states the rule without the agent.
+    with_agents = (_build(tmp_path / "a", languages=["python"]) / "AGENTS.md").read_text(
+        encoding="utf-8"
+    )
+    assert "When to write an RFC" in with_agents
+    assert "rfc-reviewer" in with_agents
+    no_agents = (
+        _build(tmp_path / "n", languages=["python"], include_agents=False) / "AGENTS.md"
+    ).read_text(encoding="utf-8")
+    assert "When to write an RFC" in no_agents  # the rule still stands
+    assert "rfc-reviewer" not in no_agents  # but no agent to point at
+
+
 def test_non_python_project_guards_shipped_python_with_ruff(tmp_path: Path) -> None:
     # docs ship tools/checks/*.py even for a node project; guard them with ruff at all
     # three layers (pre-commit, command surface, CI) so they don't ship unlinted.
