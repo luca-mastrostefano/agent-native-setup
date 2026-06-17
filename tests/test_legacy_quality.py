@@ -27,7 +27,7 @@ def test_cli_detects_existing_python_and_ratchets(tmp_path: Path) -> None:
     assert "ruff check $files" in wf
     assert "on:\n  pull_request:" in wf
     assert (tmp_path / ".git-blame-ignore-revs").exists()
-    contributing = (tmp_path / "docs/contributing.md").read_text(encoding="utf-8")
+    contributing = (tmp_path / "CONTRIBUTING.md").read_text(encoding="utf-8")
     assert "Adopting on an existing codebase" in contributing
 
 
@@ -38,7 +38,7 @@ def test_cli_greenfield_keeps_whole_repo_gate(tmp_path: Path) -> None:
     assert "DIFF_BASE" not in wf
     assert "branches: [main]" in wf  # still gates push to main
     assert not (tmp_path / ".git-blame-ignore-revs").exists()
-    contributing = (tmp_path / "docs/contributing.md").read_text(encoding="utf-8")
+    contributing = (tmp_path / "CONTRIBUTING.md").read_text(encoding="utf-8")
     assert "Adopting on an existing codebase" not in contributing
 
 

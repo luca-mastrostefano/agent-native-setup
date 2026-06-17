@@ -100,7 +100,7 @@ PY_LAYOUT_COMMIT_HOOKS = """\
 BASE_GITIGNORE = [".DS_Store", ".env", ".env.local", "*.log"]
 
 # Scaffolded only for existing repos: lets a one-time formatter sweep stay out of
-# `git blame`. See the "Adopting on an existing codebase" section in contributing.md.
+# `git blame`. See the "Adopting on an existing codebase" section in CONTRIBUTING.md.
 BLAME_IGNORE_REVS = """\
 # Commits git blame (and GitHub's blame view) should skip — for bulk, no-logic
 # changes like a one-time formatter sweep across pre-existing code:

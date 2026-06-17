@@ -19,7 +19,8 @@ DOCS_README = """\
   - `superseded/` — replaced by a later RFC
   - `retired/` — withdrawn, no replacement
 - `improvements.md` — backlog of deferred ideas and known gaps.
-- `contributing.md` — the dev loop.
+
+The dev loop lives in [`CONTRIBUTING.md`](../CONTRIBUTING.md) at the repo root.
 
 RFCs are named `YYYY-MM-DD-short-slug.md`. You don't move them by hand: edit the
 `Status:` line and the `rfc-status` pre-commit hook relocates the file via `git mv`
@@ -961,7 +962,7 @@ def _arch_tooling(config: WizardConfig) -> str:
 
 def generate(config: WizardConfig, sc: Scaffolder) -> None:
     sc.write("docs/README.md", DOCS_README)
-    sc.render_write("docs/contributing.md", CONTRIBUTING, existing_project=config.existing_project)
+    sc.render_write("CONTRIBUTING.md", CONTRIBUTING, existing_project=config.existing_project)
     sc.render_write("docs/architecture/overview.md", ARCH_OVERVIEW, tooling=_arch_tooling(config))
     # Stamp entries with the commit they were noted at — or the date, when the scaffolded
     # project won't be a git repo (no init and no existing .git). Point at the runner's

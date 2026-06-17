@@ -12,7 +12,7 @@ This file is the **single source of truth** for both coding agents and humans.
 | Project entry point | [`README.md`](./README.md) |
 | Architecture & decisions | `docs/architecture/` |
 | Proposals & decisions | `docs/rfc/` (`proposed/` → `active/`) |
-| How to contribute | `docs/contributing.md` |
+| How to contribute | [`CONTRIBUTING.md`](./CONTRIBUTING.md) |
 | Security policy | [`SECURITY.md`](./SECURITY.md) |
 
 ## Command surface

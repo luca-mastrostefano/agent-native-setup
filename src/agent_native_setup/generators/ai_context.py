@@ -35,7 +35,7 @@ AGENTS_MD = """\
 | Project entry point | [`README.md`](./README.md) |
 {% if docs %}| Architecture & decisions | `docs/architecture/` |
 | Proposals & decisions | `docs/rfc/` (`proposed/` → `active/`) |
-| How to contribute | `docs/contributing.md` |
+| How to contribute | [`CONTRIBUTING.md`](./CONTRIBUTING.md) |
 {% endif %}{% if security %}| Security policy | [`SECURITY.md`](./SECURITY.md) |
 {% endif %}
 

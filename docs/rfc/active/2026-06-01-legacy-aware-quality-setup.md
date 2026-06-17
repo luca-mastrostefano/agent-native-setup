@@ -48,7 +48,7 @@ already finds pre-existing source for the selected languages — and set
    gated until edited.
 3. **Scaffold the clean cleanup path** — emit `.git-blame-ignore-revs` (with
    instructions) and an "Adopting on an existing codebase" section in
-   `docs/contributing.md`: run `task format` once, commit it alone, record its SHA
+   `CONTRIBUTING.md`: run `task format` once, commit it alone, record its SHA
    in `.git-blame-ignore-revs`, set `git config blame.ignoreRevsFile`. Blame stays
    intact.
 4. **Leave the local loop alone** — pre-commit stays changed-files-only, so daily

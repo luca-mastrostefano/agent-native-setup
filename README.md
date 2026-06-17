@@ -40,9 +40,10 @@ Pointed at a target repo, the wizard generates:
   principles, a live command surface, a navigation map, and when-to-write-an-RFC rules.
   `CLAUDE.md` and `GEMINI.md` (symlinks), `.cursor/rules/`, and
   `.github/copilot-instructions.md` all point back to it, so the rules never fork across tools.
-- **A `.claude/` agent library** — focused subagents (`code-reviewer`, `planner`), slash
-  commands (`/review`, `/rfc`, `/onboard`), and a `SessionStart` hook that injects the
-  live command surface into every session.
+- **A `.claude/` agent library** — focused subagents (`code-reviewer`, `rfc-reviewer`,
+  `planner`), slash commands (`/review`, `/rfc`, `/onboard`), a permission allowlist for the
+  contract's own commands, and hooks that inject the live command surface at session start
+  and auto-format files as they're edited.
 - **`docs/` + an RFC lifecycle** — a pre-seeded architecture map (reflecting the active
   RFCs), the `proposed → active → (superseded | retired)` RFC flow (with a template), a
   contributing guide, and an improvements backlog — kept in folder-sync and freshness by hooks.

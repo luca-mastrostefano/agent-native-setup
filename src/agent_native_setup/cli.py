@@ -405,7 +405,7 @@ def main(argv: list[str] | None = None) -> int:
     if config.existing_project and config.include_quality:
         console.print(
             f"[yellow]Existing code detected[/] — adoption strategy: [bold]{config.adoption}[/]. "
-            "See docs/contributing.md."
+            "See CONTRIBUTING.md."
         )
 
     sc = Scaffolder(config.target, force=args.force)

@@ -7,7 +7,8 @@
   - `superseded/` — replaced by a later RFC
   - `retired/` — withdrawn, no replacement
 - `improvements.md` — backlog of deferred ideas and known gaps.
-- `contributing.md` — the dev loop.
+
+The dev loop lives in [`CONTRIBUTING.md`](../CONTRIBUTING.md) at the repo root.
 
 RFCs are named `YYYY-MM-DD-short-slug.md`. You don't move them by hand: edit the
 `Status:` line and run `task rfc-sync` (also wired as a pre-commit hook) to

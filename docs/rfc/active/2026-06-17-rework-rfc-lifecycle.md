@@ -44,7 +44,7 @@ synthesis of the currently-active **architectural** decisions: nothing in
 `architecture/` without an active RFC behind it, and superseding or retiring an
 architectural RFC is the cue to update it. This is scoped to *architectural* RFCs —
 process/convention RFCs (testing expectations, followable processes, review lenses)
-reflect into `AGENTS.md`/`contributing.md` instead. Kept as a **guideline**, not a
+reflect into `AGENTS.md`/`CONTRIBUTING.md` instead. Kept as a **guideline**, not a
 mechanical 1:1: there is no new "kind" field and no gate demanding an architecture edit
 per RFC — the scoping is by judgment, because most RFCs' kind is obvious and a wrong
 gate is worse than none.
