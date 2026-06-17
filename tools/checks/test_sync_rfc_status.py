@@ -18,7 +18,7 @@ def _rfc(status: str) -> str:
 
 class ParseStatus(unittest.TestCase):
     def test_reads_status_keyword(self) -> None:
-        self.assertEqual(sync_rfc_status.parse_status(_rfc("Accepted")), "accepted")
+        self.assertEqual(sync_rfc_status.parse_status(_rfc("Active")), "active")
 
     def test_missing_status_is_none(self) -> None:
         self.assertIsNone(sync_rfc_status.parse_status("# Title\n"))
@@ -26,9 +26,10 @@ class ParseStatus(unittest.TestCase):
 
 class TargetFolder(unittest.TestCase):
     def test_known_statuses_map_to_folders(self) -> None:
-        self.assertEqual(sync_rfc_status.target_folder("proposed"), "current")
-        self.assertEqual(sync_rfc_status.target_folder("done"), "done")
+        self.assertEqual(sync_rfc_status.target_folder("proposed"), "proposed")
+        self.assertEqual(sync_rfc_status.target_folder("active"), "active")
         self.assertEqual(sync_rfc_status.target_folder("superseded"), "superseded")
+        self.assertEqual(sync_rfc_status.target_folder("retired"), "retired")
 
     def test_unknown_status_is_none(self) -> None:
         self.assertIsNone(sync_rfc_status.target_folder("draft"))
@@ -38,12 +39,12 @@ class FindMoves(unittest.TestCase):
     def test_flags_rfc_sitting_in_the_wrong_folder(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            (root / "current").mkdir()
-            (root / "done").mkdir()
-            (root / "current" / "a.md").write_text(_rfc("Done"))
-            (root / "current" / "b.md").write_text(_rfc("Accepted"))
+            (root / "proposed").mkdir()
+            (root / "active").mkdir()
+            (root / "proposed" / "a.md").write_text(_rfc("Active"))
+            (root / "proposed" / "b.md").write_text(_rfc("Proposed"))
             moves = sync_rfc_status.find_moves(root)
-            expected = (root / "current" / "a.md", root / "done" / "a.md")
+            expected = (root / "proposed" / "a.md", root / "active" / "a.md")
             self.assertEqual(moves, [expected])
 
 

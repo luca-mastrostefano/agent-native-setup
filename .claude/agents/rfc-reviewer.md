@@ -17,8 +17,8 @@ any it supersedes) and judge it against:
    given up — not only the upside? Flag a section that only sells.
 5. Reversibility — is the "hard to reverse" framing accurate? A cheap-to-reverse
    change may not need an RFC at all; a one-way door must say so.
-6. No conflict — does it contradict or silently overlap an existing, `done`, or
-   superseded RFC? If it supersedes one, does it say so?
+6. No conflict — does it contradict or silently overlap an existing active,
+   superseded, or retired RFC? If it supersedes one, does it say so?
 
 Report findings ordered by severity, citing the section. Prefer a few
 high-confidence issues over a long list, and scale to the RFC — a one-line decision

@@ -15,6 +15,25 @@ def _improvements(tmp_path: Path, *, init_git: bool) -> str:
     return (tmp_path / "docs/improvements.md").read_text(encoding="utf-8")
 
 
+def test_rfc_lifecycle_folders_and_adopt_rfc_land_in_active(tmp_path: Path) -> None:
+    # The lifecycle is proposed → active → (superseded | retired); the adopt RFC is an
+    # in-effect decision, so it's written Active, into active/ (not the old current/).
+    config = WizardConfig(project_name="demo", output_dir=tmp_path, init_git=False)
+    docs.generate(config, Scaffolder(config.target))
+    rfc = tmp_path / "docs/rfc"
+    assert sorted(p.name for p in rfc.iterdir() if p.is_dir()) == [
+        "active",
+        "proposed",
+        "retired",
+        "superseded",
+    ]
+    assert not (rfc / "current").exists() and not (rfc / "done").exists()
+    adopt = next((rfc / "active").glob("*-adopt-agent-native-setup.md"))
+    body = adopt.read_text(encoding="utf-8")
+    assert "- **Status:** Active" in body
+    assert "- [ ] Implemented" in body  # implementation is a checkbox, not a state
+
+
 def test_improvements_stamps_each_entry_with_commit_and_date_in_a_git_repo(tmp_path: Path) -> None:
     body = _improvements(tmp_path, init_git=True)
     assert "git rev-parse --short HEAD" in body  # anchor to the commit you're at

@@ -4,7 +4,7 @@
 
 1. Read `AGENTS.md` — the contract and the four execution principles.
 2. For anything architectural or hard to reverse, write an RFC first
-   (`docs/rfc/current/`, from `docs/rfc/TEMPLATE.md`).
+   (`docs/rfc/proposed/`, from `docs/rfc/TEMPLATE.md`).
 3. Make the change. Keep it surgical.
 4. Run the quality gate before committing (see the command surface in `AGENTS.md`).
 

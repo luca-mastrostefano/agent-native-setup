@@ -1,15 +1,16 @@
 """Keep each RFC in the folder that matches its Status (mechanical enforcement).
 
-Lifecycle (docs/README.md): current/ -> done/ -> superseded/. The `Status:`
-line in an RFC drives where it belongs:
+Lifecycle (docs/README.md): proposed -> active -> (superseded | retired). The
+`Status:` line in an RFC drives where it belongs:
 
-    Proposed / Accepted -> current/
-    Done                -> done/
-    Superseded          -> superseded/
+    Proposed   -> proposed/
+    Active      -> active/
+    Superseded  -> superseded/
+    Retired     -> retired/
 
 When a status changes, this moves the file to the right folder (via `git mv`
 when possible) and exits non-zero so the move can be re-staged — mirroring how
-formatters behave in pre-commit. Run by the `rfc-status` hook and `task rfc-sync`.
+formatters behave in pre-commit. Run by the `rfc-status` pre-commit hook.
 """
 
 from __future__ import annotations
@@ -21,12 +22,12 @@ import sys
 from pathlib import Path
 
 RFC_ROOT = Path(__file__).resolve().parents[2] / "docs" / "rfc"
-LIFECYCLE_FOLDERS = ("current", "done", "superseded")
+LIFECYCLE_FOLDERS = ("proposed", "active", "superseded", "retired")
 STATUS_FOLDER = {
-    "proposed": "current",
-    "accepted": "current",
-    "done": "done",
+    "proposed": "proposed",
+    "active": "active",
     "superseded": "superseded",
+    "retired": "retired",
 }
 _STATUS_RE = re.compile(r"\*\*Status:\*\*\s*([A-Za-z]+)")
 

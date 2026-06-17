@@ -1,4 +1,4 @@
-"""Generates the docs tree and the RFC lifecycle (current/done/superseded)."""
+"""Generates the docs tree and the RFC lifecycle (proposed/active/superseded/retired)."""
 
 from __future__ import annotations
 
@@ -12,11 +12,12 @@ from agent_native_setup.scaffold import Scaffolder
 DOCS_README = """\
 # Docs
 
-- `architecture/` — how the system is built and why.
-- `rfc/` — proposals and decisions, by lifecycle stage:
-  - `current/` — under discussion or in progress
-  - `done/` — accepted and shipped
+- `architecture/` — how the system is built and why (reflects the active RFCs).
+- `rfc/` — proposals and decisions, by lifecycle state:
+  - `proposed/` — drafted, under discussion
+  - `active/` — accepted and in effect
   - `superseded/` — replaced by a later RFC
+  - `retired/` — withdrawn, no replacement
 - `improvements.md` — backlog of deferred ideas and known gaps.
 - `contributing.md` — the dev loop.
 
@@ -30,7 +31,7 @@ IMPROVEMENTS = """\
 
 Deferred ideas and known gaps — things not yet decided (so not an RFC) and not
 current state (so not `architecture/`). Keep entries concrete; promote anything
-that needs a real decision into an RFC in `docs/rfc/current/`.
+that needs a real decision into an RFC in `docs/rfc/proposed/`.
 
 **Start each entry with {% if git %}the short commit you're at (`git rev-parse --short HEAD`) and today's date, separated by ` · `,{% else %}the date you noted it (`YYYY-MM-DD`){% endif %} in square brackets**, so every idea is anchored to both the code it refers to and when it was raised.
 {% if improvement_cmd %}
@@ -46,12 +47,13 @@ that needs a real decision into an RFC in `docs/rfc/current/`.
 SYNC_RFC_STATUS = '''\
 """Keep each RFC in the folder that matches its Status (mechanical enforcement).
 
-Lifecycle (docs/README.md): current/ -> done/ -> superseded/. The `Status:`
-line in an RFC drives where it belongs:
+Lifecycle (docs/README.md): proposed -> active -> (superseded | retired). The
+`Status:` line in an RFC drives where it belongs:
 
-    Proposed / Accepted -> current/
-    Done                -> done/
-    Superseded          -> superseded/
+    Proposed   -> proposed/
+    Active      -> active/
+    Superseded  -> superseded/
+    Retired     -> retired/
 
 When a status changes, this moves the file to the right folder (via `git mv`
 when possible) and exits non-zero so the move can be re-staged — mirroring how
@@ -67,12 +69,12 @@ import sys
 from pathlib import Path
 
 RFC_ROOT = Path(__file__).resolve().parents[2] / "docs" / "rfc"
-LIFECYCLE_FOLDERS = ("current", "done", "superseded")
+LIFECYCLE_FOLDERS = ("proposed", "active", "superseded", "retired")
 STATUS_FOLDER = {
-    "proposed": "current",
-    "accepted": "current",
-    "done": "done",
+    "proposed": "proposed",
+    "active": "active",
     "superseded": "superseded",
+    "retired": "retired",
 }
 _STATUS_RE = re.compile(r"\\*\\*Status:\\*\\*\\s*([A-Za-z]+)")
 
@@ -338,8 +340,10 @@ def find_triggers(changes: list[tuple[str, str]]) -> list[str]:
 
 
 def is_satisfied(changes: list[tuple[str, str]], message: str) -> bool:
+    # A new RFC accompanying the change is Proposed (-> proposed/); accept active/ too
+    # for the case where it's promoted in the same commit.
     staged_rfc = any(
-        path.startswith("docs/rfc/current/") and path.endswith(".md")
+        path.startswith(("docs/rfc/proposed/", "docs/rfc/active/")) and path.endswith(".md")
         for status, path in changes
         if status != "D"
     )
@@ -358,7 +362,7 @@ def main(argv: list[str]) -> int:
         "RFC check: this commit makes a structural change but includes no RFC.\n\n"
         f"Triggered by:\n{bullet}\n\n"
         "Do one of:\n"
-        "  - add an RFC under docs/rfc/current/ (see docs/rfc/TEMPLATE.md), or\n"
+        "  - add an RFC under docs/rfc/proposed/ (see docs/rfc/TEMPLATE.md), or\n"
         "  - record why none is needed with a commit-message trailer:\n"
         "        RFC-Not-Needed: <reason>",
         file=sys.stderr,
@@ -580,7 +584,7 @@ def _rfc(status: str) -> str:
 
 class ParseStatus(unittest.TestCase):
     def test_reads_status_keyword(self) -> None:
-        self.assertEqual(sync_rfc_status.parse_status(_rfc("Accepted")), "accepted")
+        self.assertEqual(sync_rfc_status.parse_status(_rfc("Active")), "active")
 
     def test_missing_status_is_none(self) -> None:
         self.assertIsNone(sync_rfc_status.parse_status("# Title\n"))
@@ -588,9 +592,10 @@ class ParseStatus(unittest.TestCase):
 
 class TargetFolder(unittest.TestCase):
     def test_known_statuses_map_to_folders(self) -> None:
-        self.assertEqual(sync_rfc_status.target_folder("proposed"), "current")
-        self.assertEqual(sync_rfc_status.target_folder("done"), "done")
+        self.assertEqual(sync_rfc_status.target_folder("proposed"), "proposed")
+        self.assertEqual(sync_rfc_status.target_folder("active"), "active")
         self.assertEqual(sync_rfc_status.target_folder("superseded"), "superseded")
+        self.assertEqual(sync_rfc_status.target_folder("retired"), "retired")
 
     def test_unknown_status_is_none(self) -> None:
         self.assertIsNone(sync_rfc_status.target_folder("draft"))
@@ -600,12 +605,12 @@ class FindMoves(unittest.TestCase):
     def test_flags_rfc_sitting_in_the_wrong_folder(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            (root / "current").mkdir()
-            (root / "done").mkdir()
-            (root / "current" / "a.md").write_text(_rfc("Done"))
-            (root / "current" / "b.md").write_text(_rfc("Accepted"))
+            (root / "proposed").mkdir()
+            (root / "active").mkdir()
+            (root / "proposed" / "a.md").write_text(_rfc("Active"))
+            (root / "proposed" / "b.md").write_text(_rfc("Proposed"))
             moves = sync_rfc_status.find_moves(root)
-            expected = (root / "current" / "a.md", root / "done" / "a.md")
+            expected = (root / "proposed" / "a.md", root / "active" / "a.md")
             self.assertEqual(moves, [expected])
 
 
@@ -700,7 +705,7 @@ class FindTriggers(unittest.TestCase):
 
 class IsSatisfied(unittest.TestCase):
     def test_staged_rfc_satisfies(self) -> None:
-        changes = [("A", "docs/rfc/current/x.md")]
+        changes = [("A", "docs/rfc/proposed/x.md")]
         self.assertTrue(rfc_needed.is_satisfied(changes, "feat: x"))
 
     def test_waiver_satisfies(self) -> None:
@@ -825,7 +830,7 @@ CONTRIBUTING = """\
 
 1. Read `AGENTS.md` — the contract and the four execution principles.
 2. For anything architectural or hard to reverse, write an RFC first
-   (`docs/rfc/current/`, from `docs/rfc/TEMPLATE.md`).
+   (`docs/rfc/proposed/`, from `docs/rfc/TEMPLATE.md`).
 3. Make the change. Keep it surgical.
 4. Run the quality gate before committing (see the command surface in `AGENTS.md`).
 
@@ -879,9 +884,10 @@ architecture test) once the boundaries stabilize._
 RFC_TEMPLATE = """\
 # <Title>
 
-- **Status:** Proposed | Accepted | Done | Superseded
+- **Status:** Proposed | Active | Superseded | Retired
 - **Date:** YYYY-MM-DD
 - **Author:** <name>
+- [ ] Implemented
 
 ## Context
 
@@ -903,9 +909,10 @@ Briefly: what else we looked at and why we passed.
 FIRST_RFC = """\
 # Adopt the agent-native project setup
 
-- **Status:** Accepted
+- **Status:** Active
 - **Date:** {{ today }}
 - **Author:** {{ name }} team
+- [ ] Implemented
 
 ## Context
 
@@ -931,8 +938,8 @@ def _arch_tooling(config: WizardConfig) -> str:
     bullets = [
         "- **`AGENTS.md`** — the contract every contributor (human or AI) works from: "
         "the navigation map, the command surface, and the four execution principles.",
-        "- **`docs/`** — `architecture/` (this map) and `rfc/` (the proposal lifecycle "
-        "`current/` → `done/` → `superseded/`).",
+        "- **`docs/`** — `architecture/` (this map, reflecting the active RFCs) and "
+        "`rfc/` (the decision lifecycle `proposed/` → `active/` → `superseded/`/`retired/`).",
         "- **`tools/checks/`** — scripts that enforce the RFC/docs conventions "
         "mechanically (e.g. keeping each RFC in the folder its Status names).",
     ]
@@ -978,7 +985,7 @@ def generate(config: WizardConfig, sc: Scaffolder) -> None:
         sc.write("tools/checks/test_docs_sync.py", TEST_DOCS_SYNC)
         sc.write("tools/checks/tests_needed.py", TESTS_NEEDED)
         sc.write("tools/checks/test_tests_needed.py", TEST_TESTS_NEEDED)
-    for stage in ("current", "done", "superseded"):
+    for stage in ("proposed", "active", "superseded", "retired"):
         sc.write(f"docs/rfc/{stage}/.gitkeep", "")
     extras = []
     if config.include_quality:
@@ -987,7 +994,7 @@ def generate(config: WizardConfig, sc: Scaffolder) -> None:
         extras.append("CI on every push")
     extras_clause = f"{', '.join(extras)}, " if extras else ""
     sc.render_write(
-        f"docs/rfc/current/{date.today():%Y-%m-%d}-adopt-agent-native-setup.md",
+        f"docs/rfc/active/{date.today():%Y-%m-%d}-adopt-agent-native-setup.md",
         FIRST_RFC,
         today=f"{date.today():%Y-%m-%d}",
         name=config.project_name,

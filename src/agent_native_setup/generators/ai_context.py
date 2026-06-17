@@ -34,7 +34,7 @@ AGENTS_MD = """\
 | --- | --- |
 | Project entry point | [`README.md`](./README.md) |
 {% if docs %}| Architecture & decisions | `docs/architecture/` |
-| Active proposals | `docs/rfc/current/` |
+| Proposals & decisions | `docs/rfc/` (`proposed/` → `active/`) |
 | How to contribute | `docs/contributing.md` |
 {% endif %}{% if security %}| Security policy | [`SECURITY.md`](./SECURITY.md) |
 {% endif %}
@@ -121,9 +121,9 @@ If something genuinely can't be tested, say why rather than skipping silently.
 
 {% if docs %}## When to write an RFC
 
-Write an RFC in `docs/rfc/current/` before: changing architecture or a public
+Write an RFC in `docs/rfc/proposed/` before: changing architecture or a public
 contract, adding a dependency or service, or anything hard to reverse. Use the
-template in `docs/rfc/TEMPLATE.md`. Lifecycle: `current/ → done/ → superseded/`.{% if agents %} Before flipping one to Accepted, run the `rfc-reviewer` on the draft and resolve its findings — it checks the *decision* (simplest option, honest consequences, alternatives weighed), the way `code-reviewer` checks the diff.{% endif %}
+template in `docs/rfc/TEMPLATE.md`. Lifecycle: `proposed/ → active/ → (superseded/ | retired/)`; `docs/architecture/` reflects the active RFCs.{% if agents %} Before flipping one to Active, run the `rfc-reviewer` on the draft and resolve its findings — it checks the *decision* (simplest option, honest consequences, alternatives weighed), the way `code-reviewer` checks the diff.{% endif %}
 
 
 {% endif %}## How this project stays agent-native

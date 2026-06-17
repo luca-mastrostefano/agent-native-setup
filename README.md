@@ -43,9 +43,9 @@ Pointed at a target repo, the wizard generates:
 - **A `.claude/` agent library** — focused subagents (`code-reviewer`, `planner`), slash
   commands (`/review`, `/rfc`, `/onboard`), and a `SessionStart` hook that injects the
   live command surface into every session.
-- **`docs/` + an RFC lifecycle** — a pre-seeded architecture map, the
-  `current → done → superseded` RFC flow (with a template), a contributing guide, and an
-  improvements backlog — kept in folder-sync and freshness by hooks.
+- **`docs/` + an RFC lifecycle** — a pre-seeded architecture map (reflecting the active
+  RFCs), the `proposed → active → (superseded | retired)` RFC flow (with a template), a
+  contributing guide, and an improvements backlog — kept in folder-sync and freshness by hooks.
 - **`tools/checks/`** — small enforcement scripts (RFC ↔ folder sync, "new component
   needs a doc," "structural change needs an RFC") that ship with their own tests.
 - **Per-language lint, format & types** — ruff (Python), ESLint + Prettier + tsc (JS/TS),

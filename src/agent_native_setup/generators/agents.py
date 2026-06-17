@@ -228,8 +228,8 @@ any it supersedes) and judge it against:
    given up — not only the upside? Flag a section that only sells.
 5. Reversibility — is the "hard to reverse" framing accurate? A cheap-to-reverse
    change may not need an RFC at all; a one-way door must say so.
-6. No conflict — does it contradict or silently overlap an existing, `done`, or
-   superseded RFC? If it supersedes one, does it say so?
+6. No conflict — does it contradict or silently overlap an existing active,
+   superseded, or retired RFC? If it supersedes one, does it say so?
 
 Report findings ordered by severity, citing the section. Prefer a few
 high-confidence issues over a long list, and scale to the RFC — a one-line decision
@@ -238,13 +238,13 @@ gets one-line scrutiny. If it's sound, say so plainly; don't manufacture objecti
 
 RFC_COMMAND = """\
 ---
-description: Scaffold a new RFC in docs/rfc/current/
+description: Scaffold a new RFC in docs/rfc/proposed/
 ---
 
 Create a new RFC for: $ARGUMENTS
 
 1. Pick a short kebab-case slug and today's date.
-2. Copy `docs/rfc/TEMPLATE.md` to `docs/rfc/current/<YYYY-MM-DD>-<slug>.md`.
+2. Copy `docs/rfc/TEMPLATE.md` to `docs/rfc/proposed/<YYYY-MM-DD>-<slug>.md`.
 3. Fill in Context, Decision, and Consequences. Leave status as `Proposed`.
 4. Run the `rfc-reviewer` subagent on the draft and resolve its findings.
 5. Show me the reviewed draft before considering it done.

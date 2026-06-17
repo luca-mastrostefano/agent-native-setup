@@ -196,8 +196,10 @@ def find_triggers(changes: list[tuple[str, str]]) -> list[str]:
 
 
 def is_satisfied(changes: list[tuple[str, str]], message: str) -> bool:
+    # A new RFC accompanying the change is Proposed (-> proposed/); accept active/ too
+    # for the case where it's promoted in the same commit.
     staged_rfc = any(
-        path.startswith("docs/rfc/current/") and path.endswith(".md")
+        path.startswith(("docs/rfc/proposed/", "docs/rfc/active/")) and path.endswith(".md")
         for status, path in changes
         if status != "D"
     )
@@ -216,7 +218,7 @@ def main(argv: list[str]) -> int:
         "RFC check: this commit makes a structural change but includes no RFC.\n\n"
         f"Triggered by:\n{bullet}\n\n"
         "Do one of:\n"
-        "  - add an RFC under docs/rfc/current/ (see docs/rfc/TEMPLATE.md), or\n"
+        "  - add an RFC under docs/rfc/proposed/ (see docs/rfc/TEMPLATE.md), or\n"
         "  - record why none is needed with a commit-message trailer:\n"
         "        RFC-Not-Needed: <reason>",
         file=sys.stderr,

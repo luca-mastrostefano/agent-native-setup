@@ -68,9 +68,9 @@ def test_dependency_add_with_waiver_passes(repo: Path) -> None:
 
 def test_dependency_add_with_staged_rfc_passes(repo: Path) -> None:
     _add_dep(repo)
-    rfc = repo / "docs" / "rfc" / "current" / "2026-06-01-requests.md"
+    rfc = repo / "docs" / "rfc" / "proposed" / "2026-06-01-requests.md"
     rfc.parent.mkdir(parents=True)
-    rfc.write_text("# Use requests\n\n- **Status:** Accepted\n")
+    rfc.write_text("# Use requests\n\n- **Status:** Proposed\n")
     git(repo, "add", str(rfc))
     assert run_hook(repo, "feat: add requests") == 0
 

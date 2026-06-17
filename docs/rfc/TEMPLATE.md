@@ -1,8 +1,9 @@
 # <Title>
 
-- **Status:** Proposed | Accepted | Done | Superseded
+- **Status:** Proposed | Active | Superseded | Retired
 - **Date:** YYYY-MM-DD
 - **Author:** <name>
+- [ ] Implemented
 
 ## Context
 
