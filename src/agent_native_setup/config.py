@@ -6,8 +6,13 @@ import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
-AI_TOOLS = ("claude", "cursor", "copilot")
+AI_TOOLS = ("claude", "cursor", "copilot", "gemini")
 SCAFFOLD_PARTS = ("ai_context", "agents", "docs", "quality", "ci")
+
+# Tools whose context file is a symlink to AGENTS.md — they load their own filename
+# (Claude reads CLAUDE.md, Gemini reads GEMINI.md), not AGENTS.md. Cursor and Copilot
+# instead get a thin pointer file. Order here sets the order they're listed/created.
+SYMLINK_CONTRACTS = {"claude": "CLAUDE.md", "gemini": "GEMINI.md"}
 
 
 def slugify(name: str) -> str:

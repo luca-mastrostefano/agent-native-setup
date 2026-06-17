@@ -65,7 +65,7 @@ contributors.
 | Flag | Effect |
 | --- | --- |
 | `--languages python,node,go,rust` | Set languages explicitly (skips auto-detection). |
-| `--tools claude,cursor,copilot` | Which AI assistants to wire up (default: all three). |
+| `--tools claude,cursor,copilot,gemini` | Which AI assistants to wire up (default: all). |
 | `--description "..."` | One-line project description used in `AGENTS.md`/`README.md`. |
 | `--no-agents` / `--no-docs` / `--no-quality` / `--no-ci` | Skip a part of the scaffold. |
 | `--no-github-actions` | Quality tooling without the CI workflow. |

@@ -38,8 +38,8 @@ Pointed at a target repo, the wizard generates:
 
 - **The `AGENTS.md` contract** — one source of truth carrying the four execution
   principles, a live command surface, a navigation map, and when-to-write-an-RFC rules.
-  `CLAUDE.md` (a symlink), `.cursor/rules/`, and `.github/copilot-instructions.md` all
-  point back to it, so the rules never fork across tools.
+  `CLAUDE.md` and `GEMINI.md` (symlinks), `.cursor/rules/`, and
+  `.github/copilot-instructions.md` all point back to it, so the rules never fork across tools.
 - **A `.claude/` agent library** — focused subagents (`code-reviewer`, `planner`), slash
   commands (`/review`, `/rfc`, `/onboard`), and a `SessionStart` hook that injects the
   live command surface into every session.
@@ -104,7 +104,7 @@ agent-native-setup -o ./my-new-project
 
 ```bash
 agent-native-setup my-app -o ./my-app --languages python,node \
-  --tools claude,cursor,copilot --yes
+  --tools claude,cursor,copilot,gemini --yes
 ```
 
 **Existing project** — point `-o` at code that already exists. Languages are
@@ -123,7 +123,7 @@ agent-native-setup -o ./existing-app --yes
 | `-o, --output` | Target directory (default: current dir). |
 | `--description "..."` | One-line project description (used in `AGENTS.md`/`README.md`). |
 | `--languages` | Comma-separated: `python,node,go,rust,html`. Linters only for these. |
-| `--tools` | Comma-separated: `claude,cursor,copilot` (default: all). |
+| `--tools` | Comma-separated: `claude,cursor,copilot,gemini` (default: all). |
 | `--runner make\|task` | Command-surface runner for a fresh repo (default: `make`; an existing one is auto-detected). |
 | `--adopt progressive\|full\|none` | How the gate applies to an **existing** repo's code (default: `progressive`). |
 | `--no-agents` · `--no-docs` · `--no-quality` · `--no-ci` | Skip that part. |

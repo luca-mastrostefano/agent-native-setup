@@ -3,7 +3,7 @@
 A wizard that scaffolds an agent-native project setup into a new repo.
 
 This file is the **single source of truth** for both coding agents and humans.
-`CLAUDE.md`, `.cursor/rules/`, and `.github/copilot-instructions.md` all point here.
+`CLAUDE.md`, `GEMINI.md`, `.cursor/rules/`, and `.github/copilot-instructions.md` all point here.
 
 ## Navigation
 
@@ -117,9 +117,9 @@ alternatives weighed), the way `code-reviewer` checks the diff.
 
 - **Context** — this contract, `docs/`, and RFCs keep intent discoverable. Keep it that
   way as the repo grows by scoping context down instead of letting one file sprawl: a
-  directory with rules of its own can carry a local `AGENTS.md` (with a `CLAUDE.md` symlink
-  beside it, like the root — Claude loads `CLAUDE.md`, not `AGENTS.md`) that agents follow
-  as the nearest contract. Likewise, give a subsystem its own `docs/architecture/<name>.md`
+  directory with rules of its own can carry a local `AGENTS.md` (with a `CLAUDE.md`/`GEMINI.md`
+  symlink beside it, like the root — those tools load their own file, not `AGENTS.md`) that
+  agents follow as the nearest contract. Likewise, give a subsystem its own `docs/architecture/<name>.md`
   and keep `overview.md` the index, so no one file becomes a monolith.
 - **Mechanical enforcement** — linters, hooks, and CI catch
   violations automatically. Error messages should tell you how to fix them. If a

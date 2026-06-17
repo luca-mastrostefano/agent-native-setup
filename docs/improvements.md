@@ -73,3 +73,10 @@ that needs a real decision into an RFC in `docs/rfc/current/`.
   docs, src, runner, pyproject/package.json) and one-time files (ONBOARDING) stay untouched. Add
   the markers to the generators sooner rather than later — retrofitting them reintroduces the
   no-provenance problem the manifest just solved.
+- [000de97 · 2026-06-17] **This repo can't yet dogfood the updater** — every *generated* project
+  now ships `.agent-native-setup.json`, but the scaffolder itself doesn't: it's hand-evolved, not
+  wizard-generated, so a manifest's hashes would all read as "edited." When the `update` command
+  lands we'll want to exercise it here too, which means deciding whether to adopt-baseline a
+  manifest for this repo (record the current state as the baseline) or leave it un-managed. Tied
+  to this: the manifest shipped under an `RFC-Not-Needed` waiver because it's greenfield/reversible
+  (only us); lock the format with an RFC before any external user adopts it.

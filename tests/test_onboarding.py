@@ -203,6 +203,13 @@ def test_cleanup_flags_claude_md_symlink_transiently(tmp_path: Path) -> None:
     )
 
 
+def test_cleanup_flags_both_symlinks_for_claude_and_gemini(tmp_path: Path) -> None:
+    # With both symlink tools targeted, the note names both and says "all" (not "both").
+    body = _onboarding(tmp_path, ai_tools=["claude", "gemini"], first_run_banner=True)
+    assert "`CLAUDE.md` and `GEMINI.md` symlink to `AGENTS.md`" in body
+    assert "all update together" in body
+
+
 def test_onboard_command_scaffolded_for_claude(tmp_path: Path) -> None:
     cmd = (_build(tmp_path, languages=["python"]) / ".claude/commands/onboard.md").read_text(
         encoding="utf-8"

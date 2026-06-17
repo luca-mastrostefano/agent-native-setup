@@ -1,14 +1,14 @@
 """Generates the canonical agent contract and per-tool entry points.
 
-AGENTS.md is the single source of truth. CLAUDE.md symlinks to it; Cursor and
-Copilot files are thin pointers back to it so the contract never forks.
+AGENTS.md is the single source of truth. CLAUDE.md and GEMINI.md symlink to it;
+Cursor and Copilot files are thin pointers back to it so the contract never forks.
 """
 
 from __future__ import annotations
 
 from pathlib import Path
 
-from agent_native_setup.config import WizardConfig
+from agent_native_setup.config import SYMLINK_CONTRACTS, WizardConfig
 from agent_native_setup.generators import quality
 from agent_native_setup.languages import get
 from agent_native_setup.scaffold import Scaffolder, render
@@ -26,7 +26,7 @@ AGENTS_MD = """\
 {% if description %}{{ description }}
 
 {% endif %}This file is the **single source of truth** for both coding agents and humans.
-`CLAUDE.md`, `.cursor/rules/`, and `.github/copilot-instructions.md` all point here.
+`CLAUDE.md`, `GEMINI.md`, `.cursor/rules/`, and `.github/copilot-instructions.md` all point here.
 
 ## Navigation
 
@@ -130,9 +130,8 @@ template in `docs/rfc/TEMPLATE.md`. Lifecycle: `current/ → done/ → supersede
 
 - **Context** — this contract, `docs/`, and RFCs keep intent discoverable. Keep it that
   way as the repo grows by scoping context down instead of letting one file sprawl: a
-  directory with rules of its own can carry a local `AGENTS.md`{% if claude %} (with a
-  `CLAUDE.md` symlink beside it, like the root — Claude loads `CLAUDE.md`, not
-  `AGENTS.md`){% endif %} that agents follow as the nearest contract.{% if docs %} Likewise,
+  directory with rules of its own can carry a local `AGENTS.md`{{ nested_symlink_note }} that
+  agents follow as the nearest contract.{% if docs %} Likewise,
   give a subsystem its own `docs/architecture/<name>.md` and keep `overview.md` the index,
   so no one file becomes a monolith.{% endif %}
 - **Mechanical enforcement** — linters, hooks{% if ci %}, and CI{% endif %} catch
@@ -203,6 +202,23 @@ def _live_text(path: Path) -> str:
     return path.read_text(encoding="utf-8").strip()
 
 
+def _nested_symlink_note(symlinks: list[str]) -> str:
+    """The 'symlink beside a nested AGENTS.md' aside, for the targeted symlink tools.
+
+    Empty when no symlink tool is targeted (e.g. Cursor/Copilot only) — they read a
+    nested AGENTS.md directly, so the note doesn't apply.
+    """
+    if not symlinks:
+        return ""
+    joined = "/".join(f"`{name}`" for name in symlinks)
+    if len(symlinks) == 1:
+        tool = "Claude" if symlinks[0] == "CLAUDE.md" else "Gemini"
+        loads = f"{tool} loads {joined}"
+    else:
+        loads = "those tools load their own file"
+    return f" (with a {joined} symlink beside it, like the root — {loads}, not `AGENTS.md`)"
+
+
 def generate(config: WizardConfig, sc: Scaffolder) -> None:
     # The Taskfile is the canonical command surface; point the contract at it.
     langs = get(config.languages)
@@ -263,6 +279,9 @@ def generate(config: WizardConfig, sc: Scaffolder) -> None:
         "one-line description, so the next contributor runs it deterministically instead "
         "of leaving the knowledge in a chat or a throwaway script.**"
     )
+    # Tools whose context file is a symlink to AGENTS.md (CLAUDE.md, GEMINI.md), in
+    # registry order — drives the nested-contract note and the fold/symlink below.
+    symlinks = [name for tool, name in SYMLINK_CONTRACTS.items() if tool in config.ai_tools]
     rendered = render(
         AGENTS_MD,
         name=config.project_name,
@@ -272,6 +291,7 @@ def generate(config: WizardConfig, sc: Scaffolder) -> None:
         # `/security-review` is a Claude Code built-in, so point at it only for Claude
         # targets — independent of whether we scaffold our own `.claude/` agents.
         claude="claude" in config.ai_tools,
+        nested_symlink_note=_nested_symlink_note(symlinks),
         ci=config.include_ci and config.use_github_actions,
         security=config.include_security,
         # Banner only helps when a targeted tool auto-loads AGENTS.md AND there's an
@@ -286,12 +306,10 @@ def generate(config: WizardConfig, sc: Scaffolder) -> None:
         capture_line=capture_line if quality_commands else "",
     )
 
-    # Never clobber a pre-existing contract. Fold any non-empty AGENTS.md — and
-    # the real CLAUDE.md we're about to replace with a symlink — below ours.
+    # Never clobber a pre-existing contract. Fold any non-empty AGENTS.md — and the real
+    # CLAUDE.md/GEMINI.md we're about to replace with symlinks — below ours.
     agents_path = config.target / "AGENTS.md"
-    claude_path = config.target / "CLAUDE.md"
-    claude_targeted = "claude" in config.ai_tools
-    sources = [agents_path] + ([claude_path] if claude_targeted else [])
+    sources = [agents_path] + [config.target / name for name in symlinks]
     preserved = [(p.name, text) for p in sources if (text := _live_text(p))]
     if preserved:
         agents_existed = agents_path.is_file()
@@ -330,12 +348,12 @@ def generate(config: WizardConfig, sc: Scaffolder) -> None:
         surface_pron="it" if len(py_surface) == 1 else "them",
     )
 
-    if claude_targeted:
-        # The real CLAUDE.md (if any) is now folded into AGENTS.md; drop it so the
-        # symlink can take its place.
-        if any(label == "CLAUDE.md" for label, _ in preserved):
-            claude_path.unlink()
-        sc.symlink("CLAUDE.md", "AGENTS.md")
+    for name in symlinks:
+        # A real CLAUDE.md/GEMINI.md (if any) is now folded into AGENTS.md; drop it so
+        # the symlink can take its place.
+        if any(label == name for label, _ in preserved):
+            (config.target / name).unlink()
+        sc.symlink(name, "AGENTS.md")
     if "cursor" in config.ai_tools:
         sc.write(".cursor/rules/agent-contract.mdc", CURSOR_RULE)
     if "copilot" in config.ai_tools:

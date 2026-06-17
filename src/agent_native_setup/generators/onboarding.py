@@ -11,7 +11,7 @@ Scaffolded whenever there's tooling to activate (quality or CI). For Claude, the
 
 from __future__ import annotations
 
-from agent_native_setup.config import WizardConfig
+from agent_native_setup.config import SYMLINK_CONTRACTS, WizardConfig
 from agent_native_setup.languages import get
 from agent_native_setup.scaffold import Scaffolder
 
@@ -201,14 +201,17 @@ def _steps(config: WizardConfig) -> list[str]:
     # the standing contract behind.
     removals = ["**Delete this file**"]
     if config.first_run_banner and config.ai_tools:  # the banner was injected
-        # CLAUDE.md is a symlink to AGENTS.md (claude targets), so editing AGENTS.md updates
-        # both — flag it here, in the transient runbook, so the agent doesn't try to handle
-        # CLAUDE.md separately. Deliberately kept out of the permanent contract.
-        symlink_note = (
-            "; `CLAUDE.md` symlinks to `AGENTS.md`, so edit `AGENTS.md` only — both update together"
-            if "claude" in config.ai_tools
-            else ""
-        )
+        # CLAUDE.md/GEMINI.md symlink to AGENTS.md, so editing AGENTS.md updates them too —
+        # flag it here, in the transient runbook, so the agent doesn't try to handle those
+        # separately. Deliberately kept out of the permanent contract.
+        links = [name for tool, name in SYMLINK_CONTRACTS.items() if tool in config.ai_tools]
+        if links:
+            joined = " and ".join(f"`{name}`" for name in links)
+            verb = "symlinks" if len(links) == 1 else "symlink"
+            both = "both" if len(links) == 1 else "all"
+            symlink_note = f"; {joined} {verb} to `AGENTS.md`, so edit `AGENTS.md` only — {both} update together"
+        else:
+            symlink_note = ""
         removals.append(
             "remove the first-run banner from `AGENTS.md` (the `agent-native-setup:first-run` "
             f"block at the top{symlink_note})"

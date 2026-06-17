@@ -137,3 +137,37 @@ def test_empty_existing_file_is_not_preserved(tmp_path: Path) -> None:
     (tmp_path / "AGENTS.md").write_text("   \n")
     body = _run(tmp_path).read_text(encoding="utf-8")
     assert "Preserved from your original" not in body
+
+
+def test_gemini_target_symlinks_gemini_md_to_agents(tmp_path: Path) -> None:
+    # GEMINI.md is a symlink to AGENTS.md, exactly like CLAUDE.md (Gemini loads GEMINI.md).
+    agents = _run(tmp_path, ai_tools=["gemini"])
+    gemini = tmp_path / "GEMINI.md"
+    assert gemini.is_symlink()
+    assert gemini.resolve() == agents.resolve()
+    assert not (tmp_path / "CLAUDE.md").exists()  # claude not targeted
+    body = agents.read_text(encoding="utf-8")
+    assert "Gemini loads `GEMINI.md`" in body  # the nested-contract note is Gemini-aware
+
+
+def test_no_gemini_md_when_gemini_not_targeted(tmp_path: Path) -> None:
+    _run(tmp_path, ai_tools=["claude"])
+    assert not (tmp_path / "GEMINI.md").exists()
+
+
+def test_absorbs_real_gemini_md_then_symlinks(tmp_path: Path) -> None:
+    (tmp_path / "GEMINI.md").write_text("# Legacy GEMINI\n\nUse spaces.\n")
+    agents = _run(tmp_path, ai_tools=["gemini"])
+    body = agents.read_text(encoding="utf-8")
+    assert "<!-- Preserved from your original GEMINI.md -->" in body
+    assert "Use spaces." in body
+    gemini = tmp_path / "GEMINI.md"
+    assert gemini.is_symlink()
+    assert gemini.resolve() == agents.resolve()
+
+
+def test_both_symlink_tools_listed_when_claude_and_gemini(tmp_path: Path) -> None:
+    body = _run(tmp_path, ai_tools=["claude", "gemini"]).read_text(encoding="utf-8")
+    assert "`CLAUDE.md`, `GEMINI.md`," in body  # the pointer line lists both
+    assert "`CLAUDE.md`/`GEMINI.md` symlink beside it" in body  # nested note lists both
+    assert "those tools load their own file" in body
