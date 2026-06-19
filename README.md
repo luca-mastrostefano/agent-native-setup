@@ -4,7 +4,7 @@
 
 **One command to make any repo agent-native — new or existing.**
 
-Coding agents (Claude Code, Cursor, Copilot, …) are only as effective as the repo they
+Coding agents (Claude Code, Cursor, Copilot, Gemini, …) are only as effective as the repo they
 work in. This wizard lays down the setup that makes a codebase legible and safe for
 agents *and* humans: a single contract every agent follows, mechanical guardrails that
 catch mistakes automatically, and feedback loops — review subagents, tests, an RFC
@@ -45,8 +45,9 @@ Pointed at a target repo, the wizard generates:
   contract's own commands, and hooks that inject the live command surface at session start
   and auto-format files as they're edited.
 - **`docs/` + an RFC lifecycle** — a pre-seeded architecture map (reflecting the active
-  RFCs), the `proposed → active → (superseded | retired)` RFC flow (with a template), a
-  contributing guide, and an improvements backlog — kept in folder-sync and freshness by hooks.
+  RFCs), the `proposed → active → (superseded | retired)` RFC flow (with a template), a root
+  `CONTRIBUTING.md` dev-loop guide, and an improvements backlog — kept in folder-sync and
+  freshness by hooks.
 - **`tools/checks/`** — small enforcement scripts (RFC ↔ folder sync, "new component
   needs a doc," "structural change needs an RFC") that ship with their own tests.
 - **Per-language lint, format & types** — ruff (Python), ESLint + Prettier + tsc (JS/TS),
@@ -58,7 +59,9 @@ Pointed at a target repo, the wizard generates:
 - **A security baseline** — committed-secret scanning (gitleaks) and dependency/vuln
   audits, in both pre-commit and a dedicated CI job, plus `SECURITY.md` and Dependabot.
 - **Engineering baseline files** — `.editorconfig`, `.gitattributes`, per-language
-  `.gitignore`, a PR template, and (on existing repos) a `.git-blame-ignore-revs`.
+  `.gitignore`, a PR template, a provenance manifest (`.agent-native-setup.json`, recording
+  what generated the project for a future `update`), and (on existing repos) a
+  `.git-blame-ignore-revs`.
 - **A self-deleting `ONBOARDING.md`** — a one-time runbook that walks an agent through
   activating the setup on first run, then removes itself.
 
@@ -83,9 +86,10 @@ These aren't just config files — they actively keep an agent (and you) on the 
   audits run mechanically in pre-commit and CI; for changes touching auth, untrusted input,
   secrets, or network I/O, the contract routes the agent to a `/security-review` for the
   logic-level flaws scanners can't see.
-- **Docs and decisions can't silently drift.** `commit-msg` hooks require an RFC for a
-  structural change and an architecture-doc update for a new component (or a logged
-  waiver); RFCs auto-file into their lifecycle folder.
+- **Docs, tests, and decisions can't silently drift.** `commit-msg` hooks require an RFC
+  for a structural change, an architecture-doc update for a new component, and a test
+  alongside a source change — each waivable with a logged trailer; RFCs auto-file into
+  their lifecycle folder.
 - **Every rule, enforced three ways.** The same checks run at **pre-commit**, on the
   **command surface**, and in **CI** — so a violation can't slip past whichever layer the
   agent skips.
@@ -131,6 +135,8 @@ agent-native-setup -o ./existing-app --yes
 | `--no-security` | Skip secrets + dependency scanning (keep the rest). |
 | `--no-github-actions` | Quality tooling without the CI workflow. |
 | `--no-hooks` · `--no-git` | Skip pre-commit hooks / `git init`. |
+| `--no-first-run-banner` | Don't inject the self-removing "first run — finish ONBOARDING" banner into `AGENTS.md`. |
+| `--no-update-check` | Don't check GitHub for a newer release at the end of a run. |
 | `-y, --yes` | Non-interactive; use flags and defaults. |
 | `--force` | Overwrite existing files. |
 
