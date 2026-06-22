@@ -963,7 +963,11 @@ def _arch_tooling(config: WizardConfig) -> str:
 def generate(config: WizardConfig, sc: Scaffolder) -> None:
     sc.write("docs/README.md", DOCS_README)
     sc.render_write("CONTRIBUTING.md", CONTRIBUTING, existing_project=config.existing_project)
-    sc.render_write("docs/architecture/overview.md", ARCH_OVERVIEW, tooling=_arch_tooling(config))
+    # seed=True: the overview's Product/dependency sections are the user's to fill — update
+    # must never overwrite them. (Same for the backlog and the dated bootstrap RFC below.)
+    sc.render_write(
+        "docs/architecture/overview.md", ARCH_OVERVIEW, seed=True, tooling=_arch_tooling(config)
+    )
     # Stamp entries with the commit they were noted at — or the date, when the scaffolded
     # project won't be a git repo (no init and no existing .git). Point at the runner's
     # `improvement` target when we generate a runner that carries it (quality.py).
@@ -971,7 +975,7 @@ def generate(config: WizardConfig, sc: Scaffolder) -> None:
     owns_runner = config.include_quality and not config.existing_runner
     improvement_cmd = quality.IMPROVEMENT_USAGE[config.runner] if owns_runner else ""
     sc.render_write(
-        "docs/improvements.md", IMPROVEMENTS, git=is_git, improvement_cmd=improvement_cmd
+        "docs/improvements.md", IMPROVEMENTS, seed=True, git=is_git, improvement_cmd=improvement_cmd
     )
     sc.write("docs/rfc/TEMPLATE.md", RFC_TEMPLATE)
     sc.write("tools/checks/sync_rfc_status.py", SYNC_RFC_STATUS)
@@ -997,6 +1001,7 @@ def generate(config: WizardConfig, sc: Scaffolder) -> None:
     sc.render_write(
         f"docs/rfc/active/{date.today():%Y-%m-%d}-adopt-agent-native-setup.md",
         FIRST_RFC,
+        seed=True,  # dated + historical: regenerating later would duplicate it under a new date
         today=f"{date.today():%Y-%m-%d}",
         name=config.project_name,
         extras=extras_clause,

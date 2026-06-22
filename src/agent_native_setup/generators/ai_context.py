@@ -323,8 +323,10 @@ def generate(config: WizardConfig, sc: Scaffolder) -> None:
         sc.created.append(f"AGENTS.md (merged existing {names})")
         sc.track_new(agents_path, existed=agents_existed)
         sc.record("AGENTS.md", merged)  # this path bypasses sc.write; fingerprint it too
+        sc.seed.add("AGENTS.md")  # the contract is the user's to evolve; update won't refresh it
     else:
-        sc.write("AGENTS.md", rendered)
+        # seed=True: AGENTS.md is the user-owned contract — update never refreshes it.
+        sc.write("AGENTS.md", rendered, seed=True)
 
     # README is the human entry point the contract links to; never clobber an
     # existing one, even with --force.
