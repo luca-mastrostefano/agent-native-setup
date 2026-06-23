@@ -22,13 +22,17 @@ import hashlib
 import json
 import os
 import subprocess
+import sys
 import tempfile
+import time
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from agent_native_setup import manifest, migrations
+from agent_native_setup import manifest, migrations, versioning
 from agent_native_setup.config import AI_TOOLS, WizardConfig
+from agent_native_setup.migrations import Migration
 from agent_native_setup.scaffold import Scaffolder
 
 
@@ -150,8 +154,11 @@ def _prune_empty_parents(start: Path, stop: Path) -> None:
         parent = parent.parent
 
 
-def render_report(plan: Plan, from_version: str, to_version: str) -> str:
-    """The ``UPDATING.md`` runbook: what was applied, and the conflicts left to reconcile."""
+def render_report(
+    plan: Plan, from_version: str, to_version: str, agent_steps: Sequence[Migration] = ()
+) -> str:
+    """The ``UPDATING.md`` runbook: what was applied, the conflicts left to reconcile, and —
+    for a breaking-boundary update — the ordered migration steps for the agent/user to do."""
     lines = [
         "# Updating this project's agent-native setup",
         "",
@@ -159,6 +166,16 @@ def render_report(plan: Plan, from_version: str, to_version: str) -> str:
         f"**{to_version}**.",
         "",
     ]
+    if agent_steps:
+        lines += [
+            "## Migration steps",
+            "",
+            "This update crosses a breaking version boundary. Do these **in order** — they "
+            "transform files you own, which the tool won't touch automatically:",
+            "",
+        ]
+        for m in agent_steps:
+            lines += [f"### {m.version} — {m.describe}", "", m.instructions.strip(), ""]
     if plan.conflicts:
         lines += [
             "## Reconcile these",
@@ -267,7 +284,7 @@ def _regenerate(config: WizardConfig, into: Path) -> Scaffolder:
     return sc
 
 
-def run(target: Path, *, dry_run: bool, console: Any) -> int:
+def run(target: Path, *, dry_run: bool, console: Any, assume_yes: bool = False) -> int:
     """Refresh ``target`` to this version. Returns a process exit code."""
     old = _load_manifest(target)
     if old is None:
@@ -277,6 +294,20 @@ def run(target: Path, *, dry_run: bool, console: Any) -> int:
             "(non-destructive) to record a manifest, then `update` will work."
         )
         return 2
+
+    from_version = str(old.get("version") or "0.0.0")
+    to_version = str(manifest.__version__)
+    decision = versioning.decide(from_version, to_version)
+    if decision == versioning.DOWNGRADE:
+        console.print(
+            f"[red]Your installed tool ({to_version}) is older than this project's "
+            f"scaffolding ({from_version})[/] — upgrade the tool, then run update."
+        )
+        return 2
+    # agent/manual steps for the breaking boundaries crossed; their presence also gates,
+    # so a mistagged step still gets a confirmation rather than auto-applying.
+    agent_steps = migrations.steps_in_span(from_version, to_version)
+    gated = decision == versioning.GATED or bool(agent_steps)
 
     if not dry_run:
         is_repo, clean = _git_state(target)
@@ -292,6 +323,16 @@ def run(target: Path, *, dry_run: bool, console: Any) -> int:
                 "diff is unambiguously its own. (Or preview with [bold]--dry-run[/].)"
             )
             return 2
+        if (
+            gated
+            and (
+                gate_rc := _confirm_gate(
+                    console, from_version, to_version, agent_steps, assume_yes=assume_yes
+                )
+            )
+            is not None
+        ):
+            return gate_rc
 
     # Structural moves of user content run first (so regeneration lands on the new layout);
     # a dry run previews them without mutating anything.
@@ -299,7 +340,6 @@ def run(target: Path, *, dry_run: bool, console: Any) -> int:
     for action in moves:
         console.print(f"  [magenta]~[/] {'would move' if dry_run else 'moved'} {action}")
 
-    from_version = str(old.get("version") or "0.0.0")
     with tempfile.TemporaryDirectory() as tmp:
         sc = _regenerate(_config_from_manifest(old, Path(tmp)), Path(tmp))
         # build() writes the manifest *last* via sc.write, which adds it to `recorded`.
@@ -309,24 +349,54 @@ def run(target: Path, *, dry_run: bool, console: Any) -> int:
         sc.seed.discard(manifest.MANIFEST_PATH)
         plan = classify(old, sc.recorded, sc.seed, target)
         if dry_run:
-            _print_plan(console, plan, dry_run=True)
+            _print_plan(console, plan, dry_run=True, agent_steps=agent_steps)
             return 0
         apply(plan, sc.recorded, Path(tmp), target)
-        to_version = str(manifest.__version__)
-        (target / REPORT_PATH).write_text(
-            render_report(plan, from_version, to_version), encoding="utf-8"
-        )
+        # UPDATING.md is the *actionable* runbook — written only when there's something for
+        # the user to do (conflicts to reconcile, or migration steps). A clean autopilot
+        # refresh leaves no runbook to delete; the `git diff` is the record.
+        if plan.conflicts or agent_steps:
+            (target / REPORT_PATH).write_text(
+                render_report(plan, from_version, to_version, agent_steps), encoding="utf-8"
+            )
+        # Written last, so an interrupt before here leaves `installed` unchanged (re-runnable).
         new_manifest = manifest.build(_config_from_manifest(old, target), sc)
         (target / manifest.MANIFEST_PATH).write_text(
             json.dumps(new_manifest, indent=2) + "\n", encoding="utf-8"
         )
-    _print_plan(console, plan, dry_run=False)
+    _print_plan(console, plan, dry_run=False, agent_steps=agent_steps)
     return 0
 
 
-def _print_plan(console: Any, plan: Plan, *, dry_run: bool) -> None:
+def _confirm_gate(
+    console: Any, from_v: str, to_v: str, agent_steps: list[Migration], *, assume_yes: bool
+) -> int | None:
+    """Confirm a breaking-boundary update. Returns ``None`` to proceed, or an exit code to
+    stop with (0 = user declined, 2 = needs --yes in a non-interactive run)."""
+    detail = f" with {len(agent_steps)} migration step(s) to apply" if agent_steps else ""
+    if assume_yes:
+        return None
+    if not sys.stdin.isatty():
+        console.print(
+            f"[red]Breaking update {from_v} → {to_v}{detail}[/] needs confirmation. Preview "
+            "with [bold]--dry-run[/], then re-run with [bold]--yes[/] to proceed."
+        )
+        return 2
+    import questionary
+
+    if questionary.confirm(
+        f"Breaking update ({from_v} → {to_v}){detail} — proceed?", default=False
+    ).ask():
+        return None
+    console.print("[yellow]Aborted[/] — no changes made.")
+    return 0
+
+
+def _print_plan(
+    console: Any, plan: Plan, *, dry_run: bool, agent_steps: Sequence[Migration] = ()
+) -> None:
     verb = "Would" if dry_run else "Did"
-    if plan.is_noop:
+    if plan.is_noop and not agent_steps:
         console.print("[green]Already up to date[/] — nothing to change.")
         return
     for label, rels in (("create", plan.creates), ("refresh", plan.refreshes)):
@@ -342,8 +412,53 @@ def _print_plan(console: Any, plan: Plan, *, dry_run: bool) -> None:
         )
         for c in plan.conflicts:
             console.print(f"  [yellow]![/] {c.rel} — {c.reason}")
+    if agent_steps:
+        console.print(
+            f"\n[magenta]{len(agent_steps)} migration step(s)[/] cross a version boundary — "
+            + ("previewed below" if dry_run else f"do them via [bold]{REPORT_PATH}[/]")
+            + ":"
+        )
+        for m in agent_steps:
+            console.print(f"  [magenta]→[/] {m.version}: {m.describe}")
     if not dry_run:
         console.print("\n[dim]Review [/][bold]git diff[/][dim] before committing.[/]")
+
+
+def check(target: Path, console: Any) -> int:
+    """Print a one-line staleness nudge (or nothing), comparing the project's scaffolding
+    version to the latest release. Read-only and **silent on any error** — it runs from a
+    SessionStart hook, so it must never fail a session. It reads the daily-cached latest
+    release, refreshing it with one bounded (<=1.5s) network call when the cache is stale;
+    that refresh is shared with the end-of-run nudge, so in steady state it's a cache hit."""
+    try:
+        old = _load_manifest(target)
+        if old is None:
+            return 0  # not a scaffolded project (or pre-manifest) — nothing to say
+        installed = str(old.get("version") or "0.0.0")
+        if versioning.parse(installed) == versioning.parse("0.0.0"):
+            return 0  # no usable scaffolding version (raw-checkout dev) — don't cry wolf
+        from agent_native_setup import update_check
+
+        latest = update_check._latest_with_cache(time.time())
+        if not latest:
+            return 0  # offline / no release info
+        latest_v = latest.lstrip("v")
+        decision = versioning.decide(installed, latest_v)
+        head = (
+            f"[dim]agent-native-setup:[/] scaffolding [bold]{installed}[/] · "
+            f"latest [bold]{latest_v}[/] — "
+        )
+        if decision == versioning.AUTOPILOT:
+            console.print(f"{head}compatible update, run [bold]/update[/].")
+        elif decision == versioning.GATED:
+            console.print(
+                f"{head}[yellow]major (breaking) update[/]; review before applying "
+                "([bold]/update[/])."
+            )
+        # NOOP (current) / DOWNGRADE (ahead of latest) → say nothing
+    except Exception:  # advisory only — never disrupt a session
+        pass
+    return 0
 
 
 def run_cli(argv: list[str], console: Any) -> int:
@@ -353,5 +468,12 @@ def run_cli(argv: list[str], console: Any) -> int:
     )
     p.add_argument("-o", "--output", default=".", help="project directory (default: cwd)")
     p.add_argument("--dry-run", action="store_true", help="show what would change, write nothing")
+    p.add_argument(
+        "-y", "--yes", action="store_true", help="confirm a breaking (major-boundary) update"
+    )
+    p.add_argument("--check", action="store_true", help="print a one-line staleness nudge and exit")
     args = p.parse_args(argv)
-    return run(Path(args.output).expanduser().resolve(), dry_run=args.dry_run, console=console)
+    target = Path(args.output).expanduser().resolve()
+    if args.check:
+        return check(target, console)
+    return run(target, dry_run=args.dry_run, console=console, assume_yes=args.yes)

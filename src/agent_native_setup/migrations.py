@@ -1,14 +1,21 @@
-"""Structural migrations `update` replays before regenerating (RFC 2026-06-20).
+"""The migration registry `update` replays before regenerating (RFCs 2026-06-20, 2026-06-22).
 
 Regenerating from the saved config refreshes the files the wizard *generates*, but it can't
 move the files a *user* accumulated when a convention's layout changes — e.g. the RFC
-lifecycle rename (`current/` → `active/`). Those moves live here.
+lifecycle rename (`current/` → `active/`). Those transforms live here, in an append-only,
+version-tagged registry. Each entry declares a ``kind``:
 
-Each migration is **structural only** (move/rename — never rewrites file *contents*, which
-would be a merge problem) and **idempotent**: it guards on the old layout still being
-present, so running it on an already-migrated repo is a no-op. Because of that, `update`
-simply attempts them all every run rather than version-gating — robust even when versions
-aren't reliably tagged. The `since` field documents the change that introduced each one.
+- ``auto`` — a deterministic, **idempotent** move/rename the tool performs. It guards on the
+  old layout, so a re-run is a no-op; ``update`` therefore *attempts every ``auto`` step on
+  every run* regardless of version (robust even when versions aren't reliably tagged), and
+  its ``version`` is informational/ordering only.
+- ``agent`` / ``manual`` — a transform that needs a coding agent (to read the user's content)
+  or a human. The tool never performs these; it emits their ``instructions`` into the
+  ``UPDATING.md`` runbook for the boundaries actually crossed. These are **version-keyed**:
+  span selection (``steps_in_span``) picks the ones in ``(installed, latest]``, in order.
+
+By the §1 contract of RFC 2026-06-22, ``auto`` steps may ship in a compatible (minor, or in
+0.x a patch) release; ``agent``/``manual`` steps only at a breaking-series boundary.
 """
 
 from __future__ import annotations
@@ -18,13 +25,23 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
+from agent_native_setup import versioning
+
+
+def _noop(target: Path, *, apply: bool = True) -> list[str]:
+    """Default `apply` for `agent`/`manual` steps — the tool never performs them itself."""
+    return []
+
 
 @dataclass
 class Migration:
-    since: str  # the change that introduced this structural move (for ordering/docs)
+    version: str  # semver it shipped in (span selection for agent/manual; ordering for auto)
+    kind: str  # "auto" | "agent" | "manual"
     describe: str
-    # Mutate the tree (apply=True) or just report what it would do (apply=False).
-    apply: Callable[..., list[str]]
+    # `auto`: performs the move (apply=True) or previews it (apply=False). Unused otherwise.
+    apply: Callable[..., list[str]] = _noop
+    # `agent`/`manual`: the runbook text the agent/user follows to do the transform.
+    instructions: str = ""
 
 
 def _move_dir_contents(target: Path, src_rel: str, dst_rel: str, *, apply: bool) -> list[str]:
@@ -71,7 +88,8 @@ def _rfc_lifecycle_rename(target: Path, *, apply: bool) -> list[str]:
 
 MIGRATIONS: list[Migration] = [
     Migration(
-        since="rfc-lifecycle-rework",
+        version="0.5.0",  # the RFC-lifecycle rework first shipped in v0.5.0
+        kind="auto",
         describe="RFC lifecycle: move current/ and done/ into active/",
         apply=_rfc_lifecycle_rename,
     ),
@@ -79,9 +97,24 @@ MIGRATIONS: list[Migration] = [
 
 
 def apply_all(target: Path, *, apply: bool = True) -> list[str]:
-    """Run every migration against ``target`` (or, with ``apply=False``, just collect what
-    they would do); return the flat list of move actions as ``src → dst`` strings."""
+    """Run every ``auto`` migration against ``target`` (or, with ``apply=False``, just collect
+    what they would do); return the flat list of move actions as ``src → dst`` strings.
+    ``auto`` steps are idempotent, so this attempts them all every run regardless of version."""
     actions: list[str] = []
     for migration in MIGRATIONS:
-        actions += migration.apply(target, apply=apply)
+        if migration.kind == "auto":
+            actions += migration.apply(target, apply=apply)
     return actions
+
+
+def steps_in_span(installed: str, latest: str) -> list[Migration]:
+    """The ``agent``/``manual`` migration steps in ``(installed, latest]``, ascending — the
+    ordered ``UPDATING.md`` runbook sections for the breaking boundaries actually crossed.
+    A user many versions behind gets every boundary's instructions, in order."""
+    iv, lv = versioning.parse(installed), versioning.parse(latest)
+    chosen = [
+        m
+        for m in MIGRATIONS
+        if m.kind in ("agent", "manual") and iv < versioning.parse(m.version) <= lv
+    ]
+    return sorted(chosen, key=lambda m: versioning.parse(m.version))

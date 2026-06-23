@@ -12,9 +12,12 @@ import json
 import subprocess
 from pathlib import Path
 
-from agent_native_setup import cli, update
+import pytest
+
+from agent_native_setup import cli, manifest, migrations, update
 from agent_native_setup.config import WizardConfig
 from agent_native_setup.manifest import MANIFEST_PATH
+from agent_native_setup.migrations import Migration
 from agent_native_setup.scaffold import Scaffolder
 
 
@@ -92,7 +95,8 @@ def test_update_refreshes_conflicts_recreates_removes_and_respects_seed(tmp_path
     _commit_clean_baseline(target)
 
     console = _Console()
-    assert update.run(target, dry_run=False, console=console) == 0
+    # 0.0.1 → tool version crosses a breaking boundary; confirm it so we test the content engine.
+    assert update.run(target, dry_run=False, console=console, assume_yes=True) == 0
 
     # Pristine-but-stale managed file refreshed back to the current template.
     assert (target / refreshed).read_text(encoding="utf-8") == real_reviewer
@@ -155,6 +159,193 @@ def test_update_never_treats_the_manifest_as_a_conflict_or_lists_itself(tmp_path
     new_manifest = json.loads((target / MANIFEST_PATH).read_text(encoding="utf-8"))
     assert MANIFEST_PATH not in new_manifest["files"]
     assert MANIFEST_PATH not in new_manifest["seed"]
+
+
+def _set_version(target: Path, version: str) -> None:
+    m = json.loads((target / MANIFEST_PATH).read_text(encoding="utf-8"))
+    m["version"] = version
+    (target / MANIFEST_PATH).write_text(json.dumps(m, indent=2) + "\n", encoding="utf-8")
+
+
+def test_breaking_update_without_confirmation_is_refused(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # 0.4 → 0.5 crosses a 0.x breaking boundary. Non-interactive + no --yes → refuse and
+    # mutate nothing (the gate is checked before any migration or content write).
+    monkeypatch.setattr(manifest, "__version__", "0.5.0")
+    target = tmp_path / "proj"
+    target.mkdir()
+    _scaffold(target)
+    _set_version(target, "0.4.0")
+    stale = target / ".claude/agents/code-reviewer.md"
+    stale.write_text("STALE\n", encoding="utf-8")
+    _commit_clean_baseline(target)
+
+    console = _Console()
+    assert update.run(target, dry_run=False, console=console, assume_yes=False) == 2
+    assert "needs confirmation" in console.text
+    assert stale.read_text(encoding="utf-8") == "STALE\n"  # untouched
+    assert not (target / update.REPORT_PATH).exists()
+
+
+def test_breaking_update_with_yes_proceeds(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(manifest, "__version__", "0.5.0")
+    target = tmp_path / "proj"
+    target.mkdir()
+    m = _scaffold(target)
+    stale = ".claude/agents/code-reviewer.md"
+    real = (target / stale).read_text(encoding="utf-8")
+    (target / stale).write_text("STALE\n", encoding="utf-8")
+    m = json.loads((target / MANIFEST_PATH).read_text(encoding="utf-8"))
+    m["version"] = "0.4.0"
+    m["files"][stale] = _sha("STALE\n")
+    (target / MANIFEST_PATH).write_text(json.dumps(m, indent=2) + "\n", encoding="utf-8")
+    _commit_clean_baseline(target)
+
+    assert update.run(target, dry_run=False, console=_Console(), assume_yes=True) == 0
+    assert (target / stale).read_text(encoding="utf-8") == real  # refreshed once confirmed
+
+
+def test_downgrade_is_refused(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    # Installed tool older than the project's scaffolding → refuse before touching anything.
+    monkeypatch.setattr(manifest, "__version__", "0.4.0")
+    target = tmp_path / "proj"
+    target.mkdir()
+    _scaffold(target)
+    _set_version(target, "0.6.0")
+    console = _Console()
+    assert update.run(target, dry_run=False, console=console, assume_yes=True) == 2
+    assert "older than" in console.text
+
+
+def test_breaking_boundary_with_no_steps_still_requires_confirmation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Crossing a breaking series with ZERO migration steps must still pause — a major is the
+    # user's signal to look, even when the change is mechanically safe (RFC §3 edge case).
+    monkeypatch.setattr(manifest, "__version__", "0.5.0")
+    monkeypatch.setattr(migrations, "MIGRATIONS", [])  # no agent/manual steps in the span
+    target = tmp_path / "proj"
+    target.mkdir()
+    _scaffold(target)
+    _set_version(target, "0.4.0")
+    stale = target / ".claude/agents/code-reviewer.md"
+    stale.write_text("STALE\n", encoding="utf-8")
+    _commit_clean_baseline(target)
+
+    console = _Console()
+    assert update.run(target, dry_run=False, console=console, assume_yes=False) == 2
+    assert "needs confirmation" in console.text
+    assert stale.read_text(encoding="utf-8") == "STALE\n"  # untouched
+
+
+def test_check_is_silent_for_an_unknown_version(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # A raw-checkout scaffold records 0.0.0; we can't meaningfully assess staleness, so the
+    # nudge stays quiet rather than crying "breaking update" on every session.
+    target = tmp_path / "proj"
+    target.mkdir()
+    _scaffold(target)
+    _set_version(target, "0.0.0")
+    _patch_latest(monkeypatch, "v0.5.0")
+    console = _Console()
+    update.check(target, console)
+    assert console.text == ""
+
+
+def test_check_never_raises_on_a_fetch_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The cache refresh can fail (offline, GitHub hiccup); from a SessionStart hook the check
+    # must swallow it and return 0, never propagate.
+    from agent_native_setup import update_check
+
+    def boom(now: float) -> str:
+        raise RuntimeError("network down")
+
+    monkeypatch.setattr(update_check, "_latest_with_cache", boom)
+    target = tmp_path / "proj"
+    target.mkdir()
+    _scaffold(target)
+    _set_version(target, "0.1.0")
+    console = _Console()
+    assert update.check(target, console) == 0
+    assert console.text == ""
+
+
+def test_breaking_runbook_lists_ordered_agent_steps(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(manifest, "__version__", "0.5.0")
+    monkeypatch.setattr(
+        migrations,
+        "MIGRATIONS",
+        [Migration("0.5.0", "agent", "split the contract", instructions="Move X into Y.")],
+    )
+    target = tmp_path / "proj"
+    target.mkdir()
+    _scaffold(target)
+    _set_version(target, "0.4.0")
+    _commit_clean_baseline(target)
+
+    assert update.run(target, dry_run=False, console=_Console(), assume_yes=True) == 0
+    report = (target / update.REPORT_PATH).read_text(encoding="utf-8")
+    assert "## Migration steps" in report
+    assert "### 0.5.0 — split the contract" in report
+    assert "Move X into Y." in report
+
+
+def _patch_latest(monkeypatch: pytest.MonkeyPatch, tag: str | None) -> None:
+    from agent_native_setup import update_check
+
+    monkeypatch.setattr(update_check, "_latest_with_cache", lambda now: tag)
+
+
+def test_check_nudges_for_a_compatible_update(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    target = tmp_path / "proj"
+    target.mkdir()
+    _scaffold(target)
+    _set_version(target, "0.1.0")
+    _patch_latest(monkeypatch, "v0.1.5")  # same 0.1 series, newer
+    console = _Console()
+    update.check(target, console)
+    assert "compatible update" in console.text and "0.1.5" in console.text
+
+
+def test_check_warns_for_a_breaking_update(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    target = tmp_path / "proj"
+    target.mkdir()
+    _scaffold(target)
+    _set_version(target, "0.4.0")
+    _patch_latest(monkeypatch, "v0.5.0")  # 0.4 → 0.5 crosses a 0.x boundary
+    console = _Console()
+    update.check(target, console)
+    assert "breaking" in console.text
+
+
+def test_check_is_silent_when_current_or_offline(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    target = tmp_path / "proj"
+    target.mkdir()
+    _scaffold(target)
+    _set_version(target, "0.5.0")
+    _patch_latest(monkeypatch, "v0.5.0")  # same version → nothing to say
+    console = _Console()
+    update.check(target, console)
+    assert console.text == ""
+    _patch_latest(monkeypatch, None)  # offline / no release info → silent
+    update.check(target, console)
+    assert console.text == ""
+
+
+def test_check_is_silent_without_a_manifest(tmp_path: Path) -> None:
+    console = _Console()
+    assert update.check(tmp_path, console) == 0
+    assert console.text == ""
 
 
 def test_update_refuses_without_a_manifest(tmp_path: Path) -> None:

@@ -1,6 +1,6 @@
 # Version-driven updates: a semver difficulty contract + a major-version gate
 
-- **Status:** Proposed
+- **Status:** Active
 - **Date:** 2026-06-22
 - **Author:** Luca Mastrostefano
 - [ ] Implemented
@@ -89,12 +89,19 @@ This split is the resolution of every "incremental vs one-shot" tension in the d
 Let `installed` = the manifest's version, `latest` = the running tool's version (compared
 with `packaging.Version`).
 
+**The boundary is the "breaking series," not literally the major** — because semver's `0.x`
+is special: pre-1.0, a *minor* bump (`0.4 → 0.5`) is the breaking signal, not the major. So
+the gated boundary is the change in **`breaking_series(v)` = `(v.major,)` if `v.major >= 1`,
+else `(0, v.minor)`**. Concretely: `0.4.2 → 0.4.9` and `1.2 → 1.9` autopilot; `0.4 → 0.5`,
+`0.9 → 1.0`, and `1.6 → 2.0` gate. ("major-version gate" is shorthand; the project is `0.x`
+today, where the minor carries the weight.) The three cases:
+
 - **`latest <= installed`** → nothing to do (and if strictly less, **refuse**: "your installed
   tool is older than this project's scaffolding — upgrade the tool").
-- **Same major** (`installed.major == latest.major`) → **autopilot.** Apply the content diff
-  and any auto structural moves in the span; the only review is the standard `git diff`. No
-  extra confirmation — the contract promised nothing breaking happened.
-- **`latest.major > installed.major`** → **gated.** Run the `auto` structural migrations
+- **Same breaking series** → **autopilot.** Apply the content diff and any auto structural
+  moves in the span; the only review is the standard `git diff`. No extra confirmation — the
+  contract promised nothing breaking happened.
+- **`breaking_series` changes** (and `latest > installed`) → **gated.** Run the `auto` structural migrations
   (idempotent), then **pause before any content is written**: assemble the ordered span of
   `agent`/`manual` steps into the runbook (§5) and **require explicit confirmation**. On
   confirm, the agent/user works the ordered instruction sections, and *then* content
