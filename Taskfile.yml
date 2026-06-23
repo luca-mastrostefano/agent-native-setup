@@ -38,4 +38,7 @@ tasks:
   release:
     desc: 'cut a release (tag + GitHub release) — usage: task release VERSION=0.2.0'
     cmds:
+      # Guard the bump against the migration registry first (RFC 2026-06-23); it stops the
+      # task on a non-forward or under-bump. Override a false positive with RELEASE_FORCE=1.
+      - python tools/release_guard.py "{{.VERSION}}"
       - gh release create "v{{.VERSION}}" --title "v{{.VERSION}}" --generate-notes
