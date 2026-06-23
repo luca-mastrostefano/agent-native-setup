@@ -2,7 +2,8 @@
 
 ## Dev loop
 
-1. Read `AGENTS.md` — the contract and the four execution principles.
+1. Read `AGENTS.md` (the project map) and the `INSTRUCTION.md` it points to — the
+   contract and the four execution principles.
 2. For anything architectural or hard to reverse, write an RFC first
    (`docs/rfc/proposed/`, from `docs/rfc/TEMPLATE.md`).
 3. Make the change. Keep it surgical.

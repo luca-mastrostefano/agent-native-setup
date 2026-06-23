@@ -36,12 +36,13 @@ Then run `agent-native-setup` and answer the prompts — or go non-interactive (
 
 Pointed at a target repo, the wizard generates:
 
-- **The `AGENTS.md` contract** — one source of truth carrying the four execution
-  principles, a live command surface, a navigation map, and when-to-write-an-RFC rules.
-  `CLAUDE.md` and `GEMINI.md` (symlinks), `.cursor/rules/`, and
-  `.github/copilot-instructions.md` all point back to it, so the rules never fork across tools.
+- **The `AGENTS.md` + `INSTRUCTION.md` contract** — `INSTRUCTION.md` carries the four
+  execution principles and when-to-write-an-RFC rules (managed, so an `update` keeps it
+  fresh); `AGENTS.md` is the thin project map (navigation + live command surface) that
+  points at it. `CLAUDE.md` and `GEMINI.md` (symlinks), `.cursor/rules/`, and
+  `.github/copilot-instructions.md` all point back to `AGENTS.md`, so the rules never fork across tools.
 - **A `.claude/` agent library** — focused subagents (`code-reviewer`, `rfc-reviewer`,
-  `planner`), slash commands (`/review`, `/rfc`, `/onboard`), a permission allowlist for the
+  `planner`), slash commands (`/review`, `/rfc`, `/update`, `/onboard`), a permission allowlist for the
   contract's own commands, and hooks that inject the live command surface at session start
   and auto-format files as they're edited.
 - **`docs/` + an RFC lifecycle** — a pre-seeded architecture map (reflecting the active
@@ -144,8 +145,8 @@ agent-native-setup -o ./existing-app --yes
 
 Three pillars, lifted from real production setups:
 
-1. **Context** — one canonical `AGENTS.md` (plus `docs/` and RFCs) so intent is
-   discoverable and never forks across tools.
+1. **Context** — one canonical contract (`AGENTS.md` → `INSTRUCTION.md`, plus `docs/` and
+   RFCs) so intent is discoverable and never forks across tools.
 2. **Mechanical enforcement** — linters, hooks, and CI catch violations
    automatically; error messages tell you how to fix them.
 3. **Feedback loops** — subagents, tests, and reviews compound quality.
