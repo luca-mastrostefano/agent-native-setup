@@ -110,15 +110,15 @@ def test_rfc_reviewer_omitted_without_docs(tmp_path: Path) -> None:
 
 
 def test_contract_points_at_rfc_reviewer_with_agents_and_docs(tmp_path: Path) -> None:
-    # The "When to write an RFC" section names the agent (gated on agents, like the
-    # code-reviewer line); a no-agents project states the rule without the agent.
-    with_agents = (_build(tmp_path / "a", languages=["python"]) / "AGENTS.md").read_text(
+    # The "When to write an RFC" section (now in INSTRUCTION.md) names the agent (gated on
+    # agents, like the code-reviewer line); a no-agents project states the rule without it.
+    with_agents = (_build(tmp_path / "a", languages=["python"]) / "INSTRUCTION.md").read_text(
         encoding="utf-8"
     )
     assert "When to write an RFC" in with_agents
     assert "rfc-reviewer" in with_agents
     no_agents = (
-        _build(tmp_path / "n", languages=["python"], include_agents=False) / "AGENTS.md"
+        _build(tmp_path / "n", languages=["python"], include_agents=False) / "INSTRUCTION.md"
     ).read_text(encoding="utf-8")
     assert "When to write an RFC" in no_agents  # the rule still stands
     assert "rfc-reviewer" not in no_agents  # but no agent to point at

@@ -37,6 +37,11 @@ class Scaffolder:
         # file, "symlink:<target>" for a link). The provenance manifest serializes this
         # so a later `update` can tell a pristine generated file from a user-edited one.
         self.recorded: dict[str, str] = {}
+        # Recorded paths the user owns after we seed them (preserve=True files, plus ones
+        # marked seed=True like the architecture overview and the bootstrap RFC). The
+        # manifest lists these so `update` leaves them untouched even when pristine;
+        # everything else in `recorded` is "managed" and refreshable.
+        self.seed: set[str] = set()
 
     def record(self, rel: str, content: str) -> None:
         """Fingerprint generated content for the manifest (call when writing directly)."""
@@ -47,7 +52,13 @@ class Scaffolder:
             self.new_paths.append(path)
 
     def write(
-        self, rel: str, content: str, *, preserve: bool = False, transient: bool = False
+        self,
+        rel: str,
+        content: str,
+        *,
+        preserve: bool = False,
+        seed: bool = False,
+        transient: bool = False,
     ) -> None:
         path = self.target / rel
         # `preserve` protects human-owned files (e.g. README.md) even under --force.
@@ -70,11 +81,15 @@ class Scaffolder:
         # file destined to vanish, or a later update would try to resurrect it.
         if not transient:
             self.record(rel, content)
+            # `preserve` (human-owned) and `seed` (seeded then owned, e.g. the architecture
+            # overview) both mean: never refresh on update. Recorded as one set.
+            if preserve or seed:
+                self.seed.add(rel)
 
     def render_write(
-        self, rel: str, template: str, *, preserve: bool = False, **ctx: object
+        self, rel: str, template: str, *, preserve: bool = False, seed: bool = False, **ctx: object
     ) -> None:
-        self.write(rel, render(template, **ctx), preserve=preserve)
+        self.write(rel, render(template, **ctx), preserve=preserve, seed=seed)
 
     def symlink(self, link_rel: str, dest_rel: str) -> None:
         """Create ``link_rel`` pointing at ``dest_rel`` (relative to link's dir)."""

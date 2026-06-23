@@ -30,6 +30,14 @@ _TASKFILE_LIST_SED = (
 )
 
 
+# SessionStart staleness nudge: only if the CLI is on PATH, and silent on any failure, so a
+# missing tool or an offline machine never disrupts the session.
+UPDATE_CHECK_COMMAND = (
+    "command -v agent-native-setup >/dev/null 2>&1 && "
+    "agent-native-setup update --check 2>/dev/null || true"
+)
+
+
 def _session_list_command(config: WizardConfig) -> str:
     """Command the SessionStart hook runs to inject the live command surface.
 
@@ -259,6 +267,33 @@ Run the `code-reviewer` subagent on the current uncommitted changes and
 summarize its findings. Focus on correctness and the four execution principles.
 """
 
+UPDATE_COMMAND = """\
+---
+description: Update this project's agent-native setup to the latest release
+---
+
+Refresh the scaffolding this project was generated from, then reconcile anything
+that needs judgment. The engine is non-destructive — it never overwrites files
+you've edited; it reports them for you to fold in.
+
+1. Make sure the tree is clean (`git status`); commit or stash first — `update`
+   refuses a dirty tree so its diff is unambiguously its own (and `git restore .`
+   is the undo).
+2. Upgrade the tool so it has the new templates:
+   `uv tool upgrade agent-native-setup` (or `pipx upgrade agent-native-setup`).
+3. Preview: `agent-native-setup update --dry-run`. It prints what it would
+   refresh/add/remove, any conflicts, and — for a **breaking (major) update** —
+   the migration steps.
+4. If it's a breaking update, summarize the changes and migration steps for me and
+   **get my confirmation** before proceeding. Apply with
+   `agent-native-setup update --yes`; otherwise just `agent-native-setup update`.
+5. If it wrote `UPDATING.md`, work through it: do the **migration steps in order**
+   (they transform files you own — e.g. splitting the contract — and must preserve
+   my edits), then reconcile each conflict (fold the new version into my edited
+   file). Delete `UPDATING.md` when everything's done.
+6. Show me `git diff` for review. Don't commit or push without me.
+"""
+
 ONBOARD_COMMAND = """\
 ---
 description: Walk through first-run setup (ONBOARDING.md), then delete it
@@ -312,6 +347,7 @@ def generate(config: WizardConfig, sc: Scaffolder) -> None:
     )
     sc.write(".claude/agents/planner.md", PLANNER)
     sc.write(".claude/commands/review.md", REVIEW_COMMAND)
+    sc.write(".claude/commands/update.md", UPDATE_COMMAND)
     if config.include_docs:
         sc.write(".claude/agents/rfc-reviewer.md", RFC_REVIEWER)
         sc.write(".claude/commands/rfc.md", RFC_COMMAND)
@@ -333,10 +369,14 @@ def generate(config: WizardConfig, sc: Scaffolder) -> None:
 
     settings: dict[str, object] = {"permissions": {"allow": _permission_allow(config)}}
     hooks: dict[str, object] = {}
-    # SessionStart hook: inject the live command surface into the agent's context.
+    # SessionStart hooks: inject the live command surface, and nudge if the scaffolding is
+    # behind a newer release. The update check is tolerant — silent if the tool isn't on
+    # PATH or the check errors — so it never disrupts a session.
+    session_hooks: list[dict[str, str]] = []
     if config.include_quality or config.existing_runner:
-        list_cmd = _session_list_command(config)
-        hooks["SessionStart"] = [{"hooks": [{"type": "command", "command": list_cmd}]}]
+        session_hooks.append({"type": "command", "command": _session_list_command(config)})
+    session_hooks.append({"type": "command", "command": UPDATE_CHECK_COMMAND})
+    hooks["SessionStart"] = [{"hooks": session_hooks}]
     if format_hook:
         hooks["PostToolUse"] = [
             {

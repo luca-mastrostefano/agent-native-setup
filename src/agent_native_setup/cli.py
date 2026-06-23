@@ -11,7 +11,7 @@ from pathlib import Path
 from rich.console import Console
 from rich.panel import Panel
 
-from agent_native_setup import __version__, manifest, update_check
+from agent_native_setup import __version__, manifest, update, update_check
 from agent_native_setup.config import AI_TOOLS, WizardConfig
 from agent_native_setup.generators import agents, ai_context, ci, docs, onboarding, quality
 from agent_native_setup.languages import REGISTRY, detect_languages, detect_runner
@@ -351,7 +351,12 @@ def _intro() -> None:
 
 
 def main(argv: list[str] | None = None) -> int:
-    args = parse_args(sys.argv[1:] if argv is None else argv)
+    raw = sys.argv[1:] if argv is None else argv
+    # `update` is a subcommand on top of the (default) scaffold flow; everything else
+    # parses as before, so the scaffold CLI is untouched.
+    if raw and raw[0] == "update":
+        return update.run_cli(raw[1:], console)
+    args = parse_args(raw)
     # resolve() so the default project name works for `-o .` (Path(".").name is "").
     out = Path(args.output).expanduser().resolve()
     interactive = not args.yes and sys.stdin.isatty()

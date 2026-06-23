@@ -1,10 +1,10 @@
 """Provenance manifest written into every scaffolded project.
 
 Records what generated the project — the scaffolder version, the resolved config,
-and a fingerprint of each file the wizard wrote — so a future ``update`` command
-can tell a pristine generated file (safe to refresh) from one the user has edited,
-without re-detecting or guessing. This file only *records* provenance; the policy
-for what's safe to overwrite belongs to the (not-yet-built) updater.
+a fingerprint of each file the wizard wrote, and which of those files are *seed*
+(user-owned once written) versus managed (refreshable) — so a future ``update``
+command can tell a pristine generated file (safe to refresh) from one the user has
+edited or owns, without re-detecting or guessing.
 
 A leaf: imports only the package version, ``config``, and ``scaffold``.
 """
@@ -30,6 +30,10 @@ def _config_snapshot(config: WizardConfig) -> dict[str, object]:
         "ai_tools": list(config.ai_tools),
         "runner": config.runner,
         "adoption": config.adoption,
+        # Frozen so `update` regenerates the same variants (changed-files-only CI, the
+        # adoption section, deferring to an existing runner) instead of re-detecting.
+        "existing_project": config.existing_project,
+        "existing_runner": config.existing_runner,
         "include_agents": config.include_agents,
         "include_docs": config.include_docs,
         "include_quality": config.include_quality,
@@ -50,6 +54,11 @@ def build(config: WizardConfig, sc: Scaffolder) -> dict[str, object]:
         # Sorted for a stable, diff-friendly file. Excludes the manifest itself: it's
         # built from sc.recorded *before* the manifest is written.
         "files": dict(sorted(sc.recorded.items())),
+        # The subset of `files` the user owns once seeded (README, the architecture
+        # overview, the bootstrap RFC, …). `update` never refreshes these; everything
+        # else in `files` is "managed" and refreshed when still pristine. Additive: an
+        # older manifest without this key means "treat every file as managed."
+        "seed": sorted(sc.seed),
     }
 
 

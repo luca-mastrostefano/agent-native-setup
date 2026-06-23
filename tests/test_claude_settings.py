@@ -51,6 +51,38 @@ def test_allowlist_never_preapproves_an_existing_unknown_runner(tmp_path: Path) 
     assert "Bash(pre-commit:*)" in allow  # the hooks are still ours
 
 
+# --- SessionStart update check --------------------------------------------------
+
+
+def _session_commands(settings: dict) -> list[str]:
+    return [h["command"] for h in settings["hooks"]["SessionStart"][0]["hooks"]]
+
+
+def test_session_start_nudges_about_updates(tmp_path: Path) -> None:
+    cmds = _session_commands(_settings(tmp_path, languages=["python"]))
+    assert any("update --check" in c for c in cmds)
+    # Guarded: silent if the CLI isn't installed, never fails the session.
+    check = next(c for c in cmds if "update --check" in c)
+    assert "command -v agent-native-setup" in check and "|| true" in check
+
+
+def test_update_check_hook_present_even_without_quality_tooling(tmp_path: Path) -> None:
+    # The update nudge is useful for any scaffolded project, so it ships even when there's
+    # no command surface to list.
+    settings = _settings(tmp_path, languages=["python"], include_quality=False, include_ci=False)
+    assert any("update --check" in c for c in _session_commands(settings))
+
+
+def test_update_skill_is_scaffolded(tmp_path: Path) -> None:
+    # The /update slash command choreographs the whole flow: preview, confirm a breaking
+    # update, then reconcile UPDATING.md.
+    _settings(tmp_path, languages=["python"])
+    cmd = (tmp_path / ".claude/commands/update.md").read_text(encoding="utf-8")
+    assert "agent-native-setup update" in cmd
+    assert "--dry-run" in cmd and "--yes" in cmd  # preview, then confirm a breaking update
+    assert "UPDATING.md" in cmd  # reconcile the runbook
+
+
 # --- format-on-edit hook --------------------------------------------------------
 
 

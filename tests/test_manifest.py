@@ -99,6 +99,57 @@ def test_force_records_the_new_content_not_the_original(tmp_path: Path) -> None:
     assert m["files"][rel] == "sha256:" + hashlib.sha256(on_disk.encode("utf-8")).hexdigest()
 
 
+def test_seed_lists_user_owned_files_update_must_not_refresh(tmp_path: Path) -> None:
+    # The `seed` set tells `update` which generated files the user owns once written —
+    # preserve=True files (README, .gitignore) plus the seed=True ones (the architecture
+    # overview, the backlog, the dated bootstrap RFC). Refreshing any would clobber the
+    # user's content.
+    m = _manifest(_build(tmp_path, languages=["python"]))
+    seed = set(m["seed"])
+    assert "README.md" in seed  # preserve=True
+    assert ".gitignore" in seed  # preserve=True
+    assert "docs/architecture/overview.md" in seed  # seed=True
+    assert "docs/improvements.md" in seed  # seed=True
+    assert any(p.endswith("-adopt-agent-native-setup.md") for p in seed)  # dated bootstrap RFC
+
+
+def test_instruction_is_managed_but_agents_is_seed(tmp_path: Path) -> None:
+    # The split: INSTRUCTION.md (standard contract) is managed so update refreshes it; the
+    # thin AGENTS.md (the user's project map) is seed and is never touched.
+    m = _manifest(_build(tmp_path, languages=["python"]))
+    assert "INSTRUCTION.md" in m["files"]
+    assert "INSTRUCTION.md" not in m["seed"]
+    assert "AGENTS.md" in m["seed"]
+
+
+def test_managed_files_are_not_seed(tmp_path: Path) -> None:
+    # The enforcement scripts, the agent library, and the RFC template are "managed":
+    # absent from `seed`, so update refreshes them (that's the whole point — fixes
+    # propagate). The symlinked contracts are managed too.
+    m = _manifest(_build(tmp_path, languages=["python"], ai_tools=["claude"]))
+    seed = set(m["seed"])
+    assert "tools/checks/sync_rfc_status.py" not in seed
+    assert ".claude/agents/code-reviewer.md" not in seed
+    assert "docs/rfc/TEMPLATE.md" not in seed  # improve the template → it propagates
+    assert "CLAUDE.md" not in seed  # a symlink — managed
+
+
+def test_seed_is_a_subset_of_recorded_files(tmp_path: Path) -> None:
+    # Every seed path must also be a recorded file: update reads its fingerprint to know
+    # whether it's pristine, and a seed entry with no fingerprint would be meaningless.
+    m = _manifest(_build(tmp_path, languages=["python"]))
+    assert set(m["seed"]) <= set(m["files"])
+
+
+def test_preexisting_preserve_file_is_not_seed(tmp_path: Path) -> None:
+    # A preserve=True file that already existed is skipped, so it's never recorded — and
+    # therefore never listed as seed (we only own, and only track, what we wrote).
+    (tmp_path / "README.md").write_text("my own readme\n", encoding="utf-8")
+    m = _manifest(_build(tmp_path, languages=["python"]))
+    assert "README.md" not in m["files"]
+    assert "README.md" not in m["seed"]
+
+
 def test_manifest_always_written_even_for_a_bare_scaffold(tmp_path: Path) -> None:
     # Provenance accrues for any scaffold, not just full ones.
     root = _build(
