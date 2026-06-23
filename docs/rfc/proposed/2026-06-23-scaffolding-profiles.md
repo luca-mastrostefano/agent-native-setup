@@ -58,7 +58,7 @@ Four constraints shape the design:
 
 Reframe the product around one interface: **the wizard becomes the built-in `default`
 profile, and the engine resolves, runs, and updates a stack of profiles.** Ship it in two
-phases so the high-value, low-risk core lands first. Six coupled decisions.
+phases so the high-value, low-risk core lands first. Seven coupled decisions.
 
 ### 1. A profile is a versioned, resolvable generator
 
@@ -78,6 +78,7 @@ my-profile/
   "version": "1.2.0",          // the profile's OWN semver (axis 2)
   "extends": "default",        // "default" | null (null/absent = start from blank)
   "description": "Tolaria's agent setup: health gates, completion checklist, MCP servers",
+  "update_source": "git+https://…",  // where `update --check` looks for newer versions (§7)
   "config_schema": { ... },    // the answers this profile accepts (or none = fully fixed)
   "seed": ["README.md", ...],  // this layer's seed-vs-managed taxonomy
   "migrations": [ ... ]        // this layer's version-keyed structural moves (Phase 2)
@@ -200,18 +201,69 @@ Two published rules, enforced as preconditions, not hopes:
   from a shared location. They run arbitrary code at scaffold and update time, so they're
   treated like any installed plugin the user chose.
 - Even a declarative third-party profile ships content that runs (hooks, MCP servers). So
-  scaffolding any **non-built-in** profile names its source and asks for confirmation first —
-  the same "I'm trusting this author" gate as cloning and running a template repo, made
-  explicit instead of implicit.
+  scaffolding any **non-built-in** profile names its source, **previews what it will run**
+  (§7), and asks for confirmation first — the same "I'm trusting this author" gate as cloning
+  and running a template repo, made explicit instead of implicit.
+
+### 7. The command surface: author → consume → update
+
+The architecture above is only as good as the three loops a human (or agent) actually runs,
+so each gets a thin, explicit surface. The deep specifics (a `config_schema` language,
+richer templating) stay deferred like the rest of §1 — this pins the *workflow*, not every
+field.
+
+**Author.** `agent-native-setup profile save <name>` derives a *composing* layer the right
+way: it scaffolds `default` into a throwaway tree, **diffs the project against it**, and
+captures only the divergent files — new paths and content-overrides, with each file's
+seed/managed call — *not* a full copy. (A full copy is all-overrides, which silently severs
+base improvements: every path becomes child-owned, §2.) `profile validate <dir>` is the
+author-side gate §5 needs *before* publishing: it checks `profile.json` against the schema,
+renders, **re-renders and asserts byte-identical** (the determinism contract, caught at
+author time instead of on a consumer's `update`), and verifies every `seed` path exists in
+`templates/`. The release guard (`tools/release_guard.py`, already a pure `evaluate()`) is
+offered as `profile guard <dir> <version>`, opt-in, so an author's version discipline can
+match ours.
+
+**Consume.** `--profile <name|path|url>` is a flag on the existing scaffold flow — *not* a
+new subcommand (`update` is already the lone subcommand; the default flow stays the
+default). `profile list` and `profile show <name>` answer "what's available / what will this
+do" (the files it ships, the config it asks, its source) — the discovery the `improvements.md`
+draft had, which this RFC must not drop. A `url` form (`git+https://…`) **fetches** the
+profile into the user dir, so "distribute within your team" isn't "everyone hand-clones to
+the right path." The §6 trust gate **previews what the profile will run** — the SessionStart
+hooks and MCP servers it ships, plus its source — before the consumer confirms; a path name
+alone can't ground a trust decision. `--trust` (with `--yes`) is the non-interactive escape
+hatch, mirroring `update --yes`.
+
+**Update.** The existing loop carries over per layer: the `--check` nudge,
+`/update-agent-scaffolding`, `--dry-run`, the gated confirm, the `UPDATING.md` runbook. Two
+additions the per-layer world forces:
+
+- A profile declares an **`update_source`** (a releases URL or git ref). `check()` polls
+  *our* GitHub today; a privately distributed layer has no feed otherwise, so without this
+  the staleness nudge is blind to a new child version. With it, the nudge reports each stream
+  independently ("base 0.6→0.7 compatible; tolaria 1.1→1.2 breaking").
+- `UPDATING.md` and the gate **label every migration by its owning layer**, and `update`
+  applies all resolvable layers in one pass, **gating if any layer gates**. The honest cost: a
+  compatible base fix can sit behind a breaking *child* migration in the same run; per-layer
+  selectivity (`update --layer base`) is a possible escape hatch, deferred unless the combined
+  gate proves painful.
+
+One coupling to state plainly: a `contributions/` profile **ships with the tool**, so "get
+`tolaria` 1.2" means upgrading `agent-native-setup` to the version that bundles it — the two
+"independent" axes collapse into one for the bundled case. Privately distributed (fetched)
+profiles keep the axes independent but lean on `update_source` for the nudge. Both are
+honest; neither is hidden.
 
 ### User stories
 
-- **Author.** A Tolaria maintainer runs `--save-profile tolaria` from a representative repo
-  (deriving the layer from its `.agent-native-setup.json` plus their extra files), edits
-  `profile.json` to set `extends: default` and a `1.0.0` version, and either opens a PR to
-  `contributions/` or shares the directory with their team.
-- **Consumer, scaffold.** `agent-native-setup new --profile tolaria` → confirms the source,
-  gets base + Tolaria's house rules, MCP servers, and `.claude/` agents in one shot.
+- **Author.** A Tolaria maintainer runs `profile save tolaria` from a representative repo —
+  it diffs the repo against `default` and captures only the divergent files (§7) — sets
+  `extends: default` and `1.0.0` in `profile.json`, runs `profile validate` until it's clean,
+  and either opens a PR to `contributions/` or shares the directory with their team.
+- **Consumer, scaffold.** `agent-native-setup --profile tolaria` → previews what it'll run
+  and confirms the source, then gets base + Tolaria's house rules, MCP servers, and `.claude/`
+  agents in one shot.
 - **Consumer, update (Phase 1).** A base fix (sharper CI, new security default) lands;
   `update` refreshes the managed base under their feet; Tolaria's seed files stay put.
 - **Consumer, update (Phase 2).** Tolaria ships `1.1.0` (tighter completion checklist);
@@ -231,6 +283,12 @@ Two published rules, enforced as preconditions, not hopes:
   namespacing, a quality/security bar, and the trust questions a plugin marketplace carries —
   ongoing cost, not a one-time build. Mitigated by declarative-only contributions (reviewable
   as data) and an explicit trust gate for non-built-in profiles.
+- **The workflow surface (§7) is its own build, not free.** `profile save` (diff-against-base),
+  `profile validate`/`guard`, `list`/`show`, the `url` fetch, and the trust preview are real
+  commands with their own tests and docs — the smoothness of the three loops lives here, so
+  it can't be hand-waved as "just the engine plus a flag." Sequenced with the phases: `save`
+  + `validate` + `--profile` + the trust preview are Phase 1; richer discovery and the
+  `update_source` nudge follow the Phase 2 update stream.
 - **Phase 1 ships real value at low engine risk.** Tolaria-style exact-clone scaffolding
   with a still-updatable base reuses the classification/gate/migration engine as-is; the new
   code is the contained composition step (§3 — child-last writer, mark child-owned paths
