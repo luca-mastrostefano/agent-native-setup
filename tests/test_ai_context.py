@@ -158,9 +158,8 @@ def test_merges_existing_agents_md(tmp_path: Path) -> None:
     # INSTRUCTION.md is still written alongside (the path the RFC flags as messiest).
     assert "@INSTRUCTION.md" in body
     assert body.index("@INSTRUCTION.md") < body.index("House rules")
-    assert (tmp_path / "INSTRUCTION.md").read_text(encoding="utf-8").startswith(
-        "# Engineering contract"
-    )
+    instruction = (tmp_path / "INSTRUCTION.md").read_text(encoding="utf-8")
+    assert instruction.startswith("# Engineering contract")
 
 
 def test_absorbs_real_claude_md_then_symlinks(tmp_path: Path) -> None:
