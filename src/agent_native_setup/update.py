@@ -449,11 +449,11 @@ def check(target: Path, console: Any) -> int:
             f"latest [bold]{latest_v}[/] — "
         )
         if decision == versioning.AUTOPILOT:
-            console.print(f"{head}compatible update, run [bold]/update[/].")
+            console.print(f"{head}compatible update, run [bold]/update-agent-scaffolding[/].")
         elif decision == versioning.GATED:
             console.print(
                 f"{head}[yellow]major (breaking) update[/]; review before applying "
-                "([bold]/update[/])."
+                "([bold]/update-agent-scaffolding[/])."
             )
         # NOOP (current) / DOWNGRADE (ahead of latest) → say nothing
     except Exception:  # advisory only — never disrupt a session

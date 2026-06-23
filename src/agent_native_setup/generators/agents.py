@@ -347,7 +347,7 @@ def generate(config: WizardConfig, sc: Scaffolder) -> None:
     )
     sc.write(".claude/agents/planner.md", PLANNER)
     sc.write(".claude/commands/review.md", REVIEW_COMMAND)
-    sc.write(".claude/commands/update.md", UPDATE_COMMAND)
+    sc.write(".claude/commands/update-agent-scaffolding.md", UPDATE_COMMAND)
     if config.include_docs:
         sc.write(".claude/agents/rfc-reviewer.md", RFC_REVIEWER)
         sc.write(".claude/commands/rfc.md", RFC_COMMAND)

@@ -74,10 +74,10 @@ def test_update_check_hook_present_even_without_quality_tooling(tmp_path: Path) 
 
 
 def test_update_skill_is_scaffolded(tmp_path: Path) -> None:
-    # The /update slash command choreographs the whole flow: preview, confirm a breaking
-    # update, then reconcile UPDATING.md.
+    # The /update-agent-scaffolding slash command choreographs the whole flow: preview,
+    # confirm a breaking update, then reconcile UPDATING.md.
     _settings(tmp_path, languages=["python"])
-    cmd = (tmp_path / ".claude/commands/update.md").read_text(encoding="utf-8")
+    cmd = (tmp_path / ".claude/commands/update-agent-scaffolding.md").read_text(encoding="utf-8")
     assert "agent-native-setup update" in cmd
     assert "--dry-run" in cmd and "--yes" in cmd  # preview, then confirm a breaking update
     assert "UPDATING.md" in cmd  # reconcile the runbook

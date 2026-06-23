@@ -42,7 +42,7 @@ Pointed at a target repo, the wizard generates:
   points at it. `CLAUDE.md` and `GEMINI.md` (symlinks), `.cursor/rules/`, and
   `.github/copilot-instructions.md` all point back to `AGENTS.md`, so the rules never fork across tools.
 - **A `.claude/` agent library** — focused subagents (`code-reviewer`, `rfc-reviewer`,
-  `planner`), slash commands (`/review`, `/rfc`, `/update`, `/onboard`), a permission allowlist for the
+  `planner`), slash commands (`/review`, `/rfc`, `/update-agent-scaffolding`, `/onboard`), a permission allowlist for the
   contract's own commands, and hooks that inject the live command surface at session start
   and auto-format files as they're edited.
 - **`docs/` + an RFC lifecycle** — a pre-seeded architecture map (reflecting the active
