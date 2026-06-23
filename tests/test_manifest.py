@@ -113,6 +113,15 @@ def test_seed_lists_user_owned_files_update_must_not_refresh(tmp_path: Path) -> 
     assert any(p.endswith("-adopt-agent-native-setup.md") for p in seed)  # dated bootstrap RFC
 
 
+def test_instruction_is_managed_but_agents_is_seed(tmp_path: Path) -> None:
+    # The split: INSTRUCTION.md (standard contract) is managed so update refreshes it; the
+    # thin AGENTS.md (the user's project map) is seed and is never touched.
+    m = _manifest(_build(tmp_path, languages=["python"]))
+    assert "INSTRUCTION.md" in m["files"]
+    assert "INSTRUCTION.md" not in m["seed"]
+    assert "AGENTS.md" in m["seed"]
+
+
 def test_managed_files_are_not_seed(tmp_path: Path) -> None:
     # The enforcement scripts, the agent library, and the RFC template are "managed":
     # absent from `seed`, so update refreshes them (that's the whole point — fixes

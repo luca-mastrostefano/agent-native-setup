@@ -1,7 +1,8 @@
 """Generates the canonical agent contract and per-tool entry points.
 
-AGENTS.md is the single source of truth. CLAUDE.md and GEMINI.md symlink to it;
-Cursor and Copilot files are thin pointers back to it so the contract never forks.
+The standard engineering contract lives in INSTRUCTION.md (managed, refreshed on update);
+AGENTS.md is the thin project map that points at it. CLAUDE.md and GEMINI.md symlink to
+AGENTS.md; Cursor and Copilot files are thin pointers back to it so the contract never forks.
 """
 
 from __future__ import annotations
@@ -25,8 +26,14 @@ AGENTS_MD = """\
 
 {% if description %}{{ description }}
 
-{% endif %}This file is the **single source of truth** for both coding agents and humans.
-`CLAUDE.md`, `GEMINI.md`, `.cursor/rules/`, and `.github/copilot-instructions.md` all point here.
+{% endif %}**Read [`INSTRUCTION.md`](./INSTRUCTION.md) first** — the standard engineering contract\
+{% if docs %} (the four execution principles, when to write an RFC, how this repo stays\
+ agent-native){% else %} (the four execution principles){% endif %}, kept current by\
+ `agent-native-setup update`. This file is the project-specific map; `CLAUDE.md`, `GEMINI.md`,
+`.cursor/rules/`, and `.github/copilot-instructions.md` all point here.
+{% if claude %}
+@INSTRUCTION.md
+{% endif %}
 
 ## Navigation
 
@@ -49,7 +56,15 @@ AGENTS_MD = """\
 
 {{ capture_line }}
 {% else %}_No quality tooling configured yet._
-{% endif %}
+{% endif %}"""
+
+INSTRUCTION_MD = """\
+# Engineering contract
+
+The standard operating principles for this repo — the same for every project scaffolded by
+`agent-native-setup`, and kept current by `update`. [`AGENTS.md`](./AGENTS.md) is this
+project's specific map and points here. For project-specific rules, edit `AGENTS.md` or add a
+nested contract — not this file (so an update can keep it fresh).
 
 ## 1. Think Before Coding
 
@@ -164,8 +179,9 @@ README_MD = """\
 {% endif %}## Getting started
 
 This repository follows an agent-native setup. **Start with
-[`AGENTS.md`](./AGENTS.md)** — the single source of truth for conventions, the
-command surface, and the four execution principles.
+[`AGENTS.md`](./AGENTS.md)** — the project map and command surface, which points at
+[`INSTRUCTION.md`](./INSTRUCTION.md) for the standard contract (the four execution
+principles).
 
 {% if show_quickstart %}Requires [`pre-commit`](https://pre-commit.com){% if runner == "task" %} and [`task`](https://taskfile.dev){% endif %}{% if surface_tools %}; the command surface also calls {{ surface_tools }} directly, so put {{ surface_pron }} on your PATH (pipx/uv/pip){% endif %}{% if needs_lychee %}. The HTML link-check hook downloads its [`lychee`](https://lychee.cli.rs) binary on the first hook run (one-time, needs network){% endif %}.
 
@@ -177,21 +193,22 @@ command surface, and the four execution principles.
 
 CURSOR_RULE = """\
 ---
-description: Project agent contract (canonical rules live in AGENTS.md)
+description: Project agent contract (AGENTS.md → INSTRUCTION.md)
 alwaysApply: true
 ---
 
-Read and follow `AGENTS.md` at the repo root — it is the single source of truth
-for conventions, the command surface, and the four execution principles.
-Do not duplicate rules here; edit `AGENTS.md` instead.
+Read and follow `AGENTS.md` at the repo root — the project map and command surface —
+and the `INSTRUCTION.md` it points to, which holds the standard contract (the four
+execution principles). Do not duplicate rules here; edit `AGENTS.md` instead.
 """
 
 COPILOT_MD = """\
 # Copilot instructions
 
-The canonical contract for this repository is **`AGENTS.md`** at the root.
-Follow it: the four execution principles (think before coding, simplicity first,
-surgical changes, goal-driven execution) and the documented command surface.
+The contract for this repository is **`AGENTS.md`** (the project map and command
+surface) plus the **`INSTRUCTION.md`** it points to — the four execution principles
+(think before coding, simplicity first, surgical changes, goal-driven execution).
+Follow both.
 """
 
 
@@ -282,8 +299,7 @@ def generate(config: WizardConfig, sc: Scaffolder) -> None:
     # Tools whose context file is a symlink to AGENTS.md (CLAUDE.md, GEMINI.md), in
     # registry order — drives the nested-contract note and the fold/symlink below.
     symlinks = [name for tool, name in SYMLINK_CONTRACTS.items() if tool in config.ai_tools]
-    rendered = render(
-        AGENTS_MD,
+    ctx = dict(
         name=config.project_name,
         description=config.description,
         docs=config.include_docs,
@@ -305,6 +321,10 @@ def generate(config: WizardConfig, sc: Scaffolder) -> None:
         surface_note=surface_note,
         capture_line=capture_line if quality_commands else "",
     )
+    rendered = render(AGENTS_MD, **ctx)
+    # INSTRUCTION.md is the *managed* standard contract: AGENTS.md (seed) points here, and
+    # `update` keeps this file fresh so improvements to the standard principles propagate.
+    sc.write("INSTRUCTION.md", render(INSTRUCTION_MD, **ctx))
 
     # Never clobber a pre-existing contract. Fold any non-empty AGENTS.md — and the real
     # CLAUDE.md/GEMINI.md we're about to replace with symlinks — below ours.

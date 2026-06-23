@@ -348,6 +348,38 @@ def test_check_is_silent_without_a_manifest(tmp_path: Path) -> None:
     assert console.text == ""
 
 
+def test_update_performs_the_real_contract_split(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # End-to-end dogfood of the first real agent migration: a pre-split project (no
+    # INSTRUCTION.md, recorded at 0.5.1) updated to 0.6.0 crosses the split boundary —
+    # INSTRUCTION.md is created as a managed file, and the agent step lands in UPDATING.md.
+    monkeypatch.setattr(manifest, "__version__", "0.6.0")
+    target = tmp_path / "proj"
+    target.mkdir()
+    _scaffold(target)
+    # Simulate a project scaffolded before the split: drop INSTRUCTION.md from disk + manifest.
+    (target / "INSTRUCTION.md").unlink()
+    m = json.loads((target / MANIFEST_PATH).read_text(encoding="utf-8"))
+    m["files"].pop("INSTRUCTION.md", None)
+    m["seed"] = [s for s in m["seed"] if s != "INSTRUCTION.md"]
+    m["version"] = "0.5.1"
+    (target / MANIFEST_PATH).write_text(json.dumps(m, indent=2) + "\n", encoding="utf-8")
+    _commit_clean_baseline(target)
+
+    assert update.run(target, dry_run=False, console=_Console(), assume_yes=True) == 0
+    # INSTRUCTION.md created as a managed file (missing → create).
+    assert (
+        (target / "INSTRUCTION.md").read_text(encoding="utf-8").startswith("# Engineering contract")
+    )
+    new_m = json.loads((target / MANIFEST_PATH).read_text(encoding="utf-8"))
+    assert "INSTRUCTION.md" in new_m["files"] and "INSTRUCTION.md" not in new_m["seed"]
+    # The agent migration's reconciliation steps are in the runbook.
+    report = (target / update.REPORT_PATH).read_text(encoding="utf-8")
+    assert "### 0.6.0 — split AGENTS.md" in report
+    assert "Reconcile your `AGENTS.md`" in report
+
+
 def test_update_refuses_without_a_manifest(tmp_path: Path) -> None:
     console = _Console()
     rc = update.run(tmp_path, dry_run=False, console=console)

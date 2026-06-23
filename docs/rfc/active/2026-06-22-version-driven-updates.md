@@ -3,7 +3,17 @@
 - **Status:** Active
 - **Date:** 2026-06-22
 - **Author:** Luca Mastrostefano
-- [ ] Implemented
+- [x] Implemented
+
+> **Shipped (2026-06-23).** All of §1–§7: the `breaking_series` gate (`versioning.py`), the
+> version-keyed registry + `auto`/`agent` kinds (`migrations.py`), the gate + ordered runbook
+> in `run()`, the `--check` staleness nudge wired into the generated SessionStart hook, the
+> `/update` skill, and §7's `INSTRUCTION.md` split — landed as the first `agent` migration
+> (`0.6.0`), with `AGENTS.md` now a thin seed map pointing at the managed `INSTRUCTION.md`.
+> Still process, not code: the **release-tagging discipline** of §Context (cut deliberate
+> `patch`/`minor`/`major` tags) — until a release embeds a real version, dev/raw-checkout
+> builds read `0.0.0` and the gate stays conservative. Dogfooding *this* repo's own contract
+> into `INSTRUCTION.md` is deliberately deferred (a separate governance change).
 
 ## Context
 
@@ -190,9 +200,9 @@ So minor updates become a casual `/update`; majors announce themselves.
 
 RFC 2026-06-20 deferred splitting the contract into a managed `INSTRUCTION.md` (standard
 rules, refreshable) + a seed `AGENTS.md` (the user's). Under this model it becomes the
-**first dogfooded `agent` major migration**: a 2.0 step that reads the user's `AGENTS.md`,
-lifts the standard sections into `INSTRUCTION.md`, leaves their additions behind, and adds the
-`@INSTRUCTION.md` pointer. Its payoff is structural: *after* the split, improvements to the
+**first dogfooded `agent` breaking-boundary migration** (shipped at `0.6.0`, a 0.x boundary):
+a step that reads the user's `AGENTS.md`, lifts the standard sections into `INSTRUCTION.md`,
+leaves their additions behind, and adds the `@INSTRUCTION.md` pointer. Its payoff is structural: *after* the split, improvements to the
 standard instructions are plain content refreshes (the managed `INSTRUCTION.md`) — converting
 the scariest content-migration (transforming a user-owned file) into free regeneration
 forever after. The split is the proof that the `agent`-kind migration pulls its weight.

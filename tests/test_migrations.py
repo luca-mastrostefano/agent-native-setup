@@ -49,6 +49,15 @@ def test_migration_does_not_clobber_an_existing_destination(tmp_path: Path) -> N
     assert (tmp_path / "docs/rfc/current/dup.md").read_text() == "legacy version"
 
 
+def test_contract_split_is_a_real_agent_migration_at_0_6_0() -> None:
+    # The AGENTS.md → INSTRUCTION.md split is an agent-assisted step shipped at the 0.5→0.6
+    # breaking boundary; it surfaces only when that boundary is crossed.
+    steps = migrations.steps_in_span("0.5.1", "0.6.0")
+    assert [m.kind for m in steps] == ["agent"]
+    assert "INSTRUCTION.md" in steps[0].instructions
+    assert migrations.steps_in_span("0.6.0", "0.6.1") == []  # not crossed → not surfaced
+
+
 def test_apply_all_runs_only_auto_steps(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     # agent/manual steps are never performed by the tool — apply_all touches auto only.
     ran: list[str] = []

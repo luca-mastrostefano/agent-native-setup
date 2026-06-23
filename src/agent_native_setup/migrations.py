@@ -86,12 +86,38 @@ def _rfc_lifecycle_rename(target: Path, *, apply: bool) -> list[str]:
     return actions
 
 
+_SPLIT_CONTRACT_INSTRUCTIONS = """\
+Earlier versions kept the standard engineering contract — the four execution principles, the
+"When to write an RFC" rules, and the "How this stays agent-native" guidance — *inside*
+`AGENTS.md`. This version moves that standard content into a new, tool-managed
+`INSTRUCTION.md` (which `update` keeps fresh from now on), leaving `AGENTS.md` as your
+project-specific map.
+
+`update` has already written the new `INSTRUCTION.md`. Reconcile your `AGENTS.md`:
+
+1. Remove the now-duplicated standard sections from `AGENTS.md` — the four numbered
+   principles, "When to write an RFC", and "How this project stays agent-native". They live
+   in `INSTRUCTION.md` now.
+2. Keep everything project-specific: the title, description, the Navigation table, the
+   Command surface, and anything you added.
+3. Make sure `AGENTS.md` points at `INSTRUCTION.md` near the top — a "Read `INSTRUCTION.md`
+   first" line, and (for Claude) an `@INSTRUCTION.md` import.
+
+If you had *edited* any of the standard sections, fold those edits into `INSTRUCTION.md`
+(or keep them in `AGENTS.md` as deliberate project overrides) before deleting them above."""
+
 MIGRATIONS: list[Migration] = [
     Migration(
         version="0.5.0",  # the RFC-lifecycle rework first shipped in v0.5.0
         kind="auto",
         describe="RFC lifecycle: move current/ and done/ into active/",
         apply=_rfc_lifecycle_rename,
+    ),
+    Migration(
+        version="0.6.0",  # the AGENTS.md → INSTRUCTION.md split (a 0.x breaking boundary)
+        kind="agent",
+        describe="split AGENTS.md → INSTRUCTION.md (standard contract) + AGENTS.md (your map)",
+        instructions=_SPLIT_CONTRACT_INSTRUCTIONS,
     ),
 ]
 
