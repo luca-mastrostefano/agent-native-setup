@@ -426,6 +426,41 @@ def test_dry_run_previews_migration_moves_without_performing_them(tmp_path: Path
     assert not (target / "docs/rfc/active/2025-old-decision.md").exists()
 
 
+def test_dry_run_reframes_edits_as_local_drift_at_the_same_version(tmp_path: Path) -> None:
+    # Conformance check (RFC 2026-06-24): on an up-to-date project, an edited managed file is
+    # *local drift*, not an upstream change — the report must say so, not "changed upstream".
+    target = tmp_path / "proj"
+    target.mkdir()
+    _scaffold(target)  # records the current tool version → from == to (no version change)
+    edited = ".claude/agents/code-reviewer.md"
+    (target / edited).write_text("# my own edits\n", encoding="utf-8")  # diverge; leave manifest
+
+    console = _Console()
+    assert update.run(target, dry_run=True, console=console) == 0
+    assert "drifted from the scaffold" in console.text
+    assert "changed upstream" not in console.text
+    assert edited in console.text
+
+
+def test_dry_run_keeps_upstream_wording_when_the_version_changed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The drift reframe is *only* for the same-version case — a real version bump must still
+    # call an edited-and-changed file an upstream change to reconcile.
+    monkeypatch.setattr(manifest, "__version__", "0.6.0")
+    target = tmp_path / "proj"
+    target.mkdir()
+    _scaffold(target)
+    _set_version(target, "0.5.0")  # 0.5 → 0.6: a real change
+    edited = "tools/checks/sync_rfc_status.py"
+    (target / edited).write_text("# mine\n", encoding="utf-8")
+
+    console = _Console()
+    assert update.run(target, dry_run=True, console=console) == 0
+    assert "changed upstream" in console.text
+    assert "drifted from the scaffold" not in console.text
+
+
 def test_dry_run_writes_nothing_and_reports(tmp_path: Path) -> None:
     target = tmp_path / "proj"
     target.mkdir()
