@@ -291,6 +291,26 @@ def _regenerate(config: WizardConfig, into: Path) -> Scaffolder:
     return sc
 
 
+def _restore_profile_overlay(old: dict, sc: Scaffolder, target: Path) -> None:
+    """Re-assert the profile's overlaid files (RFC 2026-06-23, Phase 1) into the regenerated
+    set *before* classify. Phase 1 doesn't re-run the profile on update, so without this the
+    base regeneration would either drop a profile's new file from provenance or — worse —
+    *refresh the base content back over a file the profile overrode* (classify would see the
+    on-disk override as a pristine-since-scaffold managed file). Marking each profile-owned
+    path seed with its recorded fingerprint makes classify's seed short-circuit preserve it.
+
+    Scoped to exactly the paths the manifest records as profile-owned — never the broader
+    `seed` set, so a renamed default seed file (e.g. the date-stamped bootstrap RFC) is left
+    to classify, not wrongly carried."""
+    profile = old.get("profile") or {}
+    owned = profile.get("files", []) if isinstance(profile, dict) else []
+    old_files: dict[str, str] = old.get("files", {})
+    for rel in owned:
+        if rel in old_files and (target / rel).exists():
+            sc.recorded[rel] = old_files[rel]
+            sc.seed.add(rel)
+
+
 def run(target: Path, *, dry_run: bool, console: Any, assume_yes: bool = False) -> int:
     """Refresh ``target`` to this version. Returns a process exit code."""
     old = _load_manifest(target)
@@ -358,6 +378,9 @@ def run(target: Path, *, dry_run: bool, console: Any, assume_yes: bool = False) 
         # it classifies and re-records — exactly as a fresh scaffold excludes it.
         sc.recorded.pop(manifest.MANIFEST_PATH, None)
         sc.seed.discard(manifest.MANIFEST_PATH)
+        # Re-assert profile overlays as seed before classifying, so the base never refreshes
+        # over them and their provenance survives (Phase 1 doesn't re-run the profile).
+        _restore_profile_overlay(old, sc, target)
         plan = classify(old, sc.recorded, sc.seed, target)
         if dry_run:
             _print_plan(
@@ -380,7 +403,9 @@ def run(target: Path, *, dry_run: bool, console: Any, assume_yes: bool = False) 
                 encoding="utf-8",
             )
         # Written last, so an interrupt before here leaves `installed` unchanged (re-runnable).
-        new_manifest = manifest.build(_config_from_manifest(old, target), sc)
+        new_manifest = manifest.build(
+            _config_from_manifest(old, target), sc, profile=old.get("profile")
+        )
         (target / manifest.MANIFEST_PATH).write_text(
             json.dumps(new_manifest, indent=2) + "\n", encoding="utf-8"
         )

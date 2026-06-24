@@ -128,6 +128,7 @@ agent-native-setup -o ./existing-app --yes
 | --- | --- |
 | `-o, --output` | Target directory (default: current dir). |
 | `--description "..."` | One-line project description (used in `AGENTS.md`/`README.md`). |
+| `--profile <name\|path>` | Compose a [profile](#profiles-experimental) on top of the default setup. |
 | `--languages` | Comma-separated: `python,node,go,rust,html`. Linters only for these. |
 | `--tools` | Comma-separated: `claude,cursor,copilot,gemini` (default: all). |
 | `--runner make\|task` | Command-surface runner for a fresh repo (default: `make`; an existing one is auto-detected). |
@@ -160,6 +161,33 @@ reconcile), and removes guardrails it no longer generates. It needs a clean git 
 confirmation and writes an `UPDATING.md` runbook. On an already-current project,
 `update --dry-run` doubles as a **conformance check** — it flags any managed file that has
 drifted from the scaffold.
+
+### Profiles (experimental)
+
+A **profile** lets a team or community ship their *own* agent setup composed on top of the
+default one — their `.claude/` agents, MCP config, house rules, extra gates — so new projects
+start from "exactly like ours," not just the generic baseline.
+
+```bash
+agent-native-setup profile init my-team          # scaffold a profile skeleton
+# …add files under my-team/templates/, then:
+agent-native-setup my-app -o ./my-app --profile ./my-team
+agent-native-setup profile list                  # profiles in ~/.config/agent-native-setup/profiles
+```
+
+A profile is a directory with a `profile.json` (`name`, `version`, `extends: default`,
+`description`) and a `templates/` tree. Every file under `templates/` is laid down at the
+matching path in the new project, **on top of** the default scaffold. Files ending in `.j2`
+are rendered (Jinja, with `project_name` / `slug` / `description` / `languages`) and the `.j2`
+stripped; everything else ships verbatim, so files containing `${{ ... }}` (GitHub Actions)
+are safe. `--profile` takes a path, or a bare name resolved under
+`~/.config/agent-native-setup/profiles/`.
+
+> **Phase 1 scope.** Profile files are shipped as **seed** — written once, then yours to
+> maintain; the default base underneath stays managed and `update`-able. A profile's *own*
+> versioned update stream, `extends`-from-blank, and `profile save` (derive a profile from an
+> existing project) are planned — see
+> [`docs/rfc/proposed/2026-06-23-scaffolding-profiles.md`](docs/rfc/proposed/2026-06-23-scaffolding-profiles.md).
 
 ## Philosophy
 

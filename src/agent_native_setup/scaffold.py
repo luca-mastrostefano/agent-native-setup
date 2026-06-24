@@ -112,6 +112,36 @@ class Scaffolder:
         self.track_new(link, existed=existed)
         self.recorded[link_rel] = f"symlink:{rel_dest}"
 
+    def overlay(self, rel: str, content: str) -> bool:
+        """Write a profile-composition file at ``rel`` and mark it **seed** (child-owned,
+        never refreshed on update). Unlike ``write`` (first-writer-wins), this *supersedes* a
+        file the base layer wrote in this same run — a later layer is meant to win. A file
+        that **pre-existed** this scaffold is the user's: left untouched unless ``--force``,
+        keeping the non-destructive contract. Returns ``True`` if it wrote, ``False`` if it
+        skipped a pre-existing user file (so the caller knows which paths the profile owns)."""
+        path = self.target / rel
+        created_this_run = path in self.new_paths
+        preexisting = (path.exists() or path.is_symlink()) and not created_this_run
+        if preexisting and not self.force:
+            self.skipped.append(rel)
+            return False
+        if preexisting:  # --force over a user's own file: snapshot so rollback restores it
+            if path.is_symlink():
+                self.replaced_links.append((path, os.readlink(path)))
+            else:
+                self.replaced_files.append((path, path.read_bytes()))
+        path.parent.mkdir(parents=True, exist_ok=True)
+        if path.is_symlink():  # the base may have placed a symlink here — replace it with a file
+            path.unlink()
+        path.write_text(content, encoding="utf-8")
+        if rel not in self.created:
+            self.created.append(rel)
+        if not created_this_run and not preexisting:
+            self.new_paths.append(path)  # a brand-new path this overlay created
+        self.record(rel, content)
+        self.seed.add(rel)
+        return True
+
     def rollback(self) -> int:
         """Undo this run: delete what it created, restore what it overwrote,
         then prune dirs it emptied.
