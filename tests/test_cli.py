@@ -40,6 +40,44 @@ def test_default_name_comes_from_cwd_when_output_is_dot(
     assert "# my-project — Agent Contract" in agents
 
 
+def test_dry_run_previews_without_writing(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # --dry-run lists what a real run would create but touches nothing (parity with
+    # `update --dry-run`).
+    target = tmp_path / "proj"
+    rc = cli.main(["demo", "-o", str(target), "-y", "--dry-run", "--languages", "python"])
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "dry run" in out.lower()
+    assert "would create AGENTS.md" in out
+    assert "would run git init" in out  # git defaults on, but dry-run never runs it
+    # Nothing was actually written — not even the manifest.
+    assert not (target / "AGENTS.md").exists()
+    assert not (target / ".agent-native-setup.json").exists()
+    assert not (target / ".git").exists()
+
+
+def test_dry_run_marks_existing_files_as_skipped(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # The preview must reproduce the writer's skip-existing behaviour — pretending every path
+    # is new is exactly wrong for the "what will this do to my repo?" case.
+    target = tmp_path / "proj"
+    target.mkdir()
+    (target / "README.md").write_text("my own readme\n", encoding="utf-8")  # a real run skips it
+    rc = cli.main(
+        ["demo", "-o", str(target), "-y", "--no-git", "--dry-run", "--languages", "python"]
+    )
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "would skip (exists): README.md" in out
+    assert "would create README.md" not in out
+    # The user's file is untouched, and nothing was written.
+    assert (target / "README.md").read_text(encoding="utf-8") == "my own readme\n"
+    assert not (target / ".agent-native-setup.json").exists()
+
+
 def test_unknown_tool_exits_2_without_scaffolding(tmp_path: Path) -> None:
     # --languages typos are rejected; --tools typos must not silently no-op.
     rc = cli.main(["demo", "-o", str(tmp_path), "-y", "--no-git", "--tools", "cluade"])

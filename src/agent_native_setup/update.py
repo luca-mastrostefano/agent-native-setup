@@ -155,7 +155,12 @@ def _prune_empty_parents(start: Path, stop: Path) -> None:
 
 
 def render_report(
-    plan: Plan, from_version: str, to_version: str, agent_steps: Sequence[Migration] = ()
+    plan: Plan,
+    from_version: str,
+    to_version: str,
+    agent_steps: Sequence[Migration] = (),
+    *,
+    version_changed: bool = True,
 ) -> str:
     """The ``UPDATING.md`` runbook: what was applied, the conflicts left to reconcile, and —
     for a breaking-boundary update — the ordered migration steps for the agent/user to do."""
@@ -177,14 +182,16 @@ def render_report(
         for m in agent_steps:
             lines += [f"### {m.version} — {m.describe}", "", m.instructions.strip(), ""]
     if plan.conflicts:
-        lines += [
-            "## Reconcile these",
-            "",
+        intro = (
             "These files changed in the new version, but you've edited them — so they were "
             "**left as-is**. Compare each against the new version and fold in what you want "
-            "(your coding agent can do this for you):",
-            "",
-        ]
+            "(your coding agent can do this for you):"
+            if version_changed
+            else "These managed files have **drifted** from the scaffold (you edited them since) "
+            "— so they were **left as-is**. Reconcile them against the generated baseline if you "
+            "want them back in sync:"
+        )
+        lines += ["## Reconcile these", "", intro, ""]
         lines += [f"- `{c.rel}` — {c.reason}" for c in plan.conflicts]
         lines.append("")
     else:
@@ -308,6 +315,10 @@ def run(target: Path, *, dry_run: bool, console: Any, assume_yes: bool = False) 
     # so a mistagged step still gets a confirmation rather than auto-applying.
     agent_steps = migrations.steps_in_span(from_version, to_version)
     gated = decision == versioning.GATED or bool(agent_steps)
+    # No version change → any conflicts are *local drift* (the user edited a managed file),
+    # not upstream changes. This is the conformance-check case (RFC 2026-06-24): `update
+    # --dry-run` on an up-to-date project, reframed so the report doesn't cry "changed upstream".
+    version_changed = decision != versioning.NOOP
 
     if not dry_run:
         is_repo, clean = _git_state(target)
@@ -349,7 +360,13 @@ def run(target: Path, *, dry_run: bool, console: Any, assume_yes: bool = False) 
         sc.seed.discard(manifest.MANIFEST_PATH)
         plan = classify(old, sc.recorded, sc.seed, target)
         if dry_run:
-            _print_plan(console, plan, dry_run=True, agent_steps=agent_steps)
+            _print_plan(
+                console,
+                plan,
+                dry_run=True,
+                agent_steps=agent_steps,
+                version_changed=version_changed,
+            )
             return 0
         apply(plan, sc.recorded, Path(tmp), target)
         # UPDATING.md is the *actionable* runbook — written only when there's something for
@@ -357,14 +374,19 @@ def run(target: Path, *, dry_run: bool, console: Any, assume_yes: bool = False) 
         # refresh leaves no runbook to delete; the `git diff` is the record.
         if plan.conflicts or agent_steps:
             (target / REPORT_PATH).write_text(
-                render_report(plan, from_version, to_version, agent_steps), encoding="utf-8"
+                render_report(
+                    plan, from_version, to_version, agent_steps, version_changed=version_changed
+                ),
+                encoding="utf-8",
             )
         # Written last, so an interrupt before here leaves `installed` unchanged (re-runnable).
         new_manifest = manifest.build(_config_from_manifest(old, target), sc)
         (target / manifest.MANIFEST_PATH).write_text(
             json.dumps(new_manifest, indent=2) + "\n", encoding="utf-8"
         )
-    _print_plan(console, plan, dry_run=False, agent_steps=agent_steps)
+    _print_plan(
+        console, plan, dry_run=False, agent_steps=agent_steps, version_changed=version_changed
+    )
     return 0
 
 
@@ -393,11 +415,17 @@ def _confirm_gate(
 
 
 def _print_plan(
-    console: Any, plan: Plan, *, dry_run: bool, agent_steps: Sequence[Migration] = ()
+    console: Any,
+    plan: Plan,
+    *,
+    dry_run: bool,
+    agent_steps: Sequence[Migration] = (),
+    version_changed: bool = True,
 ) -> None:
     verb = "Would" if dry_run else "Did"
     if plan.is_noop and not agent_steps:
-        console.print("[green]Already up to date[/] — nothing to change.")
+        msg = "nothing to change" if version_changed else "no drift from the scaffold"
+        console.print(f"[green]Already up to date[/] — {msg}.")
         return
     for label, rels in (("create", plan.creates), ("refresh", plan.refreshes)):
         for rel in rels:
@@ -405,11 +433,16 @@ def _print_plan(
     for rel in plan.removes:
         console.print(f"  [red]-[/] {verb.lower()} remove: {rel}")
     if plan.conflicts:
-        console.print(
-            f"\n[yellow]{len(plan.conflicts)} file(s) you've edited changed upstream[/] — "
-            + ("see the plan above" if dry_run else f"left as-is; see [bold]{REPORT_PATH}[/]")
-            + " to reconcile:"
-        )
+        # No version change → these are the user's own drift, not upstream changes.
+        if version_changed:
+            head = f"{len(plan.conflicts)} file(s) you've edited changed upstream"
+            tail = (
+                "see the plan above" if dry_run else f"left as-is; see [bold]{REPORT_PATH}[/]"
+            ) + (" to reconcile:")
+        else:
+            head = f"{len(plan.conflicts)} managed file(s) have drifted from the scaffold"
+            tail = "edited since — [bold]git diff[/] shows your changes:"
+        console.print(f"\n[yellow]{head}[/] — {tail}")
         for c in plan.conflicts:
             console.print(f"  [yellow]![/] {c.rel} — {c.reason}")
     if agent_steps:

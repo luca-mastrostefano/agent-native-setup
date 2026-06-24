@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import argparse
+import dataclasses
 import os
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 from rich.console import Console
@@ -57,6 +59,11 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     p.add_argument("--no-first-run-banner", dest="first_run_banner", action="store_false")
     p.add_argument("--no-git", dest="git", action="store_false")
     p.add_argument("-y", "--yes", action="store_true", help="non-interactive; use flags/defaults")
+    p.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="show what would be created, write nothing (parity with `update --dry-run`)",
+    )
     p.add_argument("--force", action="store_true", help="overwrite existing files")
     p.add_argument(
         "--no-update-check",
@@ -321,6 +328,47 @@ def _summary(config: WizardConfig, sc: Scaffolder) -> None:
     )
 
 
+def _dry_run(config: WizardConfig, *, force: bool) -> None:
+    """Preview a scaffold without writing. Builds into throwaway dirs so the real generators
+    decide the file set *and* the real ``Scaffolder`` decides create-vs-skip against what the
+    target already contains — so the preview matches a real run (including the files it would
+    skip), instead of pretending every path is new."""
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        # Pass 1: discover every path a run would write (empty dir → `recorded` holds them all,
+        # keyed by clean rel path for files and symlinks alike).
+        scout = Scaffolder((root / "scout").resolve())
+        build(dataclasses.replace(config, output_dir=root / "scout", init_git=False), scout)
+        # Pass 2: stage a placeholder for each discovered path that already exists in the real
+        # target, then let `Scaffolder.write`'s own preserve/force/skip logic split the result —
+        # no reimplementation of that policy, so the preview can't drift from the real writer.
+        stage = root / "stage"
+        for rel in scout.recorded:
+            if (config.target / rel).exists() or (config.target / rel).is_symlink():
+                placeholder = stage / rel
+                placeholder.parent.mkdir(parents=True, exist_ok=True)
+                placeholder.write_text("", encoding="utf-8")
+        sc = Scaffolder(stage.resolve(), force=force)
+        build(dataclasses.replace(config, output_dir=stage, init_git=False), sc)
+    console.print(
+        Panel.fit(
+            f"[bold]{config.project_name}[/] — dry run [dim](nothing written)[/]", style="yellow"
+        )
+    )
+    for rel in sorted(sc.created):
+        console.print(f"  [green]+[/] would create {rel}")
+    for rel in sorted(sc.skipped):
+        console.print(f"  [dim]=[/] would skip (exists): {rel}")
+    # Best-effort: a real run *attempts* git init but tolerates failure; the preview says it
+    # would try, not that it's guaranteed.
+    if config.init_git and not (config.target / ".git").exists():
+        console.print("  [green]+[/] would run git init")
+    tail = f"{len(sc.created)} file(s) would be created"
+    if sc.skipped:
+        tail += f", {len(sc.skipped)} skipped (already present)"
+    console.print(f"\n[dim]{tail} in[/] {config.target}")
+
+
 def _intro() -> None:
     body = (
         "[bold]agent-native-setup[/] scaffolds an [bold]agent-native[/] project setup:\n"
@@ -412,6 +460,10 @@ def main(argv: list[str] | None = None) -> int:
             f"[yellow]Existing code detected[/] — adoption strategy: [bold]{config.adoption}[/]. "
             "See CONTRIBUTING.md."
         )
+
+    if args.dry_run:
+        _dry_run(config, force=args.force)
+        return 0
 
     sc = Scaffolder(config.target, force=args.force)
     try:
