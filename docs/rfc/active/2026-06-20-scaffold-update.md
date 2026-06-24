@@ -1,9 +1,9 @@
 # An `update` command: refresh a scaffolded project to a newer version
 
-- **Status:** Proposed
+- **Status:** Active
 - **Date:** 2026-06-20
 - **Author:** Luca Mastrostefano
-- [ ] Implemented
+- [x] Implemented
 
 ## Context
 
@@ -45,13 +45,13 @@ Ship two surfaces: `agent-native-setup update` (the deterministic **engine**) an
 `/update` **skill** in the generated `.claude/` (the **agent choreography** that runs the
 engine and reconciles what it can't). Four coupled decisions.
 
-> **Implementation status (2026-06-20).** The engine (§1, §3, §4) shipped: `classify`/`apply`,
-> the manifest `seed` policy, the structural migration list, the git preconditions, and the
-> CLI subcommand. It landed against the **decoupled fallback** (see Alternatives) — `AGENTS.md`
-> ships as a whole-file `seed`, so the contract is never clobbered, but the **`INSTRUCTION.md`
-> split in §2 is deferred**: standard-instruction improvements don't yet propagate on update,
-> and the "single source of truth" / RFC 2026-06-17 edits in Consequences land with that
-> follow-up. The `/update` skill is also pending. `- [ ] Implemented` stays unchecked until both land.
+> **Implementation status.** Shipped in stages, now fully implemented. The engine (§1, §3,
+> §4) landed first — `classify`/`apply`, the manifest `seed` policy, the structural migration
+> list, the git preconditions, and the CLI subcommand — against the **decoupled fallback**
+> (see Alternatives), with `AGENTS.md` as a whole-file `seed`. The **§2 `INSTRUCTION.md`
+> split** and the **`/update` skill** (shipped as `/update-agent-scaffolding`) have since
+> landed too, so standard-instruction improvements now propagate on update and the
+> contract-split edits in Consequences are in effect.
 
 ### 1. Classify, don't merge
 
