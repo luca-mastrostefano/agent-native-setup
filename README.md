@@ -139,7 +139,27 @@ agent-native-setup -o ./existing-app --yes
 | `--no-first-run-banner` | Don't inject the self-removing "first run — finish ONBOARDING" banner into `AGENTS.md`. |
 | `--no-update-check` | Don't check GitHub for a newer release at the end of a run. |
 | `-y, --yes` | Non-interactive; use flags and defaults. |
+| `--dry-run` | Preview what would be created (and what would be skipped as already-present) — writes nothing. |
 | `--force` | Overwrite existing files. |
+
+### Keeping a project up to date
+
+The wizard records what it generated in `.agent-native-setup.json`, so a scaffolded project
+isn't frozen at the version that made it:
+
+```bash
+agent-native-setup update            # refresh managed files to the installed version
+agent-native-setup update --dry-run  # preview the changes — and check for local drift
+agent-native-setup update --check    # one-line "newer version available?" nudge
+```
+
+`update` **classifies** rather than merges: it refreshes generated files that are still
+pristine, never touches files you own or have edited (it reports those as conflicts to
+reconcile), and removes guardrails it no longer generates. It needs a clean git working tree
+(or `--dry-run`) so the change is a reviewable diff; a breaking version bump pauses for
+confirmation and writes an `UPDATING.md` runbook. On an already-current project,
+`update --dry-run` doubles as a **conformance check** — it flags any managed file that has
+drifted from the scaffold.
 
 ## Philosophy
 

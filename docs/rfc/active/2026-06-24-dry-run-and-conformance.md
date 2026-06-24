@@ -1,9 +1,9 @@
 # Scaffold `--dry-run` and a conformance (drift) check
 
-- **Status:** Proposed
+- **Status:** Active
 - **Date:** 2026-06-24
 - **Author:** Luca Mastrostefano
-- [ ] Implemented
+- [x] Implemented
 
 ## Context
 
