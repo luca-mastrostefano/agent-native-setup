@@ -255,6 +255,28 @@ One coupling to state plainly: a `contributions/` profile **ships with the tool*
 profiles keep the axes independent but lean on `update_source` for the nudge. Both are
 honest; neither is hidden.
 
+### Deferred experience refinements
+
+A UX review of the author → consume → update loops surfaced five refinements. The two that
+extend *today's* engine (a scaffold `--dry-run` preview, and reframing same-version `update`
+conflicts as a conformance/drift check) ship independently in **RFC 2026-06-24** — they need
+no profiles engine. The remaining three are profiles-native and tracked here, realized with
+the phases above (they have no ground to stand on until the engine exists):
+
+- **`profile init <name>`** — scaffold the `profile.json` skeleton + `templates/` + a contract
+  README, so authoring starts from "fill in the blanks," not "read the spec." (Author on-ramp.)
+- **`profile save` as a lifecycle, not a one-shot** — a re-capture mode that re-diffs against
+  base and shows what changed *in the profile* since the last capture, so iterating on a
+  living profile doesn't mean hand-re-curating the whole layer. (Extends §7 Author.)
+- **Team pre-trust by content hash** — `profile trust <name>` pins a *reviewed* profile's
+  content hash in the user config so a team isn't re-prompted on every scaffold; a mismatch
+  re-prompts. Pinning the hash (not the source) keeps the §6 security property — trust is
+  granted to a specific artifact, not a moving target. (Extends §6/§7 trust.)
+- **N-layer composition** — the stack is `[default, child]` today, but the single-owner rule
+  (§2) is already N-ary. Design the manifest's layer stack and per-file owner index for N now,
+  so `extends: <another-profile>` (company-base → team-frontend) is a forward-compatible
+  addition rather than a schema break; build it only when demand appears.
+
 ### User stories
 
 - **Author.** A Tolaria maintainer runs `profile save tolaria` from a representative repo —
