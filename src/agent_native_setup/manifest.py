@@ -45,23 +45,32 @@ def _config_snapshot(config: WizardConfig) -> dict[str, object]:
     }
 
 
-def build(config: WizardConfig, sc: Scaffolder) -> dict[str, object]:
+def build(
+    config: WizardConfig, sc: Scaffolder, *, profile: dict[str, object] | None = None
+) -> dict[str, object]:
     """The manifest document for what this run scaffolded."""
-    return {
+    doc: dict[str, object] = {
         "scaffolder": "agent-native-setup",
         "version": __version__,
+        # The profile (if any) composed on the default setup: name + its own version + how to
+        # re-resolve it. Absent for a plain default scaffold. (RFC 2026-06-23.)
+        **({"profile": profile} if profile else {}),
         "config": _config_snapshot(config),
         # Sorted for a stable, diff-friendly file. Excludes the manifest itself: it's
         # built from sc.recorded *before* the manifest is written.
         "files": dict(sorted(sc.recorded.items())),
         # The subset of `files` the user owns once seeded (README, the architecture
-        # overview, the bootstrap RFC, …). `update` never refreshes these; everything
-        # else in `files` is "managed" and refreshed when still pristine. Additive: an
-        # older manifest without this key means "treat every file as managed."
+        # overview, the bootstrap RFC, plus any profile-overlaid files). `update` never
+        # refreshes these; everything else in `files` is "managed" and refreshed when still
+        # pristine. Additive: an older manifest without this key means "treat every file as
+        # managed."
         "seed": sorted(sc.seed),
     }
+    return doc
 
 
-def write(config: WizardConfig, sc: Scaffolder) -> None:
+def write(
+    config: WizardConfig, sc: Scaffolder, *, profile: dict[str, object] | None = None
+) -> None:
     """Write the provenance manifest. Call last, after every file is scaffolded."""
-    sc.write(MANIFEST_PATH, json.dumps(build(config, sc), indent=2) + "\n")
+    sc.write(MANIFEST_PATH, json.dumps(build(config, sc, profile=profile), indent=2) + "\n")

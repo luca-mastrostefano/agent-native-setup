@@ -13,7 +13,7 @@ from pathlib import Path
 from rich.console import Console
 from rich.panel import Panel
 
-from agent_native_setup import __version__, manifest, update, update_check
+from agent_native_setup import __version__, manifest, profiles, update, update_check
 from agent_native_setup.config import AI_TOOLS, WizardConfig
 from agent_native_setup.generators import agents, ai_context, ci, docs, onboarding, quality
 from agent_native_setup.languages import REGISTRY, detect_languages, detect_runner
@@ -35,6 +35,12 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     p.add_argument("name", nargs="?", help="project name")
     p.add_argument("-o", "--output", default=".", help="target directory (default: cwd)")
     p.add_argument("--description", default="")
+    p.add_argument(
+        "--profile",
+        default=None,
+        help="compose a profile on the default setup: a path to a profile dir, or a name in "
+        "~/.config/agent-native-setup/profiles (see `agent-native-setup profile --help`)",
+    )
     p.add_argument("--languages", type=_csv, default=None, help=f"comma-sep: {','.join(LANG_KEYS)}")
     p.add_argument("--tools", type=_csv, default=None, help=f"comma-sep: {','.join(AI_TOOLS)}")
     p.add_argument("--no-agents", dest="agents", action="store_false")
@@ -255,7 +261,9 @@ def _from_flags(args: argparse.Namespace, out: Path, detected: list[str] | None)
     )
 
 
-def build(config: WizardConfig, sc: Scaffolder) -> Scaffolder:
+def build(
+    config: WizardConfig, sc: Scaffolder, profile: profiles.Profile | None = None
+) -> Scaffolder:
     config.target.mkdir(parents=True, exist_ok=True)
     ai_context.generate(config, sc)
     if config.include_agents:
@@ -267,6 +275,13 @@ def build(config: WizardConfig, sc: Scaffolder) -> Scaffolder:
     if config.include_ci:
         ci.generate(config, sc)
     onboarding.generate(config, sc)  # gated internally on quality-or-ci
+    # A profile composes on top: its files overlay the default output as seed (Phase 1),
+    # before git/manifest so they're committed and recorded as provenance. The recorded block
+    # carries the exact paths the profile owns, so `update` re-asserts those (and only those)
+    # as seed instead of refreshing the base back over an override.
+    profile_block = None
+    if profile is not None:
+        profile_block = {**profile.manifest_block(), "files": profiles.apply(profile, config, sc)}
     git_dir = config.target / ".git"
     if config.init_git and not git_dir.exists():
         try:
@@ -277,7 +292,7 @@ def build(config: WizardConfig, sc: Scaffolder) -> Scaffolder:
             pass
     # Last: record provenance for everything written above, so a future `update` can
     # refresh pristine generated files without touching the user's edits.
-    manifest.write(config, sc)
+    manifest.write(config, sc, profile=profile_block)
     return sc
 
 
@@ -328,17 +343,19 @@ def _summary(config: WizardConfig, sc: Scaffolder) -> None:
     )
 
 
-def _dry_run(config: WizardConfig, *, force: bool) -> None:
+def _dry_run(config: WizardConfig, *, force: bool, profile: profiles.Profile | None = None) -> None:
     """Preview a scaffold without writing. Builds into throwaway dirs so the real generators
-    decide the file set *and* the real ``Scaffolder`` decides create-vs-skip against what the
-    target already contains — so the preview matches a real run (including the files it would
-    skip), instead of pretending every path is new."""
+    (and a composed profile, if any) decide the file set *and* the real ``Scaffolder`` decides
+    create-vs-skip against what the target already contains — so the preview matches a real run
+    (including the files it would skip), instead of pretending every path is new."""
     with tempfile.TemporaryDirectory() as tmp:
         root = Path(tmp)
         # Pass 1: discover every path a run would write (empty dir → `recorded` holds them all,
         # keyed by clean rel path for files and symlinks alike).
         scout = Scaffolder((root / "scout").resolve())
-        build(dataclasses.replace(config, output_dir=root / "scout", init_git=False), scout)
+        build(
+            dataclasses.replace(config, output_dir=root / "scout", init_git=False), scout, profile
+        )
         # Pass 2: stage a placeholder for each discovered path that already exists in the real
         # target, then let `Scaffolder.write`'s own preserve/force/skip logic split the result —
         # no reimplementation of that policy, so the preview can't drift from the real writer.
@@ -349,7 +366,7 @@ def _dry_run(config: WizardConfig, *, force: bool) -> None:
                 placeholder.parent.mkdir(parents=True, exist_ok=True)
                 placeholder.write_text("", encoding="utf-8")
         sc = Scaffolder(stage.resolve(), force=force)
-        build(dataclasses.replace(config, output_dir=stage, init_git=False), sc)
+        build(dataclasses.replace(config, output_dir=stage, init_git=False), sc, profile)
     console.print(
         Panel.fit(
             f"[bold]{config.project_name}[/] — dry run [dim](nothing written)[/]", style="yellow"
@@ -400,10 +417,12 @@ def _intro() -> None:
 
 def main(argv: list[str] | None = None) -> int:
     raw = sys.argv[1:] if argv is None else argv
-    # `update` is a subcommand on top of the (default) scaffold flow; everything else
-    # parses as before, so the scaffold CLI is untouched.
+    # `update` and `profile` are subcommands on top of the (default) scaffold flow; everything
+    # else parses as before, so the scaffold CLI is untouched.
     if raw and raw[0] == "update":
         return update.run_cli(raw[1:], console)
+    if raw and raw[0] == "profile":
+        return profiles.run_cli(raw[1:], console)
     args = parse_args(raw)
     # resolve() so the default project name works for `-o .` (Path(".").name is "").
     out = Path(args.output).expanduser().resolve()
@@ -461,13 +480,21 @@ def main(argv: list[str] | None = None) -> int:
             "See CONTRIBUTING.md."
         )
 
+    try:
+        profile = profiles.resolve(args.profile) if args.profile else None
+    except profiles.ProfileError as exc:
+        console.print(f"[red]{exc}[/]")
+        return 2
+    if profile is not None:
+        console.print(f"[cyan]Profile:[/] {profile.name} {profile.version} (composed on default).")
+
     if args.dry_run:
-        _dry_run(config, force=args.force)
+        _dry_run(config, force=args.force, profile=profile)
         return 0
 
     sc = Scaffolder(config.target, force=args.force)
     try:
-        build(config, sc)
+        build(config, sc, profile)
     except (KeyboardInterrupt, EOFError):
         console.print("\n[yellow]Cancelled.[/]")
         if rolled_back := sc.rollback():
