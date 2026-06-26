@@ -30,7 +30,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from agent_native_setup import manifest, migrations, versioning
+from agent_native_setup import manifest, migrations, profiles, versioning
 from agent_native_setup.config import AI_TOOLS, WizardConfig
 from agent_native_setup.migrations import Migration
 from agent_native_setup.scaffold import Scaffolder
@@ -281,14 +281,53 @@ def _config_from_manifest(old: dict, output_dir: Path) -> WizardConfig:
     )
 
 
-def _regenerate(config: WizardConfig, into: Path) -> Scaffolder:
-    """Render the current version's full scaffold into ``into`` and return the Scaffolder
-    (its ``recorded`` fingerprints + ``seed`` set describe the new generation)."""
+def _regenerate(
+    config: WizardConfig, into: Path, profile: profiles.Profile | None = None
+) -> Scaffolder:
+    """Render the current version's full scaffold (plus ``profile``'s overlay, if any) into
+    ``into`` and return the Scaffolder (its ``recorded`` fingerprints + ``seed`` set describe
+    the new generation)."""
     from agent_native_setup import cli  # lazy: cli imports this module
 
     sc = Scaffolder(into)
-    cli.build(config, sc)
+    cli.build(config, sc, profile)
     return sc
+
+
+def _reresolve_profile(old: dict, console: Any) -> tuple[profiles.Profile | None, dict | None]:
+    """Re-resolve the project's composed profile for an update (RFC 2026-06-23, Phase 2).
+    Returns ``(profile, block)``:
+
+    - resolved → ``(Profile, new_block)`` rebuilt from its *current* version + owned files, so
+      the update re-applies it (managed files refresh) and records the new version;
+    - unresolvable (source moved/gone) → ``(None, old_block)`` — degraded: the base still
+      updates and the profile's files are kept frozen, with a warning.
+    """
+    block = old.get("profile")
+    if not isinstance(block, dict):
+        return None, None
+    source = block.get("source")
+    profile = None
+    if source:
+        try:
+            profile = profiles.resolve(str(source))
+        except profiles.ProfileError:
+            profile = None
+    if profile is None:
+        console.print(
+            f"[yellow]Profile {block.get('name')!r} couldn't be re-resolved[/] "
+            f"(source {source!r}) — its files are kept as-is; the base setup still updates."
+        )
+        return None, block
+    new_block = {
+        **profile.manifest_block(),
+        # Every path the profile owns. (At scaffold, a path colliding with a pre-existing user
+        # file is skipped and not claimed; the temp regeneration has no such collisions, so
+        # this lists all of them — harmless, since such a path classifies as a conflict and is
+        # never clobbered.)
+        "files": sorted(rel for rel, _ in profile.template_files()),
+    }
+    return profile, new_block
 
 
 def _restore_profile_overlay(old: dict, sc: Scaffolder, target: Path) -> None:
@@ -340,6 +379,18 @@ def run(target: Path, *, dry_run: bool, console: Any, assume_yes: bool = False) 
     # --dry-run` on an up-to-date project, reframed so the report doesn't cry "changed upstream".
     version_changed = decision != versioning.NOOP
 
+    # Re-resolve the composed profile (Phase 2): its managed files refresh like the base. A
+    # breaking profile bump gates too; an unresolvable profile degrades to frozen (warned).
+    profile, profile_block = _reresolve_profile(old, console)
+    profile_change: tuple[str, str, str] | None = None
+    if profile is not None:
+        old_pv = str((old.get("profile") or {}).get("version") or "0.0.0")
+        pdecision = versioning.decide(old_pv, profile.version)
+        if pdecision == versioning.GATED:
+            gated = True
+            profile_change = (profile.name, old_pv, profile.version)
+        version_changed = version_changed or pdecision != versioning.NOOP
+
     if not dry_run:
         is_repo, clean = _git_state(target)
         if not is_repo:
@@ -358,7 +409,12 @@ def run(target: Path, *, dry_run: bool, console: Any, assume_yes: bool = False) 
             gated
             and (
                 gate_rc := _confirm_gate(
-                    console, from_version, to_version, agent_steps, assume_yes=assume_yes
+                    console,
+                    from_version,
+                    to_version,
+                    agent_steps,
+                    assume_yes=assume_yes,
+                    profile_change=profile_change,
                 )
             )
             is not None
@@ -372,15 +428,17 @@ def run(target: Path, *, dry_run: bool, console: Any, assume_yes: bool = False) 
         console.print(f"  [magenta]~[/] {'would move' if dry_run else 'moved'} {action}")
 
     with tempfile.TemporaryDirectory() as tmp:
-        sc = _regenerate(_config_from_manifest(old, Path(tmp)), Path(tmp))
+        sc = _regenerate(_config_from_manifest(old, Path(tmp)), Path(tmp), profile)
         # build() writes the manifest *last* via sc.write, which adds it to `recorded`.
         # The updater owns the manifest itself (rewritten below), so drop it from the set
         # it classifies and re-records — exactly as a fresh scaffold excludes it.
         sc.recorded.pop(manifest.MANIFEST_PATH, None)
         sc.seed.discard(manifest.MANIFEST_PATH)
-        # Re-assert profile overlays as seed before classifying, so the base never refreshes
-        # over them and their provenance survives (Phase 1 doesn't re-run the profile).
-        _restore_profile_overlay(old, sc, target)
+        # When the profile re-applied above, its files are in the regenerated set (managed
+        # ones refresh, seed ones stay). Only when it *couldn't* be re-resolved do we fall
+        # back to freezing the profile's recorded files so the base doesn't refresh over them.
+        if profile is None:
+            _restore_profile_overlay(old, sc, target)
         plan = classify(old, sc.recorded, sc.seed, target)
         if dry_run:
             _print_plan(
@@ -403,9 +461,9 @@ def run(target: Path, *, dry_run: bool, console: Any, assume_yes: bool = False) 
                 encoding="utf-8",
             )
         # Written last, so an interrupt before here leaves `installed` unchanged (re-runnable).
-        new_manifest = manifest.build(
-            _config_from_manifest(old, target), sc, profile=old.get("profile")
-        )
+        # `profile_block` carries the *new* profile version+files when it re-resolved, or the
+        # old block (preserved) when it didn't — so provenance stays accurate either way.
+        new_manifest = manifest.build(_config_from_manifest(old, target), sc, profile=profile_block)
         (target / manifest.MANIFEST_PATH).write_text(
             json.dumps(new_manifest, indent=2) + "\n", encoding="utf-8"
         )
@@ -416,24 +474,36 @@ def run(target: Path, *, dry_run: bool, console: Any, assume_yes: bool = False) 
 
 
 def _confirm_gate(
-    console: Any, from_v: str, to_v: str, agent_steps: list[Migration], *, assume_yes: bool
+    console: Any,
+    from_v: str,
+    to_v: str,
+    agent_steps: list[Migration],
+    *,
+    assume_yes: bool,
+    profile_change: tuple[str, str, str] | None = None,
 ) -> int | None:
     """Confirm a breaking-boundary update. Returns ``None`` to proceed, or an exit code to
-    stop with (0 = user declined, 2 = needs --yes in a non-interactive run)."""
+    stop with (0 = user declined, 2 = needs --yes in a non-interactive run). Names whichever
+    of the base setup and the composed profile actually crossed a breaking boundary."""
+    changes = []
+    if from_v != to_v:
+        changes.append(f"setup {from_v} → {to_v}")
+    if profile_change is not None:
+        name, old_pv, new_pv = profile_change
+        changes.append(f"profile {name} {old_pv} → {new_pv}")
+    what = "; ".join(changes) or f"{from_v} → {to_v}"
     detail = f" with {len(agent_steps)} migration step(s) to apply" if agent_steps else ""
     if assume_yes:
         return None
     if not sys.stdin.isatty():
         console.print(
-            f"[red]Breaking update {from_v} → {to_v}{detail}[/] needs confirmation. Preview "
-            "with [bold]--dry-run[/], then re-run with [bold]--yes[/] to proceed."
+            f"[red]Breaking update ({what}){detail}[/] needs confirmation. Preview with "
+            "[bold]--dry-run[/], then re-run with [bold]--yes[/] to proceed."
         )
         return 2
     import questionary
 
-    if questionary.confirm(
-        f"Breaking update ({from_v} → {to_v}){detail} — proceed?", default=False
-    ).ask():
+    if questionary.confirm(f"Breaking update ({what}){detail} — proceed?", default=False).ask():
         return None
     console.print("[yellow]Aborted[/] — no changes made.")
     return 0

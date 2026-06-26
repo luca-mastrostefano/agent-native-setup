@@ -1,10 +1,10 @@
-"""Scaffolding profiles (RFC 2026-06-23, Phase 1): compose a team's files on the default setup.
+"""Scaffolding profiles (RFC 2026-06-23): compose a team's files on the default setup.
 
-A profile is a directory with a ``profile.json`` and a ``templates/`` tree. Phase 1 supports
-``extends: default`` — the wizard generates its normal (managed) output, then the profile's
-template files are overlaid as **seed** (user-owned, written once, never refreshed on update),
-superseding any base file at the same path. A profile's *own* managed/versioned update stream
-is Phase 2.
+A profile is a directory with a ``profile.json`` and a ``templates/`` tree. ``extends: default``
+means the wizard generates its normal output, then the profile's template files are overlaid on
+top, superseding any base file at the same path. Each profile file is **managed** — refreshed by
+``update`` when the profile ships a new ``version`` — unless listed in the profile's ``seed`` set
+(written once, then the user's). Standalone (``extends: null``) is still Phase 2.
 
 Templates ending in ``.j2`` are rendered with Jinja against the project context (the ``.j2``
 is stripped from the output path); every other file ships verbatim — so a profile can carry
@@ -41,6 +41,9 @@ class Profile:
     description: str
     root: Path  # the profile directory
     source: str  # the reference it was resolved from — recorded in the project manifest
+    # Output paths the profile ships as **seed** (write-once, never refreshed). Everything else
+    # under templates/ is **managed** — refreshed on update when the profile ships a new version.
+    seed: frozenset[str] = frozenset()
 
     def template_files(self) -> list[tuple[str, Path]]:
         """``(output_rel, source_path)`` for each file under ``templates/``, with a trailing
@@ -84,6 +87,9 @@ def load(path: Path, *, source: str | None = None) -> Profile:
             f"{manifest_path}: extends={extends!r} isn't supported yet — set extends to one of "
             f"{', '.join(SUPPORTED_EXTENDS)} (standalone / extends:null is Phase 2)"
         )
+    seed = data.get("seed", [])
+    if not isinstance(seed, list) or not all(isinstance(s, str) for s in seed):
+        raise ProfileError(f"{manifest_path}: 'seed' must be a list of output paths")
     return Profile(
         name=str(name),
         version=str(version),
@@ -91,6 +97,7 @@ def load(path: Path, *, source: str | None = None) -> Profile:
         description=str(data.get("description", "")),
         root=path,
         source=source if source is not None else str(path),
+        seed=frozenset(seed),
     )
 
 
@@ -124,19 +131,20 @@ def _context(config: WizardConfig) -> dict[str, Any]:
 
 
 def apply(profile: Profile, config: WizardConfig, sc: Scaffolder) -> list[str]:
-    """Overlay ``profile``'s templates onto an already-generated scaffold as seed files
-    (Phase 1). ``.j2`` files are rendered against the project context; others ship verbatim.
-    A file at the same path as a base file supersedes it and becomes seed (child-owned).
+    """Overlay ``profile``'s templates onto an already-generated scaffold. Files are **managed**
+    (refreshed on update when the profile ships a new version) unless listed in the profile's
+    ``seed`` set, which are written once. ``.j2`` files are rendered against the project context;
+    others ship verbatim. A file at the same path as a base file supersedes it.
 
-    Returns the sorted list of paths the profile actually owns (those it wrote — a path where
-    a user's own file pre-existed is skipped and not claimed), so the project manifest can
-    record them and a later ``update`` can re-assert them as seed instead of refreshing the
-    base back over them."""
+    Returns the sorted list of paths the profile actually owns (those it wrote — a path where a
+    user's own file pre-existed is skipped and not claimed), so the project manifest records them
+    and ``update`` re-applies the profile to refresh them."""
     ctx = _context(config)
     owned: list[str] = []
     for out_rel, src in profile.template_files():
         raw = src.read_text(encoding="utf-8")
-        if sc.overlay(out_rel, render(raw, **ctx) if src.name.endswith(".j2") else raw):
+        content = render(raw, **ctx) if src.name.endswith(".j2") else raw
+        if sc.overlay(out_rel, content, seed=out_rel in profile.seed):
             owned.append(out_rel)
     return sorted(owned)
 
@@ -152,17 +160,26 @@ A profile composed on the built-in `default` setup (`extends: default`). When so
 agent-native-setup my-app -o ./my-app --profile {source_hint}
 ```
 
-they get the normal scaffold **plus** every file under `templates/`, shipped as *seed*
-(written once, then theirs to maintain).
+they get the normal scaffold **plus** every file under `templates/`.
 
 ## Layout
 
-- `profile.json` — name, version (your own semver), `extends`, description.
+- `profile.json` — name, version (your own semver), `extends`, description, and an optional
+  `seed` list.
 - `templates/` — the files this profile ships. Paths are relative to the project root, so
   `templates/.claude/agents/foo.md` lands at `.claude/agents/foo.md`. A file ending in
   `.j2` is rendered (Jinja) with `project_name`, `slug`, `description`, `languages` and the
   `.j2` stripped; anything else is copied verbatim (so files containing `{{{{ ... }}}}`,
   like GitHub Actions `${{{{ ... }}}}`, are safe).
+
+## Updating
+
+Bump `version` when you change templates and your users run `agent-native-setup update`: every
+file is **managed** (refreshed when they haven't edited it; reported as a conflict if they
+have). List paths under `seed` for files you want shipped **once** and never refreshed (a
+starter README, say). A breaking bump (major, or the minor pre-1.0) makes `update` pause for
+confirmation. For `update` to pull your changes, the profile must still be resolvable then
+(same path, or in `~/.config/agent-native-setup/profiles/`).
 
 Add your files under `templates/`, then point `--profile` at this directory.
 """
@@ -180,6 +197,7 @@ def _init(args: argparse.Namespace, console: Any) -> int:
         "version": "0.1.0",
         "extends": "default",
         "description": "TODO: one line describing this profile",
+        "seed": [],
     }
     (root / PROFILE_MANIFEST).write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
     (root / "README.md").write_text(
