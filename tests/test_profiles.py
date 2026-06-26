@@ -31,7 +31,7 @@ def _make_profile(
     files: dict[str, str],
     *,
     version: str = "1.0.0",
-    extends: str = "default",
+    extends: str | None = "default",
     seed: tuple[str, ...] = (),
     onboarding: tuple[str, ...] = (),
     session_start: tuple[str, ...] = (),
@@ -98,17 +98,28 @@ def test_resolve_default_is_none_and_missing_errors(tmp_path: Path) -> None:
         profiles.resolve(str(tmp_path / "nope"))
 
 
-def test_load_requires_name_version_and_supported_extends(tmp_path: Path) -> None:
+def test_load_validates_name_version_and_extends(tmp_path: Path) -> None:
     bad = tmp_path / "bad"
     bad.mkdir()
     (bad / "profile.json").write_text(json.dumps({"name": "x"}), encoding="utf-8")  # no version
     with pytest.raises(profiles.ProfileError, match="required"):
         profiles.load(bad)
-    (bad / "profile.json").write_text(
-        json.dumps({"name": "x", "version": "1.0.0", "extends": None}), encoding="utf-8"
-    )  # extends: null → standalone, not supported in Phase 1
-    with pytest.raises(profiles.ProfileError, match="supported"):
+    (bad / "profile.json").write_text(  # extends omitted → must be explicit
+        json.dumps({"name": "x", "version": "1.0.0"}), encoding="utf-8"
+    )
+    with pytest.raises(profiles.ProfileError, match="extends"):
         profiles.load(bad)
+    (bad / "profile.json").write_text(  # a bogus extends value
+        json.dumps({"name": "x", "version": "1.0.0", "extends": "weird"}), encoding="utf-8"
+    )
+    with pytest.raises(profiles.ProfileError, match="extends"):
+        profiles.load(bad)
+    # "default" and explicit null are both valid.
+    for value in ("default", None):
+        (bad / "profile.json").write_text(
+            json.dumps({"name": "x", "version": "1.0.0", "extends": value}), encoding="utf-8"
+        )
+        assert profiles.load(bad).standalone is (value is None)
 
 
 def test_resolve_from_user_dir_by_name(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -924,6 +935,87 @@ def test_update_tolerates_a_manifest_without_detected_languages(tmp_path: Path) 
 
     assert update.run(target, dry_run=False, console=_Console()) == 0  # no crash
     assert (target / "docs/x.md").read_text(encoding="utf-8") == "langs=[]\n"  # defaulted to []
+
+
+# --- standalone (extends: null) -------------------------------------------------------------
+
+
+def test_standalone_profile_skips_the_default(tmp_path: Path) -> None:
+    prof = _make_profile(
+        tmp_path,
+        "team",
+        {"AGENTS.md": "# our contract\n", "x.md": "x\n"},
+        extends=None,
+    )
+    assert prof.standalone
+    target = tmp_path / "proj"
+    target.mkdir()
+    cli.build(_config(target), Scaffolder(target), prof)
+
+    # The profile's own files are written…
+    assert (target / "AGENTS.md").read_text(encoding="utf-8") == "# our contract\n"
+    assert (target / "x.md").exists()
+    # …and NONE of the default generators ran.
+    for default_path in ("INSTRUCTION.md", ".claude/agents/code-reviewer.md", ".editorconfig"):
+        assert not (target / default_path).exists()
+    m = json.loads((target / MANIFEST_PATH).read_text(encoding="utf-8"))
+    assert m["profile"]["extends"] is None
+    assert set(m["files"]) == {"AGENTS.md", "x.md"}  # only the profile's files
+
+
+def test_standalone_profile_ignores_onboarding_and_session_start(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    prof = _make_profile(
+        tmp_path,
+        "team",
+        {"AGENTS.md": "# c\n"},
+        extends=None,
+        onboarding=("do a thing",),
+        session_start=("echo hi",),
+    )
+    target = tmp_path / "proj"
+    rc = cli.main(["demo", "-o", str(target), "-y", "--no-git", "--profile", str(prof.root)])
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "standalone" in out and "ignored for a standalone profile" in out  # warned
+    assert not (target / "ONBOARDING.md").exists()  # no default onboarding
+    assert not (target / ".claude/settings.json").exists()  # no default settings/hooks
+
+
+def test_update_a_standalone_project_refreshes_only_profile_files(tmp_path: Path) -> None:
+    prof = _make_profile(
+        tmp_path, "team", {"AGENTS.md": "v1\n"}, version="0.1.0", extends=None, by_path=True
+    )
+    target = tmp_path / "proj"
+    target.mkdir()
+    cli.build(_config(target), Scaffolder(target), prof)
+    _commit(target)
+
+    _bump_profile(prof.root, version="0.1.1", files={"AGENTS.md": "v2\n"})
+    assert update.run(target, dry_run=False, console=_Console()) == 0
+    assert (target / "AGENTS.md").read_text(encoding="utf-8") == "v2\n"  # profile file refreshed
+    assert not (target / "INSTRUCTION.md").exists()  # default still not generated
+
+
+def test_degraded_update_of_a_standalone_project_does_not_regenerate_the_default(
+    tmp_path: Path,
+) -> None:
+    # Regression: when a standalone profile's source is gone at update time, the recorded
+    # `extends: null` must be honored — the project must NOT regenerate the whole default scaffold.
+    prof = _make_profile(tmp_path, "team", {"AGENTS.md": "v1\n"}, extends=None, by_path=True)
+    target = tmp_path / "proj"
+    target.mkdir()
+    cli.build(_config(target), Scaffolder(target), prof)
+    _commit(target)
+
+    shutil.rmtree(prof.root)  # profile source gone → degraded
+    console = _Console()
+    assert update.run(target, dry_run=False, console=console) == 0
+    assert "couldn't be re-resolved" in console.text
+    assert (target / "AGENTS.md").read_text(encoding="utf-8") == "v1\n"  # frozen, kept
+    assert not (target / "INSTRUCTION.md").exists()  # default NOT leaked in
+    assert not (target / ".claude").exists()
 
 
 # --- authoring CLI --------------------------------------------------------------------------

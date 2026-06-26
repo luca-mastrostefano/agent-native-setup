@@ -289,16 +289,20 @@ def _regenerate(
     *,
     session_start: tuple[str, ...] | None = None,
     answers: dict[str, object] | None = None,
+    standalone: bool | None = None,
 ) -> tuple[Scaffolder, dict | None]:
     """Render the current version's full scaffold (plus ``profile``'s overlay, if any) into
     ``into``. Returns ``(scaffolder, profile_block)`` — the block reflects what the profile
     *actually* applied (owned files + the answers it rendered against), which the caller persists
-    so a conditionally-skipped file isn't recorded as owned. ``session_start``/``answers`` let a
-    degraded update keep the recorded hooks/answers even when the profile object is gone."""
+    so a conditionally-skipped file isn't recorded as owned. ``session_start``/``answers``/
+    ``standalone`` let a degraded update keep the recorded hooks/answers and honor a recorded
+    `extends: null` even when the profile object is gone."""
     from agent_native_setup import cli  # lazy: cli imports this module
 
     sc = Scaffolder(into)
-    block = cli.build(config, sc, profile, session_start=session_start, answers=answers)
+    block = cli.build(
+        config, sc, profile, session_start=session_start, answers=answers, standalone=standalone
+    )
     return sc, block
 
 
@@ -436,12 +440,13 @@ def run(target: Path, *, dry_run: bool, console: Any, assume_yes: bool = False) 
         console.print(f"  [magenta]~[/] {'would move' if dry_run else 'moved'} {action}")
 
     # Degraded (profile gone): re-inject the recorded SessionStart hooks so settings.json keeps
-    # them rather than refreshing back to a hook-less base.
-    degraded_hooks = (
-        tuple(degraded_block.get("session_start", []))
-        if profile is None and isinstance(degraded_block, dict)
-        else None
-    )
+    # them, and honor a recorded `extends: null` so a standalone project doesn't regenerate the
+    # whole default scaffold around its frozen files.
+    degraded_hooks = None
+    degraded_standalone = None
+    if profile is None and isinstance(degraded_block, dict):
+        degraded_hooks = tuple(degraded_block.get("session_start", []))
+        degraded_standalone = degraded_block.get("extends") is None
     with tempfile.TemporaryDirectory() as tmp:
         sc, built_block = _regenerate(
             _config_from_manifest(old, Path(tmp)),
@@ -449,6 +454,7 @@ def run(target: Path, *, dry_run: bool, console: Any, assume_yes: bool = False) 
             profile,
             session_start=degraded_hooks,
             answers=update_answers,
+            standalone=degraded_standalone,
         )
         # build() writes the manifest *last* via sc.write, which adds it to `recorded`.
         # The updater owns the manifest itself (rewritten below), so drop it from the set

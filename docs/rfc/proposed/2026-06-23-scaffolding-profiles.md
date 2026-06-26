@@ -72,8 +72,10 @@ phases so the high-value, low-risk core lands first. Seven coupled decisions.
 > into the transient `ONBOARDING.md` (one-time) and `session_start` shell commands appended to
 > the SessionStart hooks (every session, each guard-wrapped so a failure can't disrupt the
 > session), merged into the base generators rather than clobbering them (recorded so a degraded
-> update keeps the hooks; warned when there's no Claude config to hold them). **Not yet:** `extends: null`
-> (standalone), `profile save`/`show`, the `url`/fetch +
+> update keeps the hooks; warned when there's no Claude config to hold them). **`extends: null`
+> (standalone)** also landed — the engine skips the default generators and the profile provides
+> everything from scratch (its own AGENTS.md, etc.); onboarding/session_start, which extend the
+> default, are ignored for it. **Not yet:** `profile save`/`show`, the `url`/fetch +
 > `contributions/` resolution and trust preview (§6/§7), the `update_source` nudge, and
 > per-profile *migrations* (renames/removes are handled by classify, but structural moves of
 > user content aren't). `- [ ] Implemented` stays unchecked until that surface is complete; the
