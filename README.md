@@ -175,13 +175,14 @@ agent-native-setup my-app -o ./my-app --profile ./my-team
 agent-native-setup profile list                  # profiles in ~/.config/agent-native-setup/profiles
 ```
 
-A profile is a directory with a `profile.json` (`name`, `version`, `extends: default`,
-`description`, and an optional `seed` list) and a `templates/` tree. Every file under
-`templates/` is laid down at the matching path in the new project, **on top of** the default
-scaffold. Files ending in `.j2` are rendered (Jinja, with `project_name` / `slug` /
-`description` / `languages`) and the `.j2` stripped; everything else ships verbatim, so files
-containing `${{ ... }}` (GitHub Actions) are safe. `--profile` takes a path, or a bare name
-resolved under `~/.config/agent-native-setup/profiles/`.
+A profile is a directory with a `profile.json` (`name`, `version`, `extends`, `description`, and
+an optional `seed` list) and a `templates/` tree. With **`extends: "default"`**, every file
+under `templates/` is laid down **on top of** the default scaffold; with **`extends: null`** the
+profile is **standalone** — the default generators are skipped and the profile provides
+everything from scratch (its own `AGENTS.md`, etc.). Files ending in `.j2` are rendered (Jinja,
+with `project_name` / `slug` / `description` / `languages`) and the `.j2` stripped; everything
+else ships verbatim, so files containing `${{ ... }}` (GitHub Actions) are safe. `--profile`
+takes a path, or a bare name resolved under `~/.config/agent-native-setup/profiles/`.
 
 Templates and `when` expressions can also read an **`env`** namespace of detected/resolved
 facts — `env.existing_project` (brownfield repo?), `env.detected_languages`, `env.runner`,
@@ -211,7 +212,7 @@ For `update` to pull the new version, the profile must still be resolvable then 
 path, or a name in `~/.config/agent-native-setup/profiles/` — otherwise the base still updates
 and the profile's files are left as-is.
 
-> **Still experimental.** `extends`-from-blank (standalone profiles), `profile save` (derive a
+> **Still experimental.** `profile save` (derive a
 > profile from an existing project), and fetching a profile straight from a git URL are not
 > built yet — see
 > [`docs/rfc/proposed/2026-06-23-scaffolding-profiles.md`](docs/rfc/proposed/2026-06-23-scaffolding-profiles.md).

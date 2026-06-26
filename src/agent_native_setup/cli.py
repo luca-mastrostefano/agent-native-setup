@@ -268,29 +268,39 @@ def build(
     *,
     session_start: tuple[str, ...] | None = None,
     answers: dict[str, object] | None = None,
+    standalone: bool | None = None,
 ) -> dict[str, object] | None:
     """Scaffold ``config`` (plus ``profile``'s overlay) into ``sc``'s target and write the
     manifest. Returns the recorded ``profile`` block (or ``None``) — its `files`/`answers`
-    reflect what was *actually* applied, which `update` persists instead of re-guessing."""
+    reflect what was *actually* applied, which `update` persists instead of re-guessing. The
+    ``standalone`` override lets a *degraded* update of a `extends: null` project still skip the
+    default generators when the profile object can't be re-resolved."""
     config.target.mkdir(parents=True, exist_ok=True)
-    # Profile-contributed startup: SessionStart hook commands (every session) and one-time
-    # onboarding steps, injected into the base generators so they merge in (not clobber). The
-    # `session_start` override lets a degraded update keep the recorded hooks when the profile
-    # object is gone.
-    hooks = (
-        session_start if session_start is not None else (profile.session_start if profile else ())
+    # A standalone profile (`extends: null`) skips the default generators entirely — it provides
+    # everything from scratch. `extends: default` (or no profile) runs the normal generators,
+    # into which a profile's startup contributions (SessionStart hooks, one-time onboarding
+    # steps) are merged. The `session_start` override lets a degraded update keep the recorded
+    # hooks when the profile object is gone.
+    is_standalone = (
+        standalone if standalone is not None else (profile is not None and profile.standalone)
     )
-    onboarding_steps = profile.onboarding if profile else ()
-    ai_context.generate(config, sc)
-    if config.include_agents:
-        agents.generate(config, sc, session_start=hooks)
-    if config.include_docs:
-        docs.generate(config, sc)
-    if config.include_quality:
-        quality.generate(config, sc)
-    if config.include_ci:
-        ci.generate(config, sc)
-    onboarding.generate(config, sc, profile_steps=onboarding_steps)
+    if not is_standalone:
+        hooks = (
+            session_start
+            if session_start is not None
+            else (profile.session_start if profile else ())
+        )
+        onboarding_steps = profile.onboarding if profile else ()
+        ai_context.generate(config, sc)
+        if config.include_agents:
+            agents.generate(config, sc, session_start=hooks)
+        if config.include_docs:
+            docs.generate(config, sc)
+        if config.include_quality:
+            quality.generate(config, sc)
+        if config.include_ci:
+            ci.generate(config, sc)
+        onboarding.generate(config, sc, profile_steps=onboarding_steps)
     # A profile composes on top: its files overlay the default output (managed by default,
     # seed when listed), before git/manifest so they're committed and recorded as provenance.
     # The recorded block carries the exact paths the profile owns + the answers it rendered
@@ -524,10 +534,16 @@ def main(argv: list[str] | None = None) -> int:
         return 2
     answers: dict[str, object] | None = None
     if profile is not None:
-        console.print(f"[cyan]Profile:[/] {profile.name} {profile.version} (composed on default).")
+        kind = "standalone — from scratch" if profile.standalone else "composed on default"
+        console.print(f"[cyan]Profile:[/] {profile.name} {profile.version} ({kind}).")
+        if profile.standalone and (profile.onboarding or profile.session_start):
+            console.print(
+                ":warning:  [yellow]onboarding/session_start are ignored for a standalone "
+                "profile[/] — they extend the default; a standalone profile ships its own."
+            )
         # SessionStart hooks live in .claude/settings.json, which is only generated for Claude.
         # Warn rather than silently drop a profile's hooks when there's nowhere to put them.
-        if profile.session_start and not (config.include_agents and "claude" in config.ai_tools):
+        elif profile.session_start and not (config.include_agents and "claude" in config.ai_tools):
             console.print(
                 ":warning:  [yellow]This profile defines session_start hooks, but the project "
                 "has no Claude `.claude/` config[/] — those hooks won't be applied."

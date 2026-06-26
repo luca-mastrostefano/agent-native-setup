@@ -2,9 +2,11 @@
 
 A profile is a directory with a ``profile.json`` and a ``templates/`` tree. ``extends: default``
 means the wizard generates its normal output, then the profile's template files are overlaid on
-top, superseding any base file at the same path. Each profile file is **managed** — refreshed by
-``update`` when the profile ships a new ``version`` — unless listed in the profile's ``seed`` set
-(written once, then the user's). Standalone (``extends: null``) is still Phase 2.
+top, superseding any base file at the same path. ``extends: null`` is **standalone** — the
+default generators are skipped and the profile provides everything from scratch (its own
+``AGENTS.md``, etc.). Each profile file is **managed** — refreshed by ``update`` when the profile
+ships a new ``version`` — unless listed in the profile's ``seed`` set (written once, then the
+user's).
 
 Templates ending in ``.j2`` are rendered with Jinja against the project context (the ``.j2``
 is stripped from the output path); every other file ships verbatim — so a profile can carry
@@ -26,7 +28,7 @@ from agent_native_setup.scaffold import Scaffolder, compile_expr, eval_expr, ren
 PROFILE_MANIFEST = "profile.json"
 TEMPLATES_DIR = "templates"
 USER_PROFILE_DIR = Path.home() / ".config" / "agent-native-setup" / "profiles"
-SUPPORTED_EXTENDS = ("default",)
+EXTENDS_VALUES = ("default", None)  # "default" composes on the base; null = standalone
 PROMPT_TYPES = ("text", "select", "confirm", "checkbox")
 
 
@@ -65,7 +67,7 @@ class Prompt:
 class Profile:
     name: str
     version: str
-    extends: str
+    extends: str | None  # "default" (compose on base) | None (standalone, from scratch)
     description: str
     root: Path  # the profile directory
     source: str  # the reference it was resolved from — recorded in the project manifest
@@ -78,6 +80,11 @@ class Profile:
     session_start: tuple[str, ...] = ()
     # Questions the profile asks at scaffold; answers feed templates as ``answers.<name>``.
     prompts: tuple[Prompt, ...] = ()
+
+    @property
+    def standalone(self) -> bool:
+        """A standalone profile (``extends: null``) skips the default generators entirely."""
+        return self.extends is None
 
     def template_files(self) -> list[tuple[str, Path]]:
         """``(output_rel, source_path)`` for each file under ``templates/``, with a trailing
@@ -173,13 +180,17 @@ def load(path: Path, *, source: str | None = None) -> Profile:
     except (OSError, ValueError) as exc:
         raise ProfileError(f"can't read {manifest_path}: {exc}") from None
     name, version = data.get("name"), data.get("version")
-    extends = data.get("extends")  # absent/null = standalone (Phase 2), not coerced to default
     if not name or not version:
         raise ProfileError(f"{manifest_path}: both 'name' and 'version' are required")
-    if extends not in SUPPORTED_EXTENDS:
+    if "extends" not in data:
         raise ProfileError(
-            f"{manifest_path}: extends={extends!r} isn't supported yet — set extends to one of "
-            f"{', '.join(SUPPORTED_EXTENDS)} (standalone / extends:null is Phase 2)"
+            f"{manifest_path}: 'extends' is required — \"default\" (compose on the default setup) "
+            "or null (standalone, from scratch)"
+        )
+    extends = data["extends"]  # explicit: "default" composes; null = standalone
+    if extends not in EXTENDS_VALUES:
+        raise ProfileError(
+            f'{manifest_path}: extends={extends!r} is invalid — use "default" or null'
         )
 
     def _str_list(key: str) -> list[str]:
@@ -327,8 +338,9 @@ they get the normal scaffold **plus** every file under `templates/`.
 
 ## Layout
 
-- `profile.json` — name, version (your own semver), `extends`, description, an optional
-  `seed` list, and optional `onboarding` / `session_start` lists (below).
+- `profile.json` — name, version (your own semver), `extends` (`"default"` to compose on the
+  base setup, or `null` to be standalone / from scratch), description, an optional `seed` list,
+  and optional `onboarding` / `session_start` lists (below).
 - `templates/` — the files this profile ships. Paths are relative to the project root, so
   `templates/.claude/agents/foo.md` lands at `.claude/agents/foo.md`. A file ending in
   `.j2` is rendered (Jinja) with `project_name`, `slug`, `description`, `languages`, the
