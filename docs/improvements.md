@@ -80,20 +80,7 @@ that needs a real decision into an RFC in `docs/rfc/proposed/`.
   manifest for this repo (record the current state as the baseline) or leave it un-managed. Tied
   to this: the manifest shipped under an `RFC-Not-Needed` waiver because it's greenfield/reversible
   (only us); lock the format with an RFC before any external user adopts it.
-- [77af693 · 2026-06-22] **Scaffolding config profiles** — named, reusable presets of wizard
-  answers, so a user (or an agent) can scaffold a known stack without re-answering every prompt.
-  A profile is essentially a serialized `WizardConfig` (`config.py`) — the same shape the manifest
-  already writes via `_config_snapshot()` (`manifest.py`), minus the file fingerprints. Today the
-  only non-interactive path is `--yes` plus the individual `--languages/--tools/--no-*/--runner/
-  --adopt` flags assembled in `_from_flags()` (`cli.py`); a profile would collapse that into one
-  `--profile <name>` / `--config <file>` flag that seeds the config, with explicit flags still
-  overriding it (keep the existing flags → detected → defaults precedence). Three pieces the user
-  asked for: **(1) have profiles** — ship a few built-ins (e.g. `python-lib`, `node-app`,
-  `polyglot-full`) plus a discoverable user dir (`~/.config/agent-native-setup/profiles/*.json`);
-  **(2) edit easily** — plain JSON/TOML keyed by the `WizardConfig` fields, validated against the
-  dataclass with a clear error on unknown/missing keys, and a `--list-profiles` / `--show-profile
-  <name>` to inspect; **(3) add new** — drop a file in the profiles dir, or `--save-profile <name>`
-  at the end of a run (or from an existing project's `.agent-native-setup.json`, so one project's
-  setup clones to the next). RFC-worthy: it adds a public config-file contract (and a TOML parser
-  would be a new dependency) — settle the format alongside the manifest-format RFC, since the two
-  schemas should stay in sync.
+- [77af693 · 2026-06-22] **Scaffolding config profiles** — *promoted to RFC
+  `2026-06-23-scaffolding-profiles` and partially shipped (Phase 1: `--profile` composition,
+  `profile init`/`list`). Remaining work (`profile save` to clone a project's setup, standalone
+  `extends:null`, and the Phase-2 versioned update stream) is tracked in that RFC, not here.*
