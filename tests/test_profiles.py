@@ -442,7 +442,9 @@ def test_profile_onboarding_steps_fold_into_onboarding_md(tmp_path: Path) -> Non
 
     body = (target / "ONBOARDING.md").read_text(encoding="utf-8")
     assert "Run `task team-setup`." in body and "Join #eng." in body
-    assert body.index("task team-setup") < body.index("Delete this file")  # before the cleanup step
+    # Profile steps extend the default flow *before* the bootstrap commit — so team setup is part
+    # of the initial setup and lands in the first commit, not tacked on after it.
+    assert body.index("task team-setup") < body.index("Commit the scaffold")
     # ONBOARDING.md is transient — never recorded, so update can't resurrect it after onboarding.
     m = json.loads((target / MANIFEST_PATH).read_text(encoding="utf-8"))
     assert "ONBOARDING.md" not in m["files"]
