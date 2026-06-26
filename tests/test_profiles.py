@@ -35,6 +35,7 @@ def _make_profile(
     seed: tuple[str, ...] = (),
     onboarding: tuple[str, ...] = (),
     session_start: tuple[str, ...] = (),
+    prompts: list[dict] | None = None,
     by_path: bool = False,
 ) -> profiles.Profile:
     d = root / name
@@ -51,6 +52,8 @@ def _make_profile(
         manifest["onboarding"] = list(onboarding)
     if session_start:
         manifest["session_start"] = list(session_start)
+    if prompts:
+        manifest["prompts"] = prompts
     (d / "profile.json").write_text(json.dumps(manifest), encoding="utf-8")
     for rel, content in files.items():
         p = d / "templates" / rel
@@ -126,7 +129,7 @@ def test_apply_overrides_a_base_managed_file(tmp_path: Path) -> None:
     cli.build(config, sc)  # default scaffold — INSTRUCTION.md is managed
 
     prof = _make_profile(tmp_path, "team", {"INSTRUCTION.md": "# Team method\n"})
-    profiles.apply(prof, config, sc)
+    profiles.apply(prof, config, sc, {})
 
     assert (target / "INSTRUCTION.md").read_text(encoding="utf-8") == "# Team method\n"  # wins
     assert "INSTRUCTION.md" not in sc.seed  # managed by default → refreshed from the profile
@@ -142,7 +145,7 @@ def test_apply_marks_managed_and_seed_files(tmp_path: Path) -> None:
     prof = _make_profile(
         tmp_path, "team", {"managed.md": "m\n", "once.md": "o\n"}, seed=("once.md",)
     )
-    profiles.apply(prof, config, sc)
+    profiles.apply(prof, config, sc, {})
 
     assert "managed.md" in sc.recorded and "managed.md" not in sc.seed  # refreshed on update
     assert "once.md" in sc.seed  # listed in `seed` → write-once
@@ -163,7 +166,7 @@ def test_apply_renders_j2_and_ships_other_files_verbatim(tmp_path: Path) -> None
             ".github/workflows/team.yml": "run: ${{ secrets.TOKEN }}\n",  # must stay verbatim
         },
     )
-    profiles.apply(prof, config, sc)
+    profiles.apply(prof, config, sc, {})
 
     assert (target / "docs/team.md").read_text(encoding="utf-8") == "project=demo\n"
     assert not (target / "docs/team.md.j2").exists()  # the .j2 suffix is stripped
@@ -528,6 +531,183 @@ def test_degraded_update_keeps_session_start_hooks(tmp_path: Path) -> None:
     assert update.run(target, dry_run=False, console=console) == 0
     assert "couldn't be re-resolved" in console.text
     assert any("echo keepme" in h for h in _session_hooks(target))  # NOT stripped by the base
+
+
+# --- Phase 4: prompts (a declarative wizard) ------------------------------------------------
+
+
+def _load_prompts(tmp_path: Path, prompts: list[dict]) -> profiles.Profile:
+    d = tmp_path / "p"
+    d.mkdir(exist_ok=True)
+    (d / "profile.json").write_text(
+        json.dumps({"name": "x", "version": "1.0.0", "extends": "default", "prompts": prompts}),
+        encoding="utf-8",
+    )
+    return profiles.load(d)
+
+
+def test_load_validates_prompts(tmp_path: Path) -> None:
+    with pytest.raises(profiles.ProfileError, match="identifier"):
+        _load_prompts(tmp_path, [{"name": "bad-name", "type": "text", "message": "m"}])
+    with pytest.raises(profiles.ProfileError, match="type"):
+        _load_prompts(tmp_path, [{"name": "x", "type": "nope", "message": "m"}])
+    with pytest.raises(profiles.ProfileError, match="choices"):
+        _load_prompts(tmp_path, [{"name": "x", "type": "select", "message": "m"}])
+    with pytest.raises(profiles.ProfileError, match="duplicate"):
+        _load_prompts(
+            tmp_path,
+            [
+                {"name": "x", "type": "text", "message": "m"},
+                {"name": "x", "type": "text", "message": "m"},
+            ],
+        )
+    with pytest.raises(profiles.ProfileError, match="default"):  # select default in choices
+        _load_prompts(
+            tmp_path,
+            [{"name": "x", "type": "select", "message": "m", "choices": ["a"], "default": "z"}],
+        )
+    with pytest.raises(profiles.ProfileError, match="default"):  # confirm default must be bool
+        _load_prompts(
+            tmp_path, [{"name": "x", "type": "confirm", "message": "m", "default": "yes"}]
+        )
+    with pytest.raises(profiles.ProfileError, match="default"):  # text default must be str
+        _load_prompts(tmp_path, [{"name": "x", "type": "text", "message": "m", "default": 5}])
+    with pytest.raises(profiles.ProfileError, match="default"):  # checkbox default within choices
+        _load_prompts(
+            tmp_path,
+            [{"name": "x", "type": "checkbox", "message": "m", "choices": ["a"], "default": ["z"]}],
+        )
+
+
+def test_default_answers_uses_declared_then_type_defaults(tmp_path: Path) -> None:
+    prof = _make_profile(
+        tmp_path,
+        "team",
+        {},
+        prompts=[
+            {
+                "name": "tier",
+                "type": "select",
+                "message": "?",
+                "choices": ["a", "b"],
+                "default": "b",
+            },
+            {"name": "db", "type": "confirm", "message": "?"},  # → False
+            {"name": "svc", "type": "text", "message": "?"},  # → ""
+            {"name": "sel", "type": "select", "message": "?", "choices": ["x", "y"]},  # → first
+        ],
+    )
+    assert profiles.default_answers(prof) == {"tier": "b", "db": False, "svc": "", "sel": "x"}
+
+
+def test_answers_render_in_templates_and_record_in_manifest(tmp_path: Path) -> None:
+    prof = _make_profile(
+        tmp_path,
+        "team",
+        {"docs/conf.md.j2": "tier={{ answers.tier }}\n"},
+        prompts=[{"name": "tier", "type": "text", "message": "?", "default": "basic"}],
+    )
+    target = tmp_path / "proj"
+    target.mkdir()
+    cli.build(_config(target), Scaffolder(target), prof, answers={"tier": "gold"})
+
+    assert (target / "docs/conf.md").read_text(encoding="utf-8") == "tier=gold\n"
+    m = json.loads((target / MANIFEST_PATH).read_text(encoding="utf-8"))
+    assert m["profile"]["answers"] == {"tier": "gold"}
+
+
+def test_conditional_j2_is_skipped_when_it_renders_empty(tmp_path: Path) -> None:
+    prof = _make_profile(
+        tmp_path,
+        "team",
+        {"db/schema.sql.j2": "{% if answers.use_db %}schema\n{% endif %}"},
+        prompts=[{"name": "use_db", "type": "confirm", "message": "?", "default": False}],
+    )
+    target = tmp_path / "proj"
+    target.mkdir()
+    cli.build(_config(target), Scaffolder(target), prof)  # default use_db=False → empty → skipped
+
+    assert not (target / "db/schema.sql").exists()
+    m = json.loads((target / MANIFEST_PATH).read_text(encoding="utf-8"))
+    assert "db/schema.sql" not in m["profile"]["files"]  # not claimed as owned
+
+
+def test_update_replays_recorded_answers_without_reprompting(tmp_path: Path) -> None:
+    # use_db defaults False, but the project was scaffolded with True (a conditional file). A
+    # bump must re-render with the RECORDED True (never re-prompt, never fall back to the default).
+    prof = _make_profile(
+        tmp_path,
+        "team",
+        {"db/schema.sql.j2": "{% if answers.use_db %}v1\n{% endif %}"},
+        version="0.1.0",
+        by_path=True,
+        prompts=[{"name": "use_db", "type": "confirm", "message": "?", "default": False}],
+    )
+    target = tmp_path / "proj"
+    target.mkdir()
+    cli.build(_config(target), Scaffolder(target), prof, answers={"use_db": True})
+    assert (target / "db/schema.sql").read_text(encoding="utf-8") == "v1\n"
+    _commit(target)
+
+    _bump_profile(
+        prof.root,
+        version="0.1.1",
+        files={"db/schema.sql.j2": "{% if answers.use_db %}v2\n{% endif %}"},
+    )
+    assert update.run(target, dry_run=False, console=_Console()) == 0
+    assert (target / "db/schema.sql").read_text(
+        encoding="utf-8"
+    ) == "v2\n"  # replayed True → refreshed
+    m = json.loads((target / MANIFEST_PATH).read_text(encoding="utf-8"))
+    assert m["profile"]["answers"] == {"use_db": True}
+
+
+def test_update_removes_a_profile_file_that_now_renders_empty(tmp_path: Path) -> None:
+    # §4 + orphan: a managed conditional file present at scaffold; a bump makes it render empty →
+    # it's dropped from the owned set and orphan-removed on update (it was pristine).
+    prof = _make_profile(
+        tmp_path,
+        "team",
+        {"opt.md.j2": "{% if answers.keep %}content\n{% endif %}"},
+        version="0.1.0",
+        by_path=True,
+        prompts=[{"name": "keep", "type": "confirm", "message": "?"}],
+    )
+    target = tmp_path / "proj"
+    target.mkdir()
+    cli.build(_config(target), Scaffolder(target), prof, answers={"keep": True})
+    assert (target / "opt.md").exists()
+    _commit(target)
+
+    _bump_profile(prof.root, version="0.1.1", files={"opt.md.j2": "{% if False %}x{% endif %}"})
+    assert update.run(target, dry_run=False, console=_Console()) == 0
+    assert not (target / "opt.md").exists()  # renders empty now → orphan-removed
+    m = json.loads((target / MANIFEST_PATH).read_text(encoding="utf-8"))
+    assert "opt.md" not in m["profile"].get("files", [])
+
+
+def test_update_keeps_an_edited_file_that_now_renders_empty_as_a_conflict(tmp_path: Path) -> None:
+    # The honest-cost case (RFC Consequences): a file that renders empty after a bump is dropped
+    # if pristine — but if the user EDITED it, it must survive as a conflict, never silently lost.
+    prof = _make_profile(
+        tmp_path,
+        "team",
+        {"opt.md.j2": "{% if answers.keep %}content\n{% endif %}"},
+        version="0.1.0",
+        by_path=True,
+        prompts=[{"name": "keep", "type": "confirm", "message": "?"}],
+    )
+    target = tmp_path / "proj"
+    target.mkdir()
+    cli.build(_config(target), Scaffolder(target), prof, answers={"keep": True})
+    (target / "opt.md").write_text("my own edit\n", encoding="utf-8")  # the user edits it
+    _commit(target)
+
+    _bump_profile(prof.root, version="0.1.1", files={"opt.md.j2": "{% if False %}x{% endif %}"})
+    console = _Console()
+    assert update.run(target, dry_run=False, console=console) == 0
+    assert (target / "opt.md").read_text(encoding="utf-8") == "my own edit\n"  # NOT lost
+    assert "opt.md" in console.text  # surfaced as a conflict instead of removed
 
 
 # --- authoring CLI --------------------------------------------------------------------------
