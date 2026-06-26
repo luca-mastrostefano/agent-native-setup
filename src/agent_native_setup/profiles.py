@@ -21,7 +21,7 @@ from pathlib import Path
 from typing import Any
 
 from agent_native_setup.config import WizardConfig
-from agent_native_setup.scaffold import Scaffolder, render
+from agent_native_setup.scaffold import Scaffolder, compile_expr, eval_expr, render
 
 PROFILE_MANIFEST = "profile.json"
 TEMPLATES_DIR = "templates"
@@ -44,6 +44,9 @@ class Prompt:
     message: str
     choices: tuple[str, ...] = ()
     default: object = None
+    # A Jinja expression (over earlier answers + the base context); the prompt is only *asked*
+    # when it's truthy. A skipped prompt takes its default. None = always ask.
+    when: str | None = None
 
     @property
     def effective_default(self) -> object:
@@ -136,7 +139,15 @@ def _parse_prompts(data: dict, manifest_path: Path) -> tuple[Prompt, ...]:
         default = p.get("default")
         if default is not None and not _default_ok(ptype, default, choices):
             raise ProfileError(f"{at} 'default' is not valid for a {ptype} prompt")
-        prompts.append(Prompt(name, ptype, p["message"], tuple(choices), default))
+        when = p.get("when")
+        if when is not None:
+            if not isinstance(when, str):
+                raise ProfileError(f"{at} 'when' must be a string (a Jinja expression)")
+            try:
+                compile_expr(when)  # fail at load on a bad expression, not mid-prompt
+            except Exception as exc:
+                raise ProfileError(f"{at} 'when' is not a valid expression: {exc}") from None
+        prompts.append(Prompt(name, ptype, p["message"], tuple(choices), default, when))
     return tuple(prompts)
 
 
@@ -228,8 +239,10 @@ def default_answers(profile: Profile) -> dict[str, Any]:
     return {p.name: p.effective_default for p in profile.prompts}
 
 
-def gather_answers(profile: Profile, *, interactive: bool) -> dict[str, Any]:
-    """Resolve the profile's prompt answers: ask interactively, else use defaults."""
+def gather_answers(profile: Profile, config: WizardConfig, *, interactive: bool) -> dict[str, Any]:
+    """Resolve the profile's prompt answers: ask interactively, else use defaults. A prompt with
+    a ``when`` is only asked when that expression (over the answers gathered so far + the base
+    context) is truthy; a skipped prompt takes its default, so ``answers`` always has every name."""
     if not profile.prompts or not interactive:
         return default_answers(profile)
     import questionary
@@ -237,6 +250,9 @@ def gather_answers(profile: Profile, *, interactive: bool) -> dict[str, Any]:
     answers: dict[str, Any] = {}
     for p in profile.prompts:
         d = p.effective_default
+        if p.when is not None and not eval_expr(p.when, **_context(config, answers)):
+            answers[p.name] = d  # condition false → don't ask, use the default
+            continue
         if p.type == "text":
             answers[p.name] = questionary.text(p.message, default=str(d)).unsafe_ask()
         elif p.type == "confirm":
@@ -311,8 +327,10 @@ they get the normal scaffold **plus** every file under `templates/`.
 for select/checkbox). Answers are exposed to `.j2` templates under
 `answers.<name>` — e.g. `{{{{ answers.tier }}}}`, `{{% if answers.use_db %}}…{{% endif %}}`. A
 `.j2` that renders **empty** is not shipped, so wrap a whole file in `{{% if … %}}` for
-conditional inclusion. Non-interactive runs (`-y`) use each prompt's `default`; the answers are
-recorded and replayed on `update` (never re-asked).
+conditional inclusion. A prompt may also carry a `when` (a Jinja expression over earlier
+answers) so it's only asked when relevant — e.g. `"when": "answers.use_db"`. Non-interactive
+runs (`-y`) use each prompt's `default`; the answers are recorded and replayed on `update`
+(never re-asked).
 
 ## Startup instructions
 

@@ -31,8 +31,8 @@ Three constraints shape it:
    default.
 
 > **Implementation status.** Landed (`profiles.py` `Prompt`/`_parse_prompts`/`gather_answers`,
-> the `answers` Jinja namespace + "renders-empty → skip", answers recorded in the manifest and
-> replayed by `update`). It stays under the still-`Proposed` scaffolding-profiles umbrella
+> the `answers` Jinja namespace + "renders-empty → skip", **conditional `when` prompts**,
+> answers recorded in the manifest and replayed by `update`). It stays under the still-`Proposed` scaffolding-profiles umbrella
 > (RFC 2026-06-23), whose `- [ ] Implemented` tracks the whole feature; this slice is complete.
 
 ## Decision
@@ -43,16 +43,20 @@ Three constraints shape it:
 "prompts": [
   {"name": "tier",   "type": "select",   "message": "Service tier?",     "choices": ["basic", "enterprise"], "default": "basic"},
   {"name": "use_db", "type": "confirm",  "message": "Include the DB module?", "default": false},
-  {"name": "extras", "type": "checkbox", "message": "Optional add-ons?",  "choices": ["metrics", "tracing"]},
+  {"name": "engine", "type": "select",   "message": "DB engine?",        "choices": ["postgres", "mysql"], "when": "answers.use_db"},
   {"name": "svc",    "type": "text",     "message": "Service name?",      "default": "svc"}
 ]
 ```
 
 Types map to the four `questionary` widgets the base wizard already uses: `text` (string),
-`select` (one choice), `confirm` (bool), `checkbox` (list). Validated at **load** with clear
-errors: each `name` is a unique, valid identifier (answers are read as `answers.<name>`);
-`type` is one of the four; `select`/`checkbox` require non-empty `choices`; a `default` (if
-given) is consistent with the type and within `choices`.
+`select` (one choice), `confirm` (bool), `checkbox` (list). An optional **`when`** (a Jinja
+expression over the answers gathered so far plus the base context) makes a prompt
+**conditional** — it's only *asked* when `when` is truthy, so a profile can branch its
+questionnaire (ask `engine` only if `use_db`) the way the base wizard does. A skipped prompt
+takes its default, so `answers` always has every name. Validated at **load** with clear errors:
+each `name` is a unique, valid identifier (answers are read as `answers.<name>`); `type` is one
+of the four; `select`/`checkbox` require non-empty `choices`; a `default` (if given) is
+consistent with the type and within `choices`; a `when` (if given) compiles.
 
 ### 2. Answers feed the template context, and drive conditional file inclusion
 
@@ -74,9 +78,11 @@ verbatim.
 
 ### 3. Prompting: interactive at scaffold, recorded for update
 
-- **Scaffold, interactive:** after resolving the profile, run each prompt via `questionary`.
+- **Scaffold, interactive:** after resolving the profile, run each prompt via `questionary`, in
+  order — a prompt with a `when` that evaluates falsy (against the answers gathered so far) is
+  skipped and takes its default. So `when` only changes *which questions appear*.
 - **Scaffold, non-interactive (`-y` / no TTY):** use each prompt's `default`, or a type default
-  (`""` / `false` / first choice / `[]`).
+  (`""` / `false` / first choice / `[]`). `when` is moot here — nothing is asked.
 - **Recorded:** the resolved answers are stored in the manifest's `profile` block
   (`"answers": {…}`), beside the version and owned files.
 - **Update:** the engine reads the recorded answers and re-renders with them — **never

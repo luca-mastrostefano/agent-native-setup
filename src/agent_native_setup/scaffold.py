@@ -7,13 +7,29 @@ import os
 import shutil
 from pathlib import Path
 
-from jinja2 import Environment
+from jinja2 import ChainableUndefined, Environment
 
 _env = Environment(trim_blocks=True, lstrip_blocks=True, keep_trailing_newline=True)
+# A separate env for evaluating prompt `when` expressions: ChainableUndefined makes *any*
+# missing reference — at any depth, e.g. an answer not gathered yet (`answers.x.y`) — evaluate
+# to a falsy Undefined rather than raising, so a `when` over not-yet-known answers just skips.
+_expr_env = Environment(undefined=ChainableUndefined)
 
 
 def render(template: str, **ctx: object) -> str:
     return _env.from_string(template).render(**ctx)
+
+
+def compile_expr(expr: str) -> object:
+    """Compile a Jinja *expression* (e.g. a prompt's ``when``). Raises on a syntax error, so a
+    bad expression is caught at profile-load time rather than mid-prompt."""
+    return _expr_env.compile_expression(expr)
+
+
+def eval_expr(expr: str, **ctx: object) -> object:
+    """Evaluate a Jinja expression against ``ctx``. Any undefined reference (at any depth)
+    evaluates to a falsy ``Undefined`` rather than raising."""
+    return _expr_env.compile_expression(expr)(**ctx)
 
 
 class Scaffolder:
