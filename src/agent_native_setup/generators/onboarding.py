@@ -243,10 +243,19 @@ def _steps(config: WizardConfig) -> list[str]:
     return steps
 
 
-def generate(config: WizardConfig, sc: Scaffolder) -> None:
-    # Only meaningful when there's tooling to activate; a bare contract needs no runbook.
-    if not (config.include_quality or config.include_ci):
+def generate(config: WizardConfig, sc: Scaffolder, profile_steps: tuple[str, ...] = ()) -> None:
+    # Meaningful when there's tooling to activate, or a profile contributed setup steps; a
+    # bare contract with nothing to do needs no runbook.
+    has_base = config.include_quality or config.include_ci
+    if not has_base and not profile_steps:
         return
+    if has_base:
+        steps = _steps(config)
+        if profile_steps:
+            # Slot the profile's steps in just before the final "delete this file" cleanup.
+            steps[-1:-1] = list(profile_steps)
+    else:
+        steps = [*profile_steps, "**Delete this file** — onboarding is done."]
     body = HEADER.format(name=config.project_name)
-    body += "\n".join(f"{i}. {step}" for i, step in enumerate(_steps(config), 1)) + "\n"
+    body += "\n".join(f"{i}. {step}" for i, step in enumerate(steps, 1)) + "\n"
     sc.write("ONBOARDING.md", body, transient=True)  # self-deletes during onboarding
