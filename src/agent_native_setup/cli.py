@@ -532,7 +532,7 @@ def main(argv: list[str] | None = None) -> int:
                 "has no Claude `.claude/` config[/] — those hooks won't be applied."
             )
         try:
-            answers = profiles.gather_answers(profile, interactive=interactive)
+            answers = profiles.gather_answers(profile, config, interactive=interactive)
         except (KeyboardInterrupt, EOFError):
             console.print("\n[yellow]Cancelled.[/]")
             return 130

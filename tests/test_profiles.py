@@ -579,6 +579,122 @@ def test_load_validates_prompts(tmp_path: Path) -> None:
         )
 
 
+def _fake_questionary(monkeypatch: pytest.MonkeyPatch, returns: dict[str, object]) -> list[str]:
+    """Stub questionary so `gather_answers` runs headless; returns the list of asked messages."""
+    import questionary
+
+    asked: list[str] = []
+
+    class _Ans:
+        def __init__(self, value: object) -> None:
+            self._value = value
+
+        def unsafe_ask(self) -> object:
+            return self._value
+
+    def widget(kind: str):
+        def make(message: str, **_kw: object) -> _Ans:
+            asked.append(message)
+            return _Ans(returns[kind])
+
+        return make
+
+    for kind in ("text", "confirm", "select", "checkbox"):
+        monkeypatch.setattr(questionary, kind, widget(kind))
+    return asked
+
+
+_DB_PROMPTS = [
+    {"name": "use_db", "type": "confirm", "message": "DB?"},
+    {
+        "name": "engine",
+        "type": "text",
+        "message": "Engine?",
+        "when": "answers.use_db",
+        "default": "sqlite",
+    },
+]
+
+
+def test_when_false_skips_the_prompt_and_uses_its_default(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    asked = _fake_questionary(monkeypatch, {"confirm": False, "text": "postgres"})
+    prof = _make_profile(tmp_path, "team", {}, prompts=_DB_PROMPTS)
+    answers = profiles.gather_answers(prof, _config(tmp_path / "x"), interactive=True)
+    assert answers == {"use_db": False, "engine": "sqlite"}  # engine skipped → its default
+    assert "Engine?" not in asked  # never asked
+
+
+def test_when_true_asks_the_dependent_prompt(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    asked = _fake_questionary(monkeypatch, {"confirm": True, "text": "postgres"})
+    prof = _make_profile(tmp_path, "team", {}, prompts=_DB_PROMPTS)
+    answers = profiles.gather_answers(prof, _config(tmp_path / "x"), interactive=True)
+    assert answers == {"use_db": True, "engine": "postgres"}  # asked
+    assert "Engine?" in asked
+
+
+def test_when_false_skipped_select_lands_its_type_default(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    asked = _fake_questionary(monkeypatch, {"confirm": False, "select": "mysql"})
+    prof = _make_profile(
+        tmp_path,
+        "team",
+        {},
+        prompts=[
+            {"name": "use_db", "type": "confirm", "message": "DB?"},
+            {
+                "name": "engine",
+                "type": "select",
+                "message": "Engine?",
+                "choices": ["postgres", "mysql"],
+                "when": "answers.use_db",
+            },
+        ],
+    )
+    answers = profiles.gather_answers(prof, _config(tmp_path / "x"), interactive=True)
+    assert answers == {
+        "use_db": False,
+        "engine": "postgres",
+    }  # skipped → first choice (type default)
+    assert "Engine?" not in asked
+
+
+def test_when_with_a_nested_undefined_reference_is_falsy_not_a_crash(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # `when` touches a not-yet-gathered key with nested access — must skip gracefully, not raise.
+    _fake_questionary(monkeypatch, {"text": "v"})
+    prof = _make_profile(
+        tmp_path,
+        "team",
+        {},
+        prompts=[
+            {
+                "name": "x",
+                "type": "text",
+                "message": "X?",
+                "when": "answers.later.deep",
+                "default": "d",
+            }
+        ],
+    )
+    answers = profiles.gather_answers(prof, _config(tmp_path / "x"), interactive=True)
+    assert answers == {"x": "d"}  # undefined chain → falsy → skipped → default
+
+
+def test_load_rejects_a_bad_when_expression(tmp_path: Path) -> None:
+    with pytest.raises(profiles.ProfileError, match="when"):  # not a string
+        _load_prompts(tmp_path, [{"name": "x", "type": "text", "message": "m", "when": 1}])
+    with pytest.raises(profiles.ProfileError, match="when"):  # syntax error
+        _load_prompts(
+            tmp_path, [{"name": "x", "type": "text", "message": "m", "when": "answers.("}]
+        )
+
+
 def test_default_answers_uses_declared_then_type_defaults(tmp_path: Path) -> None:
     prof = _make_profile(
         tmp_path,

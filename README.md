@@ -187,8 +187,9 @@ A profile can ask its own **questions** (a mini wizard): a `prompts` list
 (`text`/`select`/`confirm`/`checkbox`, the same widgets the base wizard uses) whose answers are
 exposed to `.j2` templates as `answers.<name>` — so a profile can branch its content
 (`{% if answers.use_db %}…`) and conditionally include a file (a `.j2` that renders empty is
-skipped). Answers are recorded and replayed on `update` (never re-asked); `-y` runs use each
-prompt's default.
+skipped). A prompt can carry a `when` expression so it's only **asked when relevant** (ask the
+DB engine only `when: "answers.use_db"`). Answers are recorded and replayed on `update` (never
+re-asked); `-y` runs use each prompt's default.
 
 A profile can also contribute **startup instructions**: an `onboarding` list (markdown steps
 folded into the project's one-time, self-deleting `ONBOARDING.md`) and a `session_start` list
