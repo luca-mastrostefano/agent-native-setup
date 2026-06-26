@@ -81,6 +81,8 @@ that needs a real decision into an RFC in `docs/rfc/proposed/`.
   to this: the manifest shipped under an `RFC-Not-Needed` waiver because it's greenfield/reversible
   (only us); lock the format with an RFC before any external user adopts it.
 - [77af693 · 2026-06-22] **Scaffolding config profiles** — *promoted to RFC
-  `2026-06-23-scaffolding-profiles` and partially shipped (Phase 1: `--profile` composition,
-  `profile init`/`list`). Remaining work (`profile save` to clone a project's setup, standalone
-  `extends:null`, and the Phase-2 versioned update stream) is tracked in that RFC, not here.*
+  `2026-06-23-scaffolding-profiles` and largely shipped: `--profile` composition, `profile
+  init`/`list`, standalone `extends: null`, versioned update propagation, declarative
+  `prompts`/`when`/`env`, and startup contributions (onboarding/session_start). Remaining work
+  (`profile save` to clone a project's setup, git-URL fetch, the `update_source` "new version"
+  nudge, and the trust preview for third-party profiles) is tracked in that RFC, not here.*
