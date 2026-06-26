@@ -194,7 +194,8 @@ they get the normal scaffold **plus** every file under `templates/`.
   agent runs **once** on first session (then it self-deletes). Use it for one-time setup
   ("run `task team-setup`", "request access to X").
 - `session_start` — a list of shell commands appended to the `.claude` **SessionStart** hooks,
-  run at the start of **every** session (e.g. `echo` a reminder into the agent's context).
+  run at the start of **every** session (e.g. `echo` a reminder into the agent's context). Each
+  is wrapped so a failing command can't disrupt the session.
 
 ## Updating
 

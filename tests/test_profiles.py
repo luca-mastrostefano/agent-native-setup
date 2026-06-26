@@ -452,11 +452,24 @@ def test_profile_session_start_hooks_append_to_settings(tmp_path: Path) -> None:
     cli.build(_config(target), Scaffolder(target), prof)
 
     hooks = _session_hooks(target)
-    assert hooks[-1] == "echo team-reminder"  # appended after the built-in hooks
+    # Appended after the built-ins, and guarded so a failure can't disrupt the session.
+    assert hooks[-1] == "{ echo team-reminder ; } || true"
     m = json.loads((target / MANIFEST_PATH).read_text(encoding="utf-8"))
     assert m["profile"]["session_start"] == [
         "echo team-reminder"
-    ]  # recorded (for degraded updates)
+    ]  # the *raw* command is recorded (for degraded updates), not the guarded form
+
+
+def test_session_start_commands_are_guarded_and_empties_skipped(tmp_path: Path) -> None:
+    prof = _make_profile(tmp_path, "team", {}, session_start=("foo && bar", "  ", "echo ok"))
+    target = tmp_path / "proj"
+    target.mkdir()
+    cli.build(_config(target), Scaffolder(target), prof)
+
+    hooks = _session_hooks(target)
+    assert "{ foo && bar ; } || true" in hooks  # compound command guarded as a unit
+    assert "{ echo ok ; } || true" in hooks
+    assert not any(h.strip() == "" or "{  ; }" in h for h in hooks)  # the blank command is dropped
 
 
 def test_update_refreshes_changed_session_start_hooks(tmp_path: Path) -> None:
@@ -471,7 +484,7 @@ def test_update_refreshes_changed_session_start_hooks(tmp_path: Path) -> None:
     _bump_profile(prof.root, version="0.1.1", session_start=["echo v2"])
     assert update.run(target, dry_run=False, console=_Console()) == 0
     hooks = _session_hooks(target)
-    assert "echo v2" in hooks and "echo v1" not in hooks  # refreshed to the new hook
+    assert any("echo v2" in h for h in hooks) and not any("echo v1" in h for h in hooks)
 
 
 def test_session_start_without_claude_warns_instead_of_silently_dropping(
@@ -514,7 +527,7 @@ def test_degraded_update_keeps_session_start_hooks(tmp_path: Path) -> None:
     console = _Console()
     assert update.run(target, dry_run=False, console=console) == 0
     assert "couldn't be re-resolved" in console.text
-    assert "echo keepme" in _session_hooks(target)  # NOT stripped by the base refresh
+    assert any("echo keepme" in h for h in _session_hooks(target))  # NOT stripped by the base
 
 
 # --- authoring CLI --------------------------------------------------------------------------

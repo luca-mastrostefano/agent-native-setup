@@ -38,6 +38,13 @@ UPDATE_CHECK_COMMAND = (
 )
 
 
+def _guarded(command: str) -> str:
+    """Wrap a profile-contributed SessionStart command so a failure can't disrupt the session —
+    matching how the built-in hooks stay tolerant (always exit 0). The `{ …; }` group makes the
+    `|| true` apply to the whole command (sequences, `&&`, pipes), not just its last part."""
+    return f"{{ {command.strip()} ; }} || true"
+
+
 def _session_list_command(config: WizardConfig) -> str:
     """Command the SessionStart hook runs to inject the live command surface.
 
@@ -376,8 +383,11 @@ def generate(config: WizardConfig, sc: Scaffolder, session_start: tuple[str, ...
     if config.include_quality or config.existing_runner:
         session_hooks.append({"type": "command", "command": _session_list_command(config)})
     session_hooks.append({"type": "command", "command": UPDATE_CHECK_COMMAND})
-    # Profile-contributed startup commands run every session, after the built-in ones.
-    session_hooks += [{"type": "command", "command": cmd} for cmd in session_start]
+    # Profile-contributed startup commands run every session, after the built-in ones. Guarded
+    # so a failing profile command can't disrupt the session (the base hooks are tolerant too).
+    session_hooks += [
+        {"type": "command", "command": _guarded(cmd)} for cmd in session_start if cmd.strip()
+    ]
     hooks["SessionStart"] = [{"hooks": session_hooks}]
     if format_hook:
         hooks["PostToolUse"] = [
