@@ -276,6 +276,7 @@ def _config_from_manifest(old: dict, output_dir: Path) -> WizardConfig:
         runner=get("runner", "make"),
         adoption=get("adoption", "progressive"),
         existing_project=get("existing_project", False),
+        detected_languages=list(get("detected_languages", [])),
         existing_runner=get("existing_runner", False),
         init_git=False,  # never touch git in the throwaway regeneration tree
     )

@@ -66,6 +66,15 @@ answers.extras %}…`. Namespacing (rather than top-level) means a prompt name c
 base context key (`profiles._context`'s keys) or a Jinja global — so the only name check needed
 is uniqueness + valid identifier, with no brittle reserved-word list to maintain.
 
+The detected/resolved **environment** is exposed under a parallel **`env`** namespace, so a
+profile can adapt to the actual repo without code: `env.existing_project` (brownfield repo with
+source?), `env.detected_languages` (auto-detected from marker files) and `env.languages` (the
+selected set), `env.existing_runner` / `env.runner`, `env.adoption`, `env.ai_tools`, and the
+`env.has_quality` / `has_ci` / `has_docs` / `has_agents` / `has_security` toggles. These are
+facts the base wizard already computes; they're recorded in the manifest config snapshot, so an
+`update` re-renders against the **same** environment (deterministic, no re-detection). Both
+`answers` and `env` are usable in templates *and* in a prompt's `when`.
+
 **Conditional whole-file inclusion** reuses Jinja with one rule: **a `.j2` template whose
 rendered output is empty after `.strip()` is not written** (and not recorded). So a file wrapped
 in `{% if answers.use_db %}…{% endif %}` ships only when `use_db` is true. Two clarifications:

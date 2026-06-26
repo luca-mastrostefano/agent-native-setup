@@ -33,6 +33,7 @@ def _config_snapshot(config: WizardConfig) -> dict[str, object]:
         # Frozen so `update` regenerates the same variants (changed-files-only CI, the
         # adoption section, deferring to an existing runner) instead of re-detecting.
         "existing_project": config.existing_project,
+        "detected_languages": list(config.detected_languages),
         "existing_runner": config.existing_runner,
         "include_agents": config.include_agents,
         "include_docs": config.include_docs,

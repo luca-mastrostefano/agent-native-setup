@@ -40,6 +40,9 @@ class WizardConfig:
     # True when scaffolding into a repo that already has source for the selected
     # languages; flips the quality gate to changed-files-only (legacy grandfathering).
     existing_project: bool = False
+    # Languages auto-detected in the target (from marker files / source), recorded so a
+    # profile can adapt to the *actual* repo (vs the selected `languages`). Set in `cli.main`.
+    detected_languages: list[str] = field(default_factory=list)
     # How the gate applies to an existing repo's code (effective "full" when fresh):
     # "progressive" (changed files only) | "full" (whole repo now) | "none" (informational).
     adoption: str = "progressive"

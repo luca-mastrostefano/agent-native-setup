@@ -509,6 +509,7 @@ def main(argv: list[str] | None = None) -> int:
         )
 
     # Scaffolding over existing source for a selected language → grandfather it.
+    config.detected_languages = sorted(in_target)
     config.existing_project = bool(set(config.languages) & in_target)
     if config.existing_project and config.include_quality:
         console.print(
