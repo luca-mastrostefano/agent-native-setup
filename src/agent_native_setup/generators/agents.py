@@ -338,7 +338,7 @@ def _permission_allow(config: WizardConfig) -> list[str]:
     return rules
 
 
-def generate(config: WizardConfig, sc: Scaffolder) -> None:
+def generate(config: WizardConfig, sc: Scaffolder, session_start: tuple[str, ...] = ()) -> None:
     if "claude" not in config.ai_tools:
         return
     sc.write(".claude/README.md", AGENTS_README)
@@ -376,6 +376,8 @@ def generate(config: WizardConfig, sc: Scaffolder) -> None:
     if config.include_quality or config.existing_runner:
         session_hooks.append({"type": "command", "command": _session_list_command(config)})
     session_hooks.append({"type": "command", "command": UPDATE_CHECK_COMMAND})
+    # Profile-contributed startup commands run every session, after the built-in ones.
+    session_hooks += [{"type": "command", "command": cmd} for cmd in session_start]
     hooks["SessionStart"] = [{"hooks": session_hooks}]
     if format_hook:
         hooks["PostToolUse"] = [

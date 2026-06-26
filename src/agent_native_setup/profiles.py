@@ -44,6 +44,10 @@ class Profile:
     # Output paths the profile ships as **seed** (write-once, never refreshed). Everything else
     # under templates/ is **managed** — refreshed on update when the profile ships a new version.
     seed: frozenset[str] = frozenset()
+    # One-time setup steps folded into ONBOARDING.md (the agent runs them once, on first
+    # session) and shell commands appended to the .claude SessionStart hooks (run every session).
+    onboarding: tuple[str, ...] = ()
+    session_start: tuple[str, ...] = ()
 
     def template_files(self) -> list[tuple[str, Path]]:
         """``(output_rel, source_path)`` for each file under ``templates/``, with a trailing
@@ -57,14 +61,20 @@ class Profile:
                     files.append((rel[:-3] if rel.endswith(".j2") else rel, p))
         return files
 
-    def manifest_block(self) -> dict[str, str]:
+    def manifest_block(self) -> dict[str, object]:
         """The provenance block recorded in the project's ``.agent-native-setup.json``."""
-        return {
+        block: dict[str, object] = {
             "name": self.name,
             "version": self.version,
             "extends": self.extends,
             "source": self.source,
         }
+        # Recorded so a degraded update (profile gone) can keep the SessionStart hooks instead
+        # of regenerating settings.json without them. Onboarding is one-time/transient, so it
+        # needs no recording.
+        if self.session_start:
+            block["session_start"] = list(self.session_start)
+        return block
 
 
 def load(path: Path, *, source: str | None = None) -> Profile:
@@ -87,9 +97,13 @@ def load(path: Path, *, source: str | None = None) -> Profile:
             f"{manifest_path}: extends={extends!r} isn't supported yet — set extends to one of "
             f"{', '.join(SUPPORTED_EXTENDS)} (standalone / extends:null is Phase 2)"
         )
-    seed = data.get("seed", [])
-    if not isinstance(seed, list) or not all(isinstance(s, str) for s in seed):
-        raise ProfileError(f"{manifest_path}: 'seed' must be a list of output paths")
+
+    def _str_list(key: str) -> list[str]:
+        value = data.get(key, [])
+        if not isinstance(value, list) or not all(isinstance(s, str) for s in value):
+            raise ProfileError(f"{manifest_path}: {key!r} must be a list of strings")
+        return value
+
     return Profile(
         name=str(name),
         version=str(version),
@@ -97,7 +111,9 @@ def load(path: Path, *, source: str | None = None) -> Profile:
         description=str(data.get("description", "")),
         root=path,
         source=source if source is not None else str(path),
-        seed=frozenset(seed),
+        seed=frozenset(_str_list("seed")),
+        onboarding=tuple(_str_list("onboarding")),
+        session_start=tuple(_str_list("session_start")),
     )
 
 
@@ -164,13 +180,21 @@ they get the normal scaffold **plus** every file under `templates/`.
 
 ## Layout
 
-- `profile.json` — name, version (your own semver), `extends`, description, and an optional
-  `seed` list.
+- `profile.json` — name, version (your own semver), `extends`, description, an optional
+  `seed` list, and optional `onboarding` / `session_start` lists (below).
 - `templates/` — the files this profile ships. Paths are relative to the project root, so
   `templates/.claude/agents/foo.md` lands at `.claude/agents/foo.md`. A file ending in
   `.j2` is rendered (Jinja) with `project_name`, `slug`, `description`, `languages` and the
   `.j2` stripped; anything else is copied verbatim (so files containing `{{{{ ... }}}}`,
   like GitHub Actions `${{{{ ... }}}}`, are safe).
+
+## Startup instructions
+
+- `onboarding` — a list of markdown steps folded into the project's `ONBOARDING.md`, which an
+  agent runs **once** on first session (then it self-deletes). Use it for one-time setup
+  ("run `task team-setup`", "request access to X").
+- `session_start` — a list of shell commands appended to the `.claude` **SessionStart** hooks,
+  run at the start of **every** session (e.g. `echo` a reminder into the agent's context).
 
 ## Updating
 
@@ -198,6 +222,8 @@ def _init(args: argparse.Namespace, console: Any) -> int:
         "extends": "default",
         "description": "TODO: one line describing this profile",
         "seed": [],
+        "onboarding": [],
+        "session_start": [],
     }
     (root / PROFILE_MANIFEST).write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
     (root / "README.md").write_text(

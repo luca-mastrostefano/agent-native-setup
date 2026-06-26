@@ -33,6 +33,8 @@ def _make_profile(
     version: str = "1.0.0",
     extends: str = "default",
     seed: tuple[str, ...] = (),
+    onboarding: tuple[str, ...] = (),
+    session_start: tuple[str, ...] = (),
     by_path: bool = False,
 ) -> profiles.Profile:
     d = root / name
@@ -45,6 +47,10 @@ def _make_profile(
     }
     if seed:
         manifest["seed"] = list(seed)
+    if onboarding:
+        manifest["onboarding"] = list(onboarding)
+    if session_start:
+        manifest["session_start"] = list(session_start)
     (d / "profile.json").write_text(json.dumps(manifest), encoding="utf-8")
     for rel, content in files.items():
         p = d / "templates" / rel
@@ -54,10 +60,18 @@ def _make_profile(
     return profiles.load(d, source=str(d) if by_path else name)
 
 
-def _bump_profile(pdir: Path, *, version: str, files: dict[str, str] | None = None) -> None:
+def _bump_profile(
+    pdir: Path,
+    *,
+    version: str,
+    files: dict[str, str] | None = None,
+    session_start: list[str] | None = None,
+) -> None:
     """Mutate a profile dir in place to simulate the author shipping a new version."""
     data = json.loads((pdir / "profile.json").read_text(encoding="utf-8"))
     data["version"] = version
+    if session_start is not None:
+        data["session_start"] = session_start
     (pdir / "profile.json").write_text(json.dumps(data), encoding="utf-8")
     for rel, content in (files or {}).items():
         p = pdir / "templates" / rel
@@ -394,6 +408,113 @@ def test_update_degrades_when_the_profile_cannot_be_re_resolved(tmp_path: Path) 
     assert (target / "docs/house.md").read_text(encoding="utf-8") == "v1\n"  # kept frozen
     m = json.loads((target / MANIFEST_PATH).read_text(encoding="utf-8"))
     assert m["profile"]["name"] == "team"  # provenance preserved
+
+
+# --- Phase 3: profile-contributed startup (onboarding + SessionStart hooks) -----------------
+
+
+def _session_hooks(target: Path) -> list[str]:
+    s = json.loads((target / ".claude/settings.json").read_text(encoding="utf-8"))
+    return [h["command"] for h in s["hooks"]["SessionStart"][0]["hooks"]]
+
+
+def test_load_validates_session_start_is_a_string_list(tmp_path: Path) -> None:
+    bad = tmp_path / "bad"
+    bad.mkdir()
+    (bad / "profile.json").write_text(
+        json.dumps(
+            {"name": "x", "version": "1.0.0", "extends": "default", "session_start": "echo"}
+        ),
+        encoding="utf-8",
+    )
+    with pytest.raises(profiles.ProfileError, match="session_start"):
+        profiles.load(bad)
+
+
+def test_profile_onboarding_steps_fold_into_onboarding_md(tmp_path: Path) -> None:
+    prof = _make_profile(tmp_path, "team", {}, onboarding=("Run `task team-setup`.", "Join #eng."))
+    target = tmp_path / "proj"
+    target.mkdir()
+    cli.build(_config(target), Scaffolder(target), prof)
+
+    body = (target / "ONBOARDING.md").read_text(encoding="utf-8")
+    assert "Run `task team-setup`." in body and "Join #eng." in body
+    assert body.index("task team-setup") < body.index("Delete this file")  # before the cleanup step
+    # ONBOARDING.md is transient — never recorded, so update can't resurrect it after onboarding.
+    m = json.loads((target / MANIFEST_PATH).read_text(encoding="utf-8"))
+    assert "ONBOARDING.md" not in m["files"]
+
+
+def test_profile_session_start_hooks_append_to_settings(tmp_path: Path) -> None:
+    prof = _make_profile(tmp_path, "team", {}, session_start=("echo team-reminder",))
+    target = tmp_path / "proj"
+    target.mkdir()
+    cli.build(_config(target), Scaffolder(target), prof)
+
+    hooks = _session_hooks(target)
+    assert hooks[-1] == "echo team-reminder"  # appended after the built-in hooks
+    m = json.loads((target / MANIFEST_PATH).read_text(encoding="utf-8"))
+    assert m["profile"]["session_start"] == [
+        "echo team-reminder"
+    ]  # recorded (for degraded updates)
+
+
+def test_update_refreshes_changed_session_start_hooks(tmp_path: Path) -> None:
+    prof = _make_profile(
+        tmp_path, "team", {}, version="0.1.0", session_start=("echo v1",), by_path=True
+    )
+    target = tmp_path / "proj"
+    target.mkdir()
+    cli.build(_config(target), Scaffolder(target), prof)
+    _commit(target)
+
+    _bump_profile(prof.root, version="0.1.1", session_start=["echo v2"])
+    assert update.run(target, dry_run=False, console=_Console()) == 0
+    hooks = _session_hooks(target)
+    assert "echo v2" in hooks and "echo v1" not in hooks  # refreshed to the new hook
+
+
+def test_session_start_without_claude_warns_instead_of_silently_dropping(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # SessionStart hooks need Claude's .claude/ config; targeting only cursor means there's
+    # nowhere to put them — so warn rather than record hooks that never run.
+    prof = _make_profile(tmp_path, "team", {}, session_start=("echo x",), by_path=True)
+    target = tmp_path / "proj"
+    rc = cli.main(
+        [
+            "demo",
+            "-o",
+            str(target),
+            "-y",
+            "--no-git",
+            "--tools",
+            "cursor",
+            "--profile",
+            str(prof.root),
+        ]
+    )
+    assert rc == 0
+    assert "session_start hooks" in capsys.readouterr().out  # warned
+    assert not (target / ".claude/settings.json").exists()  # no Claude settings to hold them
+
+
+def test_degraded_update_keeps_session_start_hooks(tmp_path: Path) -> None:
+    # If the profile is gone at update time, its recorded hooks must survive — the base must not
+    # regenerate settings.json *without* them.
+    prof = _make_profile(
+        tmp_path, "team", {}, version="0.1.0", session_start=("echo keepme",), by_path=True
+    )
+    target = tmp_path / "proj"
+    target.mkdir()
+    cli.build(_config(target), Scaffolder(target), prof)
+    _commit(target)
+
+    shutil.rmtree(prof.root)  # profile source gone
+    console = _Console()
+    assert update.run(target, dry_run=False, console=console) == 0
+    assert "couldn't be re-resolved" in console.text
+    assert "echo keepme" in _session_hooks(target)  # NOT stripped by the base refresh
 
 
 # --- authoring CLI --------------------------------------------------------------------------

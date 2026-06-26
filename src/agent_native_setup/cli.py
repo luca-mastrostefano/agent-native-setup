@@ -262,23 +262,34 @@ def _from_flags(args: argparse.Namespace, out: Path, detected: list[str] | None)
 
 
 def build(
-    config: WizardConfig, sc: Scaffolder, profile: profiles.Profile | None = None
+    config: WizardConfig,
+    sc: Scaffolder,
+    profile: profiles.Profile | None = None,
+    *,
+    session_start: tuple[str, ...] | None = None,
 ) -> Scaffolder:
     config.target.mkdir(parents=True, exist_ok=True)
+    # Profile-contributed startup: SessionStart hook commands (every session) and one-time
+    # onboarding steps, injected into the base generators so they merge in (not clobber). The
+    # `session_start` override lets a degraded update keep the recorded hooks when the profile
+    # object is gone.
+    hooks = (
+        session_start if session_start is not None else (profile.session_start if profile else ())
+    )
+    onboarding_steps = profile.onboarding if profile else ()
     ai_context.generate(config, sc)
     if config.include_agents:
-        agents.generate(config, sc)
+        agents.generate(config, sc, session_start=hooks)
     if config.include_docs:
         docs.generate(config, sc)
     if config.include_quality:
         quality.generate(config, sc)
     if config.include_ci:
         ci.generate(config, sc)
-    onboarding.generate(config, sc)  # gated internally on quality-or-ci
-    # A profile composes on top: its files overlay the default output as seed (Phase 1),
-    # before git/manifest so they're committed and recorded as provenance. The recorded block
-    # carries the exact paths the profile owns, so `update` re-asserts those (and only those)
-    # as seed instead of refreshing the base back over an override.
+    onboarding.generate(config, sc, profile_steps=onboarding_steps)
+    # A profile composes on top: its files overlay the default output (managed by default,
+    # seed when listed), before git/manifest so they're committed and recorded as provenance.
+    # The recorded block carries the exact paths the profile owns, so `update` re-applies them.
     profile_block = None
     if profile is not None:
         profile_block = {**profile.manifest_block(), "files": profiles.apply(profile, config, sc)}
@@ -487,6 +498,13 @@ def main(argv: list[str] | None = None) -> int:
         return 2
     if profile is not None:
         console.print(f"[cyan]Profile:[/] {profile.name} {profile.version} (composed on default).")
+        # SessionStart hooks live in .claude/settings.json, which is only generated for Claude.
+        # Warn rather than silently drop a profile's hooks when there's nowhere to put them.
+        if profile.session_start and not (config.include_agents and "claude" in config.ai_tools):
+            console.print(
+                ":warning:  [yellow]This profile defines session_start hooks, but the project "
+                "has no Claude `.claude/` config[/] — those hooks won't be applied."
+            )
 
     if args.dry_run:
         _dry_run(config, force=args.force, profile=profile)

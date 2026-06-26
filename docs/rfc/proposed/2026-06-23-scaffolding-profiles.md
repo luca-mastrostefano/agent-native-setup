@@ -68,7 +68,11 @@ phases so the high-value, low-risk core lands first. Seven coupled decisions.
 > ones); on update the engine **re-resolves the profile from its recorded source and re-applies
 > it**, so managed files refresh / edited ones conflict / removed ones drop — and the profile's
 > own **`version` gates** a breaking bump (§4). An unresolvable profile degrades to frozen with
-> a warning. **Not yet:** `extends: null` (standalone), `profile save`/`show`, the `url`/fetch +
+> a warning. A profile can also contribute **startup instructions** — `onboarding` steps folded
+> into the transient `ONBOARDING.md` (one-time) and `session_start` shell commands appended to
+> the SessionStart hooks (every session), merged into the base generators rather than clobbering
+> them (recorded so a degraded update keeps the hooks). **Not yet:** `extends: null`
+> (standalone), `profile save`/`show`, the `url`/fetch +
 > `contributions/` resolution and trust preview (§6/§7), the `update_source` nudge, and
 > per-profile *migrations* (renames/removes are handled by classify, but structural moves of
 > user content aren't). `- [ ] Implemented` stays unchecked until that surface is complete; the

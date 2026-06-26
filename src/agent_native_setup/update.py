@@ -282,15 +282,20 @@ def _config_from_manifest(old: dict, output_dir: Path) -> WizardConfig:
 
 
 def _regenerate(
-    config: WizardConfig, into: Path, profile: profiles.Profile | None = None
+    config: WizardConfig,
+    into: Path,
+    profile: profiles.Profile | None = None,
+    *,
+    session_start: tuple[str, ...] | None = None,
 ) -> Scaffolder:
     """Render the current version's full scaffold (plus ``profile``'s overlay, if any) into
     ``into`` and return the Scaffolder (its ``recorded`` fingerprints + ``seed`` set describe
-    the new generation)."""
+    the new generation). ``session_start`` lets a degraded update keep the recorded SessionStart
+    hooks even when the profile object itself couldn't be re-resolved."""
     from agent_native_setup import cli  # lazy: cli imports this module
 
     sc = Scaffolder(into)
-    cli.build(config, sc, profile)
+    cli.build(config, sc, profile, session_start=session_start)
     return sc
 
 
@@ -427,8 +432,17 @@ def run(target: Path, *, dry_run: bool, console: Any, assume_yes: bool = False) 
     for action in moves:
         console.print(f"  [magenta]~[/] {'would move' if dry_run else 'moved'} {action}")
 
+    # Degraded (profile gone): re-inject the recorded SessionStart hooks so settings.json keeps
+    # them rather than refreshing back to a hook-less base.
+    degraded_hooks = (
+        tuple(profile_block.get("session_start", []))
+        if profile is None and isinstance(profile_block, dict)
+        else None
+    )
     with tempfile.TemporaryDirectory() as tmp:
-        sc = _regenerate(_config_from_manifest(old, Path(tmp)), Path(tmp), profile)
+        sc = _regenerate(
+            _config_from_manifest(old, Path(tmp)), Path(tmp), profile, session_start=degraded_hooks
+        )
         # build() writes the manifest *last* via sc.write, which adds it to `recorded`.
         # The updater owns the manifest itself (rewritten below), so drop it from the set
         # it classifies and re-records — exactly as a fresh scaffold excludes it.

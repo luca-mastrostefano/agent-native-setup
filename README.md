@@ -183,6 +183,11 @@ scaffold. Files ending in `.j2` are rendered (Jinja, with `project_name` / `slug
 containing `${{ ... }}` (GitHub Actions) are safe. `--profile` takes a path, or a bare name
 resolved under `~/.config/agent-native-setup/profiles/`.
 
+A profile can also contribute **startup instructions**: an `onboarding` list (markdown steps
+folded into the project's one-time, self-deleting `ONBOARDING.md`) and a `session_start` list
+(shell commands appended to the `.claude` SessionStart hooks, run every session). They *merge*
+into the base's onboarding/hooks rather than replacing them.
+
 **Updating to a new profile version.** Bump the profile's `version` when you change its
 templates. In projects scaffolded from it, `agent-native-setup update` then refreshes those
 files — each is **managed** (refreshed when the user hasn't touched it; reported as a conflict
