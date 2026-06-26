@@ -222,14 +222,29 @@ def resolve(name_or_path: str) -> Profile | None:
 
 
 def _context(config: WizardConfig, answers: dict[str, Any]) -> dict[str, Any]:
-    """The variables a ``.j2`` profile template can reference. Prompt answers live under the
-    ``answers`` namespace (``answers.<name>``) so they can never shadow a base key."""
+    """The variables a ``.j2`` profile template (and a prompt's ``when``) can reference. Prompt
+    answers live under ``answers.<name>`` and detected/resolved environment facts under
+    ``env.<name>`` — both namespaced so they can never shadow a base key."""
     return {
         "project_name": config.project_name,
         "slug": config.slug,
         "description": config.description,
         "languages": list(config.languages),
         "answers": dict(answers),
+        "env": {
+            "existing_project": config.existing_project,  # brownfield repo with source?
+            "languages": list(config.languages),  # the selected languages
+            "detected_languages": list(config.detected_languages),  # what's actually in the repo
+            "existing_runner": config.existing_runner,
+            "runner": config.runner,
+            "adoption": config.adoption,
+            "ai_tools": list(config.ai_tools),
+            "has_quality": config.include_quality,
+            "has_ci": config.include_ci,
+            "has_docs": config.include_docs,
+            "has_agents": config.include_agents,
+            "has_security": config.include_security,
+        },
     }
 
 
@@ -316,7 +331,9 @@ they get the normal scaffold **plus** every file under `templates/`.
   `seed` list, and optional `onboarding` / `session_start` lists (below).
 - `templates/` — the files this profile ships. Paths are relative to the project root, so
   `templates/.claude/agents/foo.md` lands at `.claude/agents/foo.md`. A file ending in
-  `.j2` is rendered (Jinja) with `project_name`, `slug`, `description`, `languages` and the
+  `.j2` is rendered (Jinja) with `project_name`, `slug`, `description`, `languages`, the
+  `answers.<name>` from your prompts, and an `env.<name>` namespace of detected facts
+  (`env.existing_project`, `env.detected_languages`, `env.runner`, `env.has_ci`, …) — and the
   `.j2` stripped; anything else is copied verbatim (so files containing `{{{{ ... }}}}`,
   like GitHub Actions `${{{{ ... }}}}`, are safe).
 

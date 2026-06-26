@@ -183,6 +183,11 @@ scaffold. Files ending in `.j2` are rendered (Jinja, with `project_name` / `slug
 containing `${{ ... }}` (GitHub Actions) are safe. `--profile` takes a path, or a bare name
 resolved under `~/.config/agent-native-setup/profiles/`.
 
+Templates and `when` expressions can also read an **`env`** namespace of detected/resolved
+facts — `env.existing_project` (brownfield repo?), `env.detected_languages`, `env.runner`,
+`env.adoption`, the `env.has_quality`/`has_ci`/… toggles — so a profile adapts to the actual
+repo (e.g. ship a migration guide only `{% if env.existing_project %}`).
+
 A profile can ask its own **questions** (a mini wizard): a `prompts` list
 (`text`/`select`/`confirm`/`checkbox`, the same widgets the base wizard uses) whose answers are
 exposed to `.j2` templates as `answers.<name>` — so a profile can branch its content

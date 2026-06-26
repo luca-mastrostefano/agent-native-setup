@@ -826,6 +826,104 @@ def test_update_keeps_an_edited_file_that_now_renders_empty_as_a_conflict(tmp_pa
     assert "opt.md" in console.text  # surfaced as a conflict instead of removed
 
 
+# --- env namespace (environment facts for templates / when) ---------------------------------
+
+
+def test_env_namespace_renders_environment_facts(tmp_path: Path) -> None:
+    target = tmp_path / "proj"
+    target.mkdir()
+    config = _config(target)
+    config.existing_project = True
+    config.detected_languages = ["go", "python"]
+    tmpl = "ex={{ env.existing_project }} det={{ env.detected_languages | join(',') }}\n"
+    prof = _make_profile(tmp_path, "team", {"docs/e.md.j2": tmpl})
+    cli.build(config, Scaffolder(target), prof)
+    assert (target / "docs/e.md").read_text(encoding="utf-8") == "ex=True det=go,python\n"
+
+
+def test_env_drives_conditional_file_inclusion(tmp_path: Path) -> None:
+    files = {"MIGRATING.md.j2": "{% if env.existing_project %}migrate\n{% endif %}"}
+    # brownfield → included
+    brown = tmp_path / "brown"
+    brown.mkdir()
+    cfg = _config(brown)
+    cfg.existing_project = True
+    cli.build(cfg, Scaffolder(brown), _make_profile(tmp_path / "a", "team", files))
+    assert (brown / "MIGRATING.md").exists()
+    # fresh → skipped (renders empty)
+    fresh = tmp_path / "fresh"
+    fresh.mkdir()
+    cli.build(_config(fresh), Scaffolder(fresh), _make_profile(tmp_path / "b", "team", files))
+    assert not (fresh / "MIGRATING.md").exists()
+
+
+def test_prompt_when_can_reference_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    asked = _fake_questionary(monkeypatch, {"confirm": True})
+    prof = _make_profile(
+        tmp_path,
+        "team",
+        {},
+        prompts=[
+            {
+                "name": "migrate",
+                "type": "confirm",
+                "message": "Migrate?",
+                "when": "env.existing_project",
+            }
+        ],
+    )
+    config = _config(tmp_path / "x")  # existing_project defaults False
+    answers = profiles.gather_answers(prof, config, interactive=True)
+    assert answers == {"migrate": False} and "Migrate?" not in asked  # skipped on a fresh repo
+
+
+def test_env_is_recorded_and_replayed_on_update(tmp_path: Path) -> None:
+    # env must survive update (recorded in the manifest config snapshot), or a brownfield-only
+    # file would be dropped on the next update when re-detection defaults existing_project False.
+    target = tmp_path / "proj"
+    target.mkdir()
+    config = _config(target)
+    config.existing_project = True
+    prof = _make_profile(
+        tmp_path,
+        "team",
+        {"MIGRATING.md.j2": "{% if env.existing_project %}migrate v1\n{% endif %}"},
+        version="0.1.0",
+        by_path=True,
+    )
+    cli.build(config, Scaffolder(target), prof)
+    assert (target / "MIGRATING.md").exists()
+    _commit(target)
+
+    _bump_profile(
+        prof.root,
+        version="0.1.1",
+        files={"MIGRATING.md.j2": "{% if env.existing_project %}migrate v2\n{% endif %}"},
+    )
+    assert update.run(target, dry_run=False, console=_Console()) == 0
+    assert (target / "MIGRATING.md").read_text(
+        encoding="utf-8"
+    ) == "migrate v2\n"  # env replayed → kept
+
+
+def test_update_tolerates_a_manifest_without_detected_languages(tmp_path: Path) -> None:
+    # Backward compat: a project scaffolded before `env` (no detected_languages in the snapshot)
+    # must still update — the field defaults to [].
+    target = tmp_path / "proj"
+    target.mkdir()
+    prof = _make_profile(
+        tmp_path, "team", {"docs/x.md.j2": "langs={{ env.detected_languages }}\n"}, by_path=True
+    )
+    cli.build(_config(target), Scaffolder(target), prof)
+    m = json.loads((target / MANIFEST_PATH).read_text(encoding="utf-8"))
+    m["config"].pop("detected_languages", None)  # simulate a pre-feature manifest
+    (target / MANIFEST_PATH).write_text(json.dumps(m, indent=2) + "\n", encoding="utf-8")
+    _commit(target)
+
+    assert update.run(target, dry_run=False, console=_Console()) == 0  # no crash
+    assert (target / "docs/x.md").read_text(encoding="utf-8") == "langs=[]\n"  # defaulted to []
+
+
 # --- authoring CLI --------------------------------------------------------------------------
 
 
