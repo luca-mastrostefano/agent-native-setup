@@ -175,8 +175,31 @@ agent-native-setup my-app -o ./my-app --profile ./my-team
 agent-native-setup profile list                  # profiles in ~/.config/agent-native-setup/profiles
 ```
 
-A profile is a directory with a `profile.json` (`name`, `version`, `extends`, `description`, and
-an optional `seed` list) and a `templates/` tree. With **`extends: "default"`**, every file
+A profile is a directory with a `profile.json` and a `templates/` tree. A full example:
+
+```json
+{
+  "name": "my-team",
+  "version": "1.0.0",
+  "extends": "default",
+  "description": "Our team's agent setup",
+  "seed": ["docs/team-notes.md"],
+  "prompts": [
+    {"name": "tier",   "type": "select",  "message": "Service tier?",   "choices": ["basic", "enterprise"], "default": "basic"},
+    {"name": "use_db", "type": "confirm", "message": "Include the DB?",  "default": false},
+    {"name": "engine", "type": "select",  "message": "DB engine?",       "choices": ["postgres", "mysql"], "when": "answers.use_db"}
+  ],
+  "onboarding": ["Run `task team-setup` to configure the toolchain."],
+  "session_start": ["echo 'Remember the team release checklist'"]
+}
+```
+
+Only `name`, `version`, and `extends` are required; `seed` / `prompts` / `onboarding` /
+`session_start` are optional. `agent-native-setup profile init` writes this skeleton **plus a
+README documenting every field** — start there. A `.j2` template then reads the answers and
+environment: `tier = {{ answers.tier }}`, `{% if env.existing_project %}…{% endif %}`.
+
+With **`extends: "default"`**, every file
 under `templates/` is laid down **on top of** the default scaffold; with **`extends: null`** the
 profile is **standalone** — the default generators are skipped and the profile provides
 everything from scratch (its own `AGENTS.md`, etc.). Files ending in `.j2` are rendered (Jinja,
