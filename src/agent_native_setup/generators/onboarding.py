@@ -67,7 +67,7 @@ def _adoption_step(config: WizardConfig, gate: str, fmt: str) -> str:
     )
 
 
-def _steps(config: WizardConfig) -> list[str]:
+def _steps(config: WizardConfig, profile_steps: tuple[str, ...] = ()) -> list[str]:
     r = config.runner
     has_ci = config.include_ci and config.use_github_actions
     has_setup = any(lang.setup_command for lang in get(config.languages))  # e.g. npm install
@@ -166,6 +166,10 @@ def _steps(config: WizardConfig) -> list[str]:
         "test hook shells out to git, keep the existing hooks' `env -u GIT_DIR …` prefix so "
         "it runs against a temp repo, not this one."
     )
+    # A profile's own setup steps extend the default flow here: after the base toolchain/baseline
+    # is up, but *before* the bootstrap commit — so team setup runs as part of the initial setup
+    # and lands in the first commit, not as a trailing afterthought.
+    steps += list(profile_steps)
     push_clause = (
         ", then push — that's what triggers CI (add a git remote first if there isn't one)"
         if has_ci
@@ -225,7 +229,7 @@ def _steps(config: WizardConfig) -> list[str]:
     else:
         cleanup = ", ".join(removals[:-1]) + ", and " + removals[-1]
     # The cleanup commit only removes setup scaffolding, so skip the second `gh run watch`
-    # (the one watch stays on step 8's first push). Exception: with the HTML link-check
+    # (the one watch stays on the first push above). Exception: with the HTML link-check
     # (lychee) in CI, this commit edits link-checked docs, so don't claim the watch is
     # unnecessary there.
     if not has_ci:
@@ -250,11 +254,12 @@ def generate(config: WizardConfig, sc: Scaffolder, profile_steps: tuple[str, ...
     if not has_base and not profile_steps:
         return
     if has_base:
-        steps = _steps(config)
-        if profile_steps:
-            # Slot the profile's steps in just before the final "delete this file" cleanup.
-            steps[-1:-1] = list(profile_steps)
+        # The profile's steps extend the default flow (slotted before the bootstrap commit).
+        steps = _steps(config, profile_steps)
     else:
+        # No default tooling to activate (a `--no-quality --no-ci` base, or — in future — a
+        # standalone profile that doesn't extend the default): the profile's steps *are* the
+        # onboarding, followed by the self-delete.
         steps = [*profile_steps, "**Delete this file** — onboarding is done."]
     body = HEADER.format(name=config.project_name)
     body += "\n".join(f"{i}. {step}" for i, step in enumerate(steps, 1)) + "\n"
