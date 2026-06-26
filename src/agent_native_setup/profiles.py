@@ -21,16 +21,44 @@ from pathlib import Path
 from typing import Any
 
 from agent_native_setup.config import WizardConfig
-from agent_native_setup.scaffold import Scaffolder, render
+from agent_native_setup.scaffold import Scaffolder, compile_expr, eval_expr, render
 
 PROFILE_MANIFEST = "profile.json"
 TEMPLATES_DIR = "templates"
 USER_PROFILE_DIR = Path.home() / ".config" / "agent-native-setup" / "profiles"
 SUPPORTED_EXTENDS = ("default",)
+PROMPT_TYPES = ("text", "select", "confirm", "checkbox")
 
 
 class ProfileError(Exception):
     """A profile that can't be loaded or is invalid. The message is user-facing."""
+
+
+@dataclass(frozen=True)
+class Prompt:
+    """A question a profile asks at scaffold time (RFC 2026-06-26). The answer is exposed to
+    templates as ``answers.<name>``."""
+
+    name: str
+    type: str  # one of PROMPT_TYPES
+    message: str
+    choices: tuple[str, ...] = ()
+    default: object = None
+    # A Jinja expression (over earlier answers + the base context); the prompt is only *asked*
+    # when it's truthy. A skipped prompt takes its default. None = always ask.
+    when: str | None = None
+
+    @property
+    def effective_default(self) -> object:
+        """The non-interactive answer (`-y`/CI): the declared default, else a per-type default."""
+        if self.default is not None:
+            return self.default
+        return {
+            "text": "",
+            "confirm": False,
+            "checkbox": [],
+            "select": self.choices[0] if self.choices else "",
+        }[self.type]
 
 
 @dataclass(frozen=True)
@@ -48,6 +76,8 @@ class Profile:
     # session) and shell commands appended to the .claude SessionStart hooks (run every session).
     onboarding: tuple[str, ...] = ()
     session_start: tuple[str, ...] = ()
+    # Questions the profile asks at scaffold; answers feed templates as ``answers.<name>``.
+    prompts: tuple[Prompt, ...] = ()
 
     def template_files(self) -> list[tuple[str, Path]]:
         """``(output_rel, source_path)`` for each file under ``templates/``, with a trailing
@@ -75,6 +105,60 @@ class Profile:
         if self.session_start:
             block["session_start"] = list(self.session_start)
         return block
+
+
+def _parse_prompts(data: dict, manifest_path: Path) -> tuple[Prompt, ...]:
+    """Validate and build the profile's ``prompts`` (RFC 2026-06-26), with user-facing errors."""
+    raw = data.get("prompts", [])
+    if not isinstance(raw, list):
+        raise ProfileError(f"{manifest_path}: 'prompts' must be a list")
+    prompts: list[Prompt] = []
+    seen: set[str] = set()
+    for i, p in enumerate(raw):
+        at = f"{manifest_path}: prompts[{i}]"
+        if not isinstance(p, dict):
+            raise ProfileError(f"{at} must be an object")
+        name, ptype = p.get("name"), p.get("type")
+        if not isinstance(name, str) or not name.isidentifier():
+            raise ProfileError(
+                f"{at} 'name' must be a valid identifier (it becomes answers.<name>)"
+            )
+        if name in seen:
+            raise ProfileError(f"{at} duplicate name {name!r}")
+        seen.add(name)
+        if ptype not in PROMPT_TYPES:
+            raise ProfileError(f"{at} 'type' must be one of {', '.join(PROMPT_TYPES)}")
+        if not isinstance(p.get("message"), str) or not p["message"]:
+            raise ProfileError(f"{at} 'message' is required")
+        choices = p.get("choices", [])
+        choices_ok = (
+            isinstance(choices, list) and choices and all(isinstance(c, str) for c in choices)
+        )
+        if ptype in ("select", "checkbox") and not choices_ok:
+            raise ProfileError(f"{at} ({ptype}) needs a non-empty 'choices' list of strings")
+        default = p.get("default")
+        if default is not None and not _default_ok(ptype, default, choices):
+            raise ProfileError(f"{at} 'default' is not valid for a {ptype} prompt")
+        when = p.get("when")
+        if when is not None:
+            if not isinstance(when, str):
+                raise ProfileError(f"{at} 'when' must be a string (a Jinja expression)")
+            try:
+                compile_expr(when)  # fail at load on a bad expression, not mid-prompt
+            except Exception as exc:
+                raise ProfileError(f"{at} 'when' is not a valid expression: {exc}") from None
+        prompts.append(Prompt(name, ptype, p["message"], tuple(choices), default, when))
+    return tuple(prompts)
+
+
+def _default_ok(ptype: str, default: object, choices: list) -> bool:
+    if ptype == "text":
+        return isinstance(default, str)
+    if ptype == "confirm":
+        return isinstance(default, bool)
+    if ptype == "select":
+        return default in choices
+    return isinstance(default, list) and all(d in choices for d in default)  # checkbox
 
 
 def load(path: Path, *, source: str | None = None) -> Profile:
@@ -114,6 +198,7 @@ def load(path: Path, *, source: str | None = None) -> Profile:
         seed=frozenset(_str_list("seed")),
         onboarding=tuple(_str_list("onboarding")),
         session_start=tuple(_str_list("session_start")),
+        prompts=_parse_prompts(data, manifest_path),
     )
 
 
@@ -136,30 +221,92 @@ def resolve(name_or_path: str) -> Profile | None:
     )
 
 
-def _context(config: WizardConfig) -> dict[str, Any]:
-    """The variables a ``.j2`` profile template can reference."""
+def _context(config: WizardConfig, answers: dict[str, Any]) -> dict[str, Any]:
+    """The variables a ``.j2`` profile template (and a prompt's ``when``) can reference. Prompt
+    answers live under ``answers.<name>`` and detected/resolved environment facts under
+    ``env.<name>`` — both namespaced so they can never shadow a base key."""
     return {
         "project_name": config.project_name,
         "slug": config.slug,
         "description": config.description,
         "languages": list(config.languages),
+        "answers": dict(answers),
+        "env": {
+            "existing_project": config.existing_project,  # brownfield repo with source?
+            "languages": list(config.languages),  # the selected languages
+            "detected_languages": list(config.detected_languages),  # what's actually in the repo
+            "existing_runner": config.existing_runner,
+            "runner": config.runner,
+            "adoption": config.adoption,
+            "ai_tools": list(config.ai_tools),
+            "has_quality": config.include_quality,
+            "has_ci": config.include_ci,
+            "has_docs": config.include_docs,
+            "has_agents": config.include_agents,
+            "has_security": config.include_security,
+        },
     }
 
 
-def apply(profile: Profile, config: WizardConfig, sc: Scaffolder) -> list[str]:
+def default_answers(profile: Profile) -> dict[str, Any]:
+    """The answers used non-interactively (`-y`/CI) or as the baseline an update replays from —
+    each prompt's declared (or type) default."""
+    return {p.name: p.effective_default for p in profile.prompts}
+
+
+def gather_answers(profile: Profile, config: WizardConfig, *, interactive: bool) -> dict[str, Any]:
+    """Resolve the profile's prompt answers: ask interactively, else use defaults. A prompt with
+    a ``when`` is only asked when that expression (over the answers gathered so far + the base
+    context) is truthy; a skipped prompt takes its default, so ``answers`` always has every name."""
+    if not profile.prompts or not interactive:
+        return default_answers(profile)
+    import questionary
+
+    answers: dict[str, Any] = {}
+    for p in profile.prompts:
+        d = p.effective_default
+        if p.when is not None and not eval_expr(p.when, **_context(config, answers)):
+            answers[p.name] = d  # condition false → don't ask, use the default
+            continue
+        if p.type == "text":
+            answers[p.name] = questionary.text(p.message, default=str(d)).unsafe_ask()
+        elif p.type == "confirm":
+            answers[p.name] = questionary.confirm(p.message, default=bool(d)).unsafe_ask()
+        elif p.type == "select":
+            answers[p.name] = questionary.select(
+                p.message, choices=list(p.choices), default=d if d in p.choices else None
+            ).unsafe_ask()
+        else:  # checkbox
+            checked = set(d if isinstance(d, list) else [])
+            answers[p.name] = questionary.checkbox(
+                p.message,
+                choices=[questionary.Choice(c, checked=c in checked) for c in p.choices],
+            ).unsafe_ask()
+    return answers
+
+
+def apply(
+    profile: Profile, config: WizardConfig, sc: Scaffolder, answers: dict[str, Any]
+) -> list[str]:
     """Overlay ``profile``'s templates onto an already-generated scaffold. Files are **managed**
     (refreshed on update when the profile ships a new version) unless listed in the profile's
-    ``seed`` set, which are written once. ``.j2`` files are rendered against the project context;
+    ``seed`` set, which are written once. ``.j2`` files are rendered against the project context
+    plus ``answers`` (and a ``.j2`` that renders empty is skipped — conditional inclusion);
     others ship verbatim. A file at the same path as a base file supersedes it.
 
     Returns the sorted list of paths the profile actually owns (those it wrote — a path where a
-    user's own file pre-existed is skipped and not claimed), so the project manifest records them
-    and ``update`` re-applies the profile to refresh them."""
-    ctx = _context(config)
+    user's own file pre-existed, or a ``.j2`` that rendered empty, is not claimed), so the
+    project manifest records exactly them and ``update`` re-applies the profile to refresh them."""
+    ctx = _context(config, answers)
     owned: list[str] = []
     for out_rel, src in profile.template_files():
         raw = src.read_text(encoding="utf-8")
-        content = render(raw, **ctx) if src.name.endswith(".j2") else raw
+        if src.name.endswith(".j2"):
+            content = render(raw, **ctx)
+            if not content.strip():
+                continue  # conditional include: a .j2 that renders empty is not shipped
+        else:
+            content = raw
         if sc.overlay(out_rel, content, seed=out_rel in profile.seed):
             owned.append(out_rel)
     return sorted(owned)
@@ -184,9 +331,23 @@ they get the normal scaffold **plus** every file under `templates/`.
   `seed` list, and optional `onboarding` / `session_start` lists (below).
 - `templates/` — the files this profile ships. Paths are relative to the project root, so
   `templates/.claude/agents/foo.md` lands at `.claude/agents/foo.md`. A file ending in
-  `.j2` is rendered (Jinja) with `project_name`, `slug`, `description`, `languages` and the
+  `.j2` is rendered (Jinja) with `project_name`, `slug`, `description`, `languages`, the
+  `answers.<name>` from your prompts, and an `env.<name>` namespace of detected facts
+  (`env.existing_project`, `env.detected_languages`, `env.runner`, `env.has_ci`, …) — and the
   `.j2` stripped; anything else is copied verbatim (so files containing `{{{{ ... }}}}`,
   like GitHub Actions `${{{{ ... }}}}`, are safe).
+
+## Prompts (a mini wizard)
+
+`prompts` is a list of questions asked at scaffold time. Each is `{{"name", "type", "message",
+"choices", "default"}}` where `type` is `text` / `select` / `confirm` / `checkbox` (`choices`
+for select/checkbox). Answers are exposed to `.j2` templates under
+`answers.<name>` — e.g. `{{{{ answers.tier }}}}`, `{{% if answers.use_db %}}…{{% endif %}}`. A
+`.j2` that renders **empty** is not shipped, so wrap a whole file in `{{% if … %}}` for
+conditional inclusion. A prompt may also carry a `when` (a Jinja expression over earlier
+answers) so it's only asked when relevant — e.g. `"when": "answers.use_db"`. Non-interactive
+runs (`-y`) use each prompt's `default`; the answers are recorded and replayed on `update`
+(never re-asked).
 
 ## Startup instructions
 
@@ -225,6 +386,7 @@ def _init(args: argparse.Namespace, console: Any) -> int:
         "seed": [],
         "onboarding": [],
         "session_start": [],
+        "prompts": [],
     }
     (root / PROFILE_MANIFEST).write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
     (root / "README.md").write_text(

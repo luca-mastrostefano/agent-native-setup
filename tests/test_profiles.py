@@ -35,6 +35,7 @@ def _make_profile(
     seed: tuple[str, ...] = (),
     onboarding: tuple[str, ...] = (),
     session_start: tuple[str, ...] = (),
+    prompts: list[dict] | None = None,
     by_path: bool = False,
 ) -> profiles.Profile:
     d = root / name
@@ -51,6 +52,8 @@ def _make_profile(
         manifest["onboarding"] = list(onboarding)
     if session_start:
         manifest["session_start"] = list(session_start)
+    if prompts:
+        manifest["prompts"] = prompts
     (d / "profile.json").write_text(json.dumps(manifest), encoding="utf-8")
     for rel, content in files.items():
         p = d / "templates" / rel
@@ -126,7 +129,7 @@ def test_apply_overrides_a_base_managed_file(tmp_path: Path) -> None:
     cli.build(config, sc)  # default scaffold — INSTRUCTION.md is managed
 
     prof = _make_profile(tmp_path, "team", {"INSTRUCTION.md": "# Team method\n"})
-    profiles.apply(prof, config, sc)
+    profiles.apply(prof, config, sc, {})
 
     assert (target / "INSTRUCTION.md").read_text(encoding="utf-8") == "# Team method\n"  # wins
     assert "INSTRUCTION.md" not in sc.seed  # managed by default → refreshed from the profile
@@ -142,7 +145,7 @@ def test_apply_marks_managed_and_seed_files(tmp_path: Path) -> None:
     prof = _make_profile(
         tmp_path, "team", {"managed.md": "m\n", "once.md": "o\n"}, seed=("once.md",)
     )
-    profiles.apply(prof, config, sc)
+    profiles.apply(prof, config, sc, {})
 
     assert "managed.md" in sc.recorded and "managed.md" not in sc.seed  # refreshed on update
     assert "once.md" in sc.seed  # listed in `seed` → write-once
@@ -163,7 +166,7 @@ def test_apply_renders_j2_and_ships_other_files_verbatim(tmp_path: Path) -> None
             ".github/workflows/team.yml": "run: ${{ secrets.TOKEN }}\n",  # must stay verbatim
         },
     )
-    profiles.apply(prof, config, sc)
+    profiles.apply(prof, config, sc, {})
 
     assert (target / "docs/team.md").read_text(encoding="utf-8") == "project=demo\n"
     assert not (target / "docs/team.md.j2").exists()  # the .j2 suffix is stripped
@@ -528,6 +531,397 @@ def test_degraded_update_keeps_session_start_hooks(tmp_path: Path) -> None:
     assert update.run(target, dry_run=False, console=console) == 0
     assert "couldn't be re-resolved" in console.text
     assert any("echo keepme" in h for h in _session_hooks(target))  # NOT stripped by the base
+
+
+# --- Phase 4: prompts (a declarative wizard) ------------------------------------------------
+
+
+def _load_prompts(tmp_path: Path, prompts: list[dict]) -> profiles.Profile:
+    d = tmp_path / "p"
+    d.mkdir(exist_ok=True)
+    (d / "profile.json").write_text(
+        json.dumps({"name": "x", "version": "1.0.0", "extends": "default", "prompts": prompts}),
+        encoding="utf-8",
+    )
+    return profiles.load(d)
+
+
+def test_load_validates_prompts(tmp_path: Path) -> None:
+    with pytest.raises(profiles.ProfileError, match="identifier"):
+        _load_prompts(tmp_path, [{"name": "bad-name", "type": "text", "message": "m"}])
+    with pytest.raises(profiles.ProfileError, match="type"):
+        _load_prompts(tmp_path, [{"name": "x", "type": "nope", "message": "m"}])
+    with pytest.raises(profiles.ProfileError, match="choices"):
+        _load_prompts(tmp_path, [{"name": "x", "type": "select", "message": "m"}])
+    with pytest.raises(profiles.ProfileError, match="duplicate"):
+        _load_prompts(
+            tmp_path,
+            [
+                {"name": "x", "type": "text", "message": "m"},
+                {"name": "x", "type": "text", "message": "m"},
+            ],
+        )
+    with pytest.raises(profiles.ProfileError, match="default"):  # select default in choices
+        _load_prompts(
+            tmp_path,
+            [{"name": "x", "type": "select", "message": "m", "choices": ["a"], "default": "z"}],
+        )
+    with pytest.raises(profiles.ProfileError, match="default"):  # confirm default must be bool
+        _load_prompts(
+            tmp_path, [{"name": "x", "type": "confirm", "message": "m", "default": "yes"}]
+        )
+    with pytest.raises(profiles.ProfileError, match="default"):  # text default must be str
+        _load_prompts(tmp_path, [{"name": "x", "type": "text", "message": "m", "default": 5}])
+    with pytest.raises(profiles.ProfileError, match="default"):  # checkbox default within choices
+        _load_prompts(
+            tmp_path,
+            [{"name": "x", "type": "checkbox", "message": "m", "choices": ["a"], "default": ["z"]}],
+        )
+
+
+def _fake_questionary(monkeypatch: pytest.MonkeyPatch, returns: dict[str, object]) -> list[str]:
+    """Stub questionary so `gather_answers` runs headless; returns the list of asked messages."""
+    import questionary
+
+    asked: list[str] = []
+
+    class _Ans:
+        def __init__(self, value: object) -> None:
+            self._value = value
+
+        def unsafe_ask(self) -> object:
+            return self._value
+
+    def widget(kind: str):
+        def make(message: str, **_kw: object) -> _Ans:
+            asked.append(message)
+            return _Ans(returns[kind])
+
+        return make
+
+    for kind in ("text", "confirm", "select", "checkbox"):
+        monkeypatch.setattr(questionary, kind, widget(kind))
+    return asked
+
+
+_DB_PROMPTS = [
+    {"name": "use_db", "type": "confirm", "message": "DB?"},
+    {
+        "name": "engine",
+        "type": "text",
+        "message": "Engine?",
+        "when": "answers.use_db",
+        "default": "sqlite",
+    },
+]
+
+
+def test_when_false_skips_the_prompt_and_uses_its_default(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    asked = _fake_questionary(monkeypatch, {"confirm": False, "text": "postgres"})
+    prof = _make_profile(tmp_path, "team", {}, prompts=_DB_PROMPTS)
+    answers = profiles.gather_answers(prof, _config(tmp_path / "x"), interactive=True)
+    assert answers == {"use_db": False, "engine": "sqlite"}  # engine skipped → its default
+    assert "Engine?" not in asked  # never asked
+
+
+def test_when_true_asks_the_dependent_prompt(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    asked = _fake_questionary(monkeypatch, {"confirm": True, "text": "postgres"})
+    prof = _make_profile(tmp_path, "team", {}, prompts=_DB_PROMPTS)
+    answers = profiles.gather_answers(prof, _config(tmp_path / "x"), interactive=True)
+    assert answers == {"use_db": True, "engine": "postgres"}  # asked
+    assert "Engine?" in asked
+
+
+def test_when_false_skipped_select_lands_its_type_default(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    asked = _fake_questionary(monkeypatch, {"confirm": False, "select": "mysql"})
+    prof = _make_profile(
+        tmp_path,
+        "team",
+        {},
+        prompts=[
+            {"name": "use_db", "type": "confirm", "message": "DB?"},
+            {
+                "name": "engine",
+                "type": "select",
+                "message": "Engine?",
+                "choices": ["postgres", "mysql"],
+                "when": "answers.use_db",
+            },
+        ],
+    )
+    answers = profiles.gather_answers(prof, _config(tmp_path / "x"), interactive=True)
+    assert answers == {
+        "use_db": False,
+        "engine": "postgres",
+    }  # skipped → first choice (type default)
+    assert "Engine?" not in asked
+
+
+def test_when_with_a_nested_undefined_reference_is_falsy_not_a_crash(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # `when` touches a not-yet-gathered key with nested access — must skip gracefully, not raise.
+    _fake_questionary(monkeypatch, {"text": "v"})
+    prof = _make_profile(
+        tmp_path,
+        "team",
+        {},
+        prompts=[
+            {
+                "name": "x",
+                "type": "text",
+                "message": "X?",
+                "when": "answers.later.deep",
+                "default": "d",
+            }
+        ],
+    )
+    answers = profiles.gather_answers(prof, _config(tmp_path / "x"), interactive=True)
+    assert answers == {"x": "d"}  # undefined chain → falsy → skipped → default
+
+
+def test_load_rejects_a_bad_when_expression(tmp_path: Path) -> None:
+    with pytest.raises(profiles.ProfileError, match="when"):  # not a string
+        _load_prompts(tmp_path, [{"name": "x", "type": "text", "message": "m", "when": 1}])
+    with pytest.raises(profiles.ProfileError, match="when"):  # syntax error
+        _load_prompts(
+            tmp_path, [{"name": "x", "type": "text", "message": "m", "when": "answers.("}]
+        )
+
+
+def test_default_answers_uses_declared_then_type_defaults(tmp_path: Path) -> None:
+    prof = _make_profile(
+        tmp_path,
+        "team",
+        {},
+        prompts=[
+            {
+                "name": "tier",
+                "type": "select",
+                "message": "?",
+                "choices": ["a", "b"],
+                "default": "b",
+            },
+            {"name": "db", "type": "confirm", "message": "?"},  # → False
+            {"name": "svc", "type": "text", "message": "?"},  # → ""
+            {"name": "sel", "type": "select", "message": "?", "choices": ["x", "y"]},  # → first
+        ],
+    )
+    assert profiles.default_answers(prof) == {"tier": "b", "db": False, "svc": "", "sel": "x"}
+
+
+def test_answers_render_in_templates_and_record_in_manifest(tmp_path: Path) -> None:
+    prof = _make_profile(
+        tmp_path,
+        "team",
+        {"docs/conf.md.j2": "tier={{ answers.tier }}\n"},
+        prompts=[{"name": "tier", "type": "text", "message": "?", "default": "basic"}],
+    )
+    target = tmp_path / "proj"
+    target.mkdir()
+    cli.build(_config(target), Scaffolder(target), prof, answers={"tier": "gold"})
+
+    assert (target / "docs/conf.md").read_text(encoding="utf-8") == "tier=gold\n"
+    m = json.loads((target / MANIFEST_PATH).read_text(encoding="utf-8"))
+    assert m["profile"]["answers"] == {"tier": "gold"}
+
+
+def test_conditional_j2_is_skipped_when_it_renders_empty(tmp_path: Path) -> None:
+    prof = _make_profile(
+        tmp_path,
+        "team",
+        {"db/schema.sql.j2": "{% if answers.use_db %}schema\n{% endif %}"},
+        prompts=[{"name": "use_db", "type": "confirm", "message": "?", "default": False}],
+    )
+    target = tmp_path / "proj"
+    target.mkdir()
+    cli.build(_config(target), Scaffolder(target), prof)  # default use_db=False → empty → skipped
+
+    assert not (target / "db/schema.sql").exists()
+    m = json.loads((target / MANIFEST_PATH).read_text(encoding="utf-8"))
+    assert "db/schema.sql" not in m["profile"]["files"]  # not claimed as owned
+
+
+def test_update_replays_recorded_answers_without_reprompting(tmp_path: Path) -> None:
+    # use_db defaults False, but the project was scaffolded with True (a conditional file). A
+    # bump must re-render with the RECORDED True (never re-prompt, never fall back to the default).
+    prof = _make_profile(
+        tmp_path,
+        "team",
+        {"db/schema.sql.j2": "{% if answers.use_db %}v1\n{% endif %}"},
+        version="0.1.0",
+        by_path=True,
+        prompts=[{"name": "use_db", "type": "confirm", "message": "?", "default": False}],
+    )
+    target = tmp_path / "proj"
+    target.mkdir()
+    cli.build(_config(target), Scaffolder(target), prof, answers={"use_db": True})
+    assert (target / "db/schema.sql").read_text(encoding="utf-8") == "v1\n"
+    _commit(target)
+
+    _bump_profile(
+        prof.root,
+        version="0.1.1",
+        files={"db/schema.sql.j2": "{% if answers.use_db %}v2\n{% endif %}"},
+    )
+    assert update.run(target, dry_run=False, console=_Console()) == 0
+    assert (target / "db/schema.sql").read_text(
+        encoding="utf-8"
+    ) == "v2\n"  # replayed True → refreshed
+    m = json.loads((target / MANIFEST_PATH).read_text(encoding="utf-8"))
+    assert m["profile"]["answers"] == {"use_db": True}
+
+
+def test_update_removes_a_profile_file_that_now_renders_empty(tmp_path: Path) -> None:
+    # §4 + orphan: a managed conditional file present at scaffold; a bump makes it render empty →
+    # it's dropped from the owned set and orphan-removed on update (it was pristine).
+    prof = _make_profile(
+        tmp_path,
+        "team",
+        {"opt.md.j2": "{% if answers.keep %}content\n{% endif %}"},
+        version="0.1.0",
+        by_path=True,
+        prompts=[{"name": "keep", "type": "confirm", "message": "?"}],
+    )
+    target = tmp_path / "proj"
+    target.mkdir()
+    cli.build(_config(target), Scaffolder(target), prof, answers={"keep": True})
+    assert (target / "opt.md").exists()
+    _commit(target)
+
+    _bump_profile(prof.root, version="0.1.1", files={"opt.md.j2": "{% if False %}x{% endif %}"})
+    assert update.run(target, dry_run=False, console=_Console()) == 0
+    assert not (target / "opt.md").exists()  # renders empty now → orphan-removed
+    m = json.loads((target / MANIFEST_PATH).read_text(encoding="utf-8"))
+    assert "opt.md" not in m["profile"].get("files", [])
+
+
+def test_update_keeps_an_edited_file_that_now_renders_empty_as_a_conflict(tmp_path: Path) -> None:
+    # The honest-cost case (RFC Consequences): a file that renders empty after a bump is dropped
+    # if pristine — but if the user EDITED it, it must survive as a conflict, never silently lost.
+    prof = _make_profile(
+        tmp_path,
+        "team",
+        {"opt.md.j2": "{% if answers.keep %}content\n{% endif %}"},
+        version="0.1.0",
+        by_path=True,
+        prompts=[{"name": "keep", "type": "confirm", "message": "?"}],
+    )
+    target = tmp_path / "proj"
+    target.mkdir()
+    cli.build(_config(target), Scaffolder(target), prof, answers={"keep": True})
+    (target / "opt.md").write_text("my own edit\n", encoding="utf-8")  # the user edits it
+    _commit(target)
+
+    _bump_profile(prof.root, version="0.1.1", files={"opt.md.j2": "{% if False %}x{% endif %}"})
+    console = _Console()
+    assert update.run(target, dry_run=False, console=console) == 0
+    assert (target / "opt.md").read_text(encoding="utf-8") == "my own edit\n"  # NOT lost
+    assert "opt.md" in console.text  # surfaced as a conflict instead of removed
+
+
+# --- env namespace (environment facts for templates / when) ---------------------------------
+
+
+def test_env_namespace_renders_environment_facts(tmp_path: Path) -> None:
+    target = tmp_path / "proj"
+    target.mkdir()
+    config = _config(target)
+    config.existing_project = True
+    config.detected_languages = ["go", "python"]
+    tmpl = "ex={{ env.existing_project }} det={{ env.detected_languages | join(',') }}\n"
+    prof = _make_profile(tmp_path, "team", {"docs/e.md.j2": tmpl})
+    cli.build(config, Scaffolder(target), prof)
+    assert (target / "docs/e.md").read_text(encoding="utf-8") == "ex=True det=go,python\n"
+
+
+def test_env_drives_conditional_file_inclusion(tmp_path: Path) -> None:
+    files = {"MIGRATING.md.j2": "{% if env.existing_project %}migrate\n{% endif %}"}
+    # brownfield → included
+    brown = tmp_path / "brown"
+    brown.mkdir()
+    cfg = _config(brown)
+    cfg.existing_project = True
+    cli.build(cfg, Scaffolder(brown), _make_profile(tmp_path / "a", "team", files))
+    assert (brown / "MIGRATING.md").exists()
+    # fresh → skipped (renders empty)
+    fresh = tmp_path / "fresh"
+    fresh.mkdir()
+    cli.build(_config(fresh), Scaffolder(fresh), _make_profile(tmp_path / "b", "team", files))
+    assert not (fresh / "MIGRATING.md").exists()
+
+
+def test_prompt_when_can_reference_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    asked = _fake_questionary(monkeypatch, {"confirm": True})
+    prof = _make_profile(
+        tmp_path,
+        "team",
+        {},
+        prompts=[
+            {
+                "name": "migrate",
+                "type": "confirm",
+                "message": "Migrate?",
+                "when": "env.existing_project",
+            }
+        ],
+    )
+    config = _config(tmp_path / "x")  # existing_project defaults False
+    answers = profiles.gather_answers(prof, config, interactive=True)
+    assert answers == {"migrate": False} and "Migrate?" not in asked  # skipped on a fresh repo
+
+
+def test_env_is_recorded_and_replayed_on_update(tmp_path: Path) -> None:
+    # env must survive update (recorded in the manifest config snapshot), or a brownfield-only
+    # file would be dropped on the next update when re-detection defaults existing_project False.
+    target = tmp_path / "proj"
+    target.mkdir()
+    config = _config(target)
+    config.existing_project = True
+    prof = _make_profile(
+        tmp_path,
+        "team",
+        {"MIGRATING.md.j2": "{% if env.existing_project %}migrate v1\n{% endif %}"},
+        version="0.1.0",
+        by_path=True,
+    )
+    cli.build(config, Scaffolder(target), prof)
+    assert (target / "MIGRATING.md").exists()
+    _commit(target)
+
+    _bump_profile(
+        prof.root,
+        version="0.1.1",
+        files={"MIGRATING.md.j2": "{% if env.existing_project %}migrate v2\n{% endif %}"},
+    )
+    assert update.run(target, dry_run=False, console=_Console()) == 0
+    assert (target / "MIGRATING.md").read_text(
+        encoding="utf-8"
+    ) == "migrate v2\n"  # env replayed → kept
+
+
+def test_update_tolerates_a_manifest_without_detected_languages(tmp_path: Path) -> None:
+    # Backward compat: a project scaffolded before `env` (no detected_languages in the snapshot)
+    # must still update — the field defaults to [].
+    target = tmp_path / "proj"
+    target.mkdir()
+    prof = _make_profile(
+        tmp_path, "team", {"docs/x.md.j2": "langs={{ env.detected_languages }}\n"}, by_path=True
+    )
+    cli.build(_config(target), Scaffolder(target), prof)
+    m = json.loads((target / MANIFEST_PATH).read_text(encoding="utf-8"))
+    m["config"].pop("detected_languages", None)  # simulate a pre-feature manifest
+    (target / MANIFEST_PATH).write_text(json.dumps(m, indent=2) + "\n", encoding="utf-8")
+    _commit(target)
+
+    assert update.run(target, dry_run=False, console=_Console()) == 0  # no crash
+    assert (target / "docs/x.md").read_text(encoding="utf-8") == "langs=[]\n"  # defaulted to []
 
 
 # --- authoring CLI --------------------------------------------------------------------------

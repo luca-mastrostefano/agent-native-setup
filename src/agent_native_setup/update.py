@@ -276,6 +276,7 @@ def _config_from_manifest(old: dict, output_dir: Path) -> WizardConfig:
         runner=get("runner", "make"),
         adoption=get("adoption", "progressive"),
         existing_project=get("existing_project", False),
+        detected_languages=list(get("detected_languages", [])),
         existing_runner=get("existing_runner", False),
         init_git=False,  # never touch git in the throwaway regeneration tree
     )
@@ -287,26 +288,27 @@ def _regenerate(
     profile: profiles.Profile | None = None,
     *,
     session_start: tuple[str, ...] | None = None,
-) -> Scaffolder:
+    answers: dict[str, object] | None = None,
+) -> tuple[Scaffolder, dict | None]:
     """Render the current version's full scaffold (plus ``profile``'s overlay, if any) into
-    ``into`` and return the Scaffolder (its ``recorded`` fingerprints + ``seed`` set describe
-    the new generation). ``session_start`` lets a degraded update keep the recorded SessionStart
-    hooks even when the profile object itself couldn't be re-resolved."""
+    ``into``. Returns ``(scaffolder, profile_block)`` — the block reflects what the profile
+    *actually* applied (owned files + the answers it rendered against), which the caller persists
+    so a conditionally-skipped file isn't recorded as owned. ``session_start``/``answers`` let a
+    degraded update keep the recorded hooks/answers even when the profile object is gone."""
     from agent_native_setup import cli  # lazy: cli imports this module
 
     sc = Scaffolder(into)
-    cli.build(config, sc, profile, session_start=session_start)
-    return sc
+    block = cli.build(config, sc, profile, session_start=session_start, answers=answers)
+    return sc, block
 
 
 def _reresolve_profile(old: dict, console: Any) -> tuple[profiles.Profile | None, dict | None]:
-    """Re-resolve the project's composed profile for an update (RFC 2026-06-23, Phase 2).
-    Returns ``(profile, block)``:
+    """Re-resolve the project's composed profile for an update (RFC 2026-06-23 / 2026-06-26).
+    Returns ``(profile, degraded_block)``:
 
-    - resolved → ``(Profile, new_block)`` rebuilt from its *current* version + owned files, so
-      the update re-applies it (managed files refresh) and records the new version;
-    - unresolvable (source moved/gone) → ``(None, old_block)`` — degraded: the base still
-      updates and the profile's files are kept frozen, with a warning.
+    - resolved → ``(Profile, None)``: the new block comes from re-application (see `_regenerate`);
+    - unresolvable (source moved/gone) → ``(None, old_block)`` — degraded: the base still updates,
+      the profile's files/hooks are kept frozen, with a warning.
     """
     block = old.get("profile")
     if not isinstance(block, dict):
@@ -324,15 +326,7 @@ def _reresolve_profile(old: dict, console: Any) -> tuple[profiles.Profile | None
             f"(source {source!r}) — its files are kept as-is; the base setup still updates."
         )
         return None, block
-    new_block = {
-        **profile.manifest_block(),
-        # Every path the profile owns. (At scaffold, a path colliding with a pre-existing user
-        # file is skipped and not claimed; the temp regeneration has no such collisions, so
-        # this lists all of them — harmless, since such a path classifies as a conflict and is
-        # never clobbered.)
-        "files": sorted(rel for rel, _ in profile.template_files()),
-    }
-    return profile, new_block
+    return profile, None
 
 
 def _restore_profile_overlay(old: dict, sc: Scaffolder, target: Path) -> None:
@@ -386,15 +380,24 @@ def run(target: Path, *, dry_run: bool, console: Any, assume_yes: bool = False) 
 
     # Re-resolve the composed profile (Phase 2): its managed files refresh like the base. A
     # breaking profile bump gates too; an unresolvable profile degrades to frozen (warned).
-    profile, profile_block = _reresolve_profile(old, console)
+    profile, degraded_block = _reresolve_profile(old, console)
     profile_change: tuple[str, str, str] | None = None
+    update_answers: dict[str, object] | None = None
     if profile is not None:
-        old_pv = str((old.get("profile") or {}).get("version") or "0.0.0")
+        old_profile = old.get("profile") or {}
+        old_pv = str(old_profile.get("version") or "0.0.0")
         pdecision = versioning.decide(old_pv, profile.version)
         if pdecision == versioning.GATED:
             gated = True
             profile_change = (profile.name, old_pv, profile.version)
         version_changed = version_changed or pdecision != versioning.NOOP
+        # Replay the scaffold-time answers (never re-prompt, RFC 2026-06-26); a prompt the bumped
+        # profile added with no recorded answer falls back to its default.
+        recorded = old_profile.get("answers")
+        update_answers = {
+            **profiles.default_answers(profile),
+            **(recorded if isinstance(recorded, dict) else {}),
+        }
 
     if not dry_run:
         is_repo, clean = _git_state(target)
@@ -435,13 +438,17 @@ def run(target: Path, *, dry_run: bool, console: Any, assume_yes: bool = False) 
     # Degraded (profile gone): re-inject the recorded SessionStart hooks so settings.json keeps
     # them rather than refreshing back to a hook-less base.
     degraded_hooks = (
-        tuple(profile_block.get("session_start", []))
-        if profile is None and isinstance(profile_block, dict)
+        tuple(degraded_block.get("session_start", []))
+        if profile is None and isinstance(degraded_block, dict)
         else None
     )
     with tempfile.TemporaryDirectory() as tmp:
-        sc = _regenerate(
-            _config_from_manifest(old, Path(tmp)), Path(tmp), profile, session_start=degraded_hooks
+        sc, built_block = _regenerate(
+            _config_from_manifest(old, Path(tmp)),
+            Path(tmp),
+            profile,
+            session_start=degraded_hooks,
+            answers=update_answers,
         )
         # build() writes the manifest *last* via sc.write, which adds it to `recorded`.
         # The updater owns the manifest itself (rewritten below), so drop it from the set
@@ -475,9 +482,11 @@ def run(target: Path, *, dry_run: bool, console: Any, assume_yes: bool = False) 
                 encoding="utf-8",
             )
         # Written last, so an interrupt before here leaves `installed` unchanged (re-runnable).
-        # `profile_block` carries the *new* profile version+files when it re-resolved, or the
-        # old block (preserved) when it didn't — so provenance stays accurate either way.
-        new_manifest = manifest.build(_config_from_manifest(old, target), sc, profile=profile_block)
+        # The block from re-application (`built_block`, accurate files + replayed answers) when
+        # the profile resolved, else the preserved old block (degraded) — so provenance stays
+        # accurate either way.
+        new_block = built_block if profile is not None else degraded_block
+        new_manifest = manifest.build(_config_from_manifest(old, target), sc, profile=new_block)
         (target / manifest.MANIFEST_PATH).write_text(
             json.dumps(new_manifest, indent=2) + "\n", encoding="utf-8"
         )

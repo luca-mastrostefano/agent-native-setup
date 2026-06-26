@@ -267,7 +267,11 @@ def build(
     profile: profiles.Profile | None = None,
     *,
     session_start: tuple[str, ...] | None = None,
-) -> Scaffolder:
+    answers: dict[str, object] | None = None,
+) -> dict[str, object] | None:
+    """Scaffold ``config`` (plus ``profile``'s overlay) into ``sc``'s target and write the
+    manifest. Returns the recorded ``profile`` block (or ``None``) — its `files`/`answers`
+    reflect what was *actually* applied, which `update` persists instead of re-guessing."""
     config.target.mkdir(parents=True, exist_ok=True)
     # Profile-contributed startup: SessionStart hook commands (every session) and one-time
     # onboarding steps, injected into the base generators so they merge in (not clobber). The
@@ -289,10 +293,17 @@ def build(
     onboarding.generate(config, sc, profile_steps=onboarding_steps)
     # A profile composes on top: its files overlay the default output (managed by default,
     # seed when listed), before git/manifest so they're committed and recorded as provenance.
-    # The recorded block carries the exact paths the profile owns, so `update` re-applies them.
+    # The recorded block carries the exact paths the profile owns + the answers it rendered
+    # against, so `update` re-applies them deterministically without re-prompting.
     profile_block = None
     if profile is not None:
-        profile_block = {**profile.manifest_block(), "files": profiles.apply(profile, config, sc)}
+        resolved = answers if answers is not None else profiles.default_answers(profile)
+        profile_block = {
+            **profile.manifest_block(),
+            "files": profiles.apply(profile, config, sc, resolved),
+        }
+        if resolved:
+            profile_block["answers"] = resolved
     git_dir = config.target / ".git"
     if config.init_git and not git_dir.exists():
         try:
@@ -304,7 +315,7 @@ def build(
     # Last: record provenance for everything written above, so a future `update` can
     # refresh pristine generated files without touching the user's edits.
     manifest.write(config, sc, profile=profile_block)
-    return sc
+    return profile_block
 
 
 def _summary(config: WizardConfig, sc: Scaffolder) -> None:
@@ -354,7 +365,13 @@ def _summary(config: WizardConfig, sc: Scaffolder) -> None:
     )
 
 
-def _dry_run(config: WizardConfig, *, force: bool, profile: profiles.Profile | None = None) -> None:
+def _dry_run(
+    config: WizardConfig,
+    *,
+    force: bool,
+    profile: profiles.Profile | None = None,
+    answers: dict[str, object] | None = None,
+) -> None:
     """Preview a scaffold without writing. Builds into throwaway dirs so the real generators
     (and a composed profile, if any) decide the file set *and* the real ``Scaffolder`` decides
     create-vs-skip against what the target already contains — so the preview matches a real run
@@ -365,7 +382,10 @@ def _dry_run(config: WizardConfig, *, force: bool, profile: profiles.Profile | N
         # keyed by clean rel path for files and symlinks alike).
         scout = Scaffolder((root / "scout").resolve())
         build(
-            dataclasses.replace(config, output_dir=root / "scout", init_git=False), scout, profile
+            dataclasses.replace(config, output_dir=root / "scout", init_git=False),
+            scout,
+            profile,
+            answers=answers,
         )
         # Pass 2: stage a placeholder for each discovered path that already exists in the real
         # target, then let `Scaffolder.write`'s own preserve/force/skip logic split the result —
@@ -377,7 +397,12 @@ def _dry_run(config: WizardConfig, *, force: bool, profile: profiles.Profile | N
                 placeholder.parent.mkdir(parents=True, exist_ok=True)
                 placeholder.write_text("", encoding="utf-8")
         sc = Scaffolder(stage.resolve(), force=force)
-        build(dataclasses.replace(config, output_dir=stage, init_git=False), sc, profile)
+        build(
+            dataclasses.replace(config, output_dir=stage, init_git=False),
+            sc,
+            profile,
+            answers=answers,
+        )
     console.print(
         Panel.fit(
             f"[bold]{config.project_name}[/] — dry run [dim](nothing written)[/]", style="yellow"
@@ -484,6 +509,7 @@ def main(argv: list[str] | None = None) -> int:
         )
 
     # Scaffolding over existing source for a selected language → grandfather it.
+    config.detected_languages = sorted(in_target)
     config.existing_project = bool(set(config.languages) & in_target)
     if config.existing_project and config.include_quality:
         console.print(
@@ -496,6 +522,7 @@ def main(argv: list[str] | None = None) -> int:
     except profiles.ProfileError as exc:
         console.print(f"[red]{exc}[/]")
         return 2
+    answers: dict[str, object] | None = None
     if profile is not None:
         console.print(f"[cyan]Profile:[/] {profile.name} {profile.version} (composed on default).")
         # SessionStart hooks live in .claude/settings.json, which is only generated for Claude.
@@ -505,14 +532,19 @@ def main(argv: list[str] | None = None) -> int:
                 ":warning:  [yellow]This profile defines session_start hooks, but the project "
                 "has no Claude `.claude/` config[/] — those hooks won't be applied."
             )
+        try:
+            answers = profiles.gather_answers(profile, config, interactive=interactive)
+        except (KeyboardInterrupt, EOFError):
+            console.print("\n[yellow]Cancelled.[/]")
+            return 130
 
     if args.dry_run:
-        _dry_run(config, force=args.force, profile=profile)
+        _dry_run(config, force=args.force, profile=profile, answers=answers)
         return 0
 
     sc = Scaffolder(config.target, force=args.force)
     try:
-        build(config, sc, profile)
+        build(config, sc, profile, answers=answers)
     except (KeyboardInterrupt, EOFError):
         console.print("\n[yellow]Cancelled.[/]")
         if rolled_back := sc.rollback():
