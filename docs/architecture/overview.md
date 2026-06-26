@@ -26,7 +26,8 @@ the provenance recorded in `.agent-native-setup.json`.
 
 Flow: `cli.build()` → `ai_context` → `agents` → `docs` → `quality` → `ci`, each
 gated on the matching `include_*` flag, then `onboarding` (gated on
-`include_quality or include_ci`), and finally `manifest.write()` to record provenance.
+`include_quality or include_ci`), then a `--profile`'s overlay (if any, via `profiles.apply`),
+and finally `manifest.write()` to record provenance.
 
 ## Dependency rules
 
