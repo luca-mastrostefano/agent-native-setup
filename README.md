@@ -176,17 +176,25 @@ agent-native-setup profile list                  # profiles in ~/.config/agent-n
 ```
 
 A profile is a directory with a `profile.json` (`name`, `version`, `extends: default`,
-`description`) and a `templates/` tree. Every file under `templates/` is laid down at the
-matching path in the new project, **on top of** the default scaffold. Files ending in `.j2`
-are rendered (Jinja, with `project_name` / `slug` / `description` / `languages`) and the `.j2`
-stripped; everything else ships verbatim, so files containing `${{ ... }}` (GitHub Actions)
-are safe. `--profile` takes a path, or a bare name resolved under
-`~/.config/agent-native-setup/profiles/`.
+`description`, and an optional `seed` list) and a `templates/` tree. Every file under
+`templates/` is laid down at the matching path in the new project, **on top of** the default
+scaffold. Files ending in `.j2` are rendered (Jinja, with `project_name` / `slug` /
+`description` / `languages`) and the `.j2` stripped; everything else ships verbatim, so files
+containing `${{ ... }}` (GitHub Actions) are safe. `--profile` takes a path, or a bare name
+resolved under `~/.config/agent-native-setup/profiles/`.
 
-> **Phase 1 scope.** Profile files are shipped as **seed** — written once, then yours to
-> maintain; the default base underneath stays managed and `update`-able. A profile's *own*
-> versioned update stream, `extends`-from-blank, and `profile save` (derive a profile from an
-> existing project) are planned — see
+**Updating to a new profile version.** Bump the profile's `version` when you change its
+templates. In projects scaffolded from it, `agent-native-setup update` then refreshes those
+files — each is **managed** (refreshed when the user hasn't touched it; reported as a conflict
+to reconcile if they have), unless you list it under `seed` (shipped once, never refreshed). A
+breaking bump (major, or the minor pre-1.0) pauses for confirmation, just like a base update.
+For `update` to pull the new version, the profile must still be resolvable then — the same
+path, or a name in `~/.config/agent-native-setup/profiles/` — otherwise the base still updates
+and the profile's files are left as-is.
+
+> **Still experimental.** `extends`-from-blank (standalone profiles), `profile save` (derive a
+> profile from an existing project), and fetching a profile straight from a git URL are not
+> built yet — see
 > [`docs/rfc/proposed/2026-06-23-scaffolding-profiles.md`](docs/rfc/proposed/2026-06-23-scaffolding-profiles.md).
 
 ## Philosophy

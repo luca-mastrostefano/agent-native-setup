@@ -1,9 +1,11 @@
-"""Profiles (RFC 2026-06-23, Phase 1): resolve/validate a profile, overlay it as seed on the
-default scaffold, record it in the manifest, and preserve it across an update."""
+"""Profiles (RFC 2026-06-23): resolve/validate a profile, overlay it on the default scaffold
+(managed by default, seed when listed), record it in the manifest, and refresh its managed
+files on update when the profile ships a new version."""
 
 from __future__ import annotations
 
 import json
+import shutil
 import subprocess
 from pathlib import Path
 
@@ -30,18 +32,37 @@ def _make_profile(
     *,
     version: str = "1.0.0",
     extends: str = "default",
+    seed: tuple[str, ...] = (),
+    by_path: bool = False,
 ) -> profiles.Profile:
     d = root / name
-    (d / "templates").mkdir(parents=True)
-    (d / "profile.json").write_text(
-        json.dumps({"name": name, "version": version, "extends": extends, "description": "x"}),
-        encoding="utf-8",
-    )
+    (d / "templates").mkdir(parents=True, exist_ok=True)
+    manifest: dict[str, object] = {
+        "name": name,
+        "version": version,
+        "extends": extends,
+        "description": "x",
+    }
+    if seed:
+        manifest["seed"] = list(seed)
+    (d / "profile.json").write_text(json.dumps(manifest), encoding="utf-8")
     for rel, content in files.items():
         p = d / "templates" / rel
         p.parent.mkdir(parents=True, exist_ok=True)
         p.write_text(content, encoding="utf-8")
-    return profiles.load(d, source=name)
+    # by_path records a real path source, so `update` can re-resolve the profile.
+    return profiles.load(d, source=str(d) if by_path else name)
+
+
+def _bump_profile(pdir: Path, *, version: str, files: dict[str, str] | None = None) -> None:
+    """Mutate a profile dir in place to simulate the author shipping a new version."""
+    data = json.loads((pdir / "profile.json").read_text(encoding="utf-8"))
+    data["version"] = version
+    (pdir / "profile.json").write_text(json.dumps(data), encoding="utf-8")
+    for rel, content in (files or {}).items():
+        p = pdir / "templates" / rel
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(content, encoding="utf-8")
 
 
 def _config(target: Path) -> WizardConfig:
@@ -83,19 +104,34 @@ def test_resolve_from_user_dir_by_name(tmp_path: Path, monkeypatch: pytest.Monke
 # --- overlay / apply ------------------------------------------------------------------------
 
 
-def test_apply_overrides_a_base_managed_file_and_makes_it_seed(tmp_path: Path) -> None:
+def test_apply_overrides_a_base_managed_file(tmp_path: Path) -> None:
     target = tmp_path / "proj"
     target.mkdir()
     config = _config(target)
     sc = Scaffolder(target)
     cli.build(config, sc)  # default scaffold — INSTRUCTION.md is managed
-    assert "INSTRUCTION.md" in sc.recorded and "INSTRUCTION.md" not in sc.seed
 
     prof = _make_profile(tmp_path, "team", {"INSTRUCTION.md": "# Team method\n"})
     profiles.apply(prof, config, sc)
 
-    assert (target / "INSTRUCTION.md").read_text(encoding="utf-8") == "# Team method\n"
-    assert "INSTRUCTION.md" in sc.seed  # the child claimed it → now seed, not refreshed on update
+    assert (target / "INSTRUCTION.md").read_text(encoding="utf-8") == "# Team method\n"  # wins
+    assert "INSTRUCTION.md" not in sc.seed  # managed by default → refreshed from the profile
+
+
+def test_apply_marks_managed_and_seed_files(tmp_path: Path) -> None:
+    target = tmp_path / "proj"
+    target.mkdir()
+    config = _config(target)
+    sc = Scaffolder(target)
+    cli.build(config, sc)
+
+    prof = _make_profile(
+        tmp_path, "team", {"managed.md": "m\n", "once.md": "o\n"}, seed=("once.md",)
+    )
+    profiles.apply(prof, config, sc)
+
+    assert "managed.md" in sc.recorded and "managed.md" not in sc.seed  # refreshed on update
+    assert "once.md" in sc.seed  # listed in `seed` → write-once
 
 
 def test_apply_renders_j2_and_ships_other_files_verbatim(tmp_path: Path) -> None:
@@ -142,7 +178,7 @@ def test_overlay_leaves_a_preexisting_user_file_alone(tmp_path: Path) -> None:
 # --- integration: build + manifest + update -------------------------------------------------
 
 
-def test_build_with_profile_records_block_and_seeds_overlay(tmp_path: Path) -> None:
+def test_build_with_profile_records_the_block_and_owned_files(tmp_path: Path) -> None:
     target = tmp_path / "proj"
     target.mkdir()
     config = _config(target)
@@ -153,7 +189,8 @@ def test_build_with_profile_records_block_and_seeds_overlay(tmp_path: Path) -> N
     block = m["profile"]
     assert {k: block[k] for k in ("name", "version", "extends", "source")} == prof.manifest_block()
     assert block["files"] == [".claude/agents/team.md"]  # exactly what the profile owns
-    assert ".claude/agents/team.md" in m["seed"]
+    assert ".claude/agents/team.md" in m["files"]
+    assert ".claude/agents/team.md" not in m["seed"]  # managed by default (refreshed on update)
     assert (target / ".claude/agents/team.md").read_text(encoding="utf-8") == "# team\n"
 
 
@@ -182,11 +219,11 @@ def _commit(target: Path) -> None:
     _git(target, "commit", "-q", "-m", "baseline", "--no-verify")
 
 
-def test_update_preserves_the_profile_block_and_overlaid_seed(tmp_path: Path) -> None:
+def test_update_preserves_the_profile_block_and_files(tmp_path: Path) -> None:
     target = tmp_path / "proj"
     target.mkdir()
     config = _config(target)
-    prof = _make_profile(tmp_path, "team", {".claude/agents/team.md": "# team\n"})
+    prof = _make_profile(tmp_path, "team", {".claude/agents/team.md": "# team\n"}, by_path=True)
     cli.build(config, Scaffolder(target), prof)
     _commit(target)
 
@@ -194,8 +231,9 @@ def test_update_preserves_the_profile_block_and_overlaid_seed(tmp_path: Path) ->
 
     m = json.loads((target / MANIFEST_PATH).read_text(encoding="utf-8"))
     assert m["profile"]["name"] == "team"  # block survives the update
-    assert ".claude/agents/team.md" in m["profile"]["files"]
-    assert ".claude/agents/team.md" in m["seed"]  # overlay carried forward, not dropped
+    assert (
+        ".claude/agents/team.md" in m["profile"]["files"] and ".claude/agents/team.md" in m["files"]
+    )
     assert (target / ".claude/agents/team.md").read_text(
         encoding="utf-8"
     ) == "# team\n"  # untouched
@@ -203,11 +241,11 @@ def test_update_preserves_the_profile_block_and_overlaid_seed(tmp_path: Path) ->
 
 def test_update_keeps_a_profile_override_of_a_base_managed_file(tmp_path: Path) -> None:
     # A profile that overrides a base *managed* file (INSTRUCTION.md) must keep its content on
-    # update — the base must NOT refresh back over it (the override is now seed/child-owned).
+    # update — the base must NOT refresh back over it (the profile re-applies and wins).
     target = tmp_path / "proj"
     target.mkdir()
     config = _config(target)
-    prof = _make_profile(tmp_path, "team", {"INSTRUCTION.md": "# Team method\n"})
+    prof = _make_profile(tmp_path, "team", {"INSTRUCTION.md": "# Team method\n"}, by_path=True)
     cli.build(config, Scaffolder(target), prof)
     assert (target / "INSTRUCTION.md").read_text(encoding="utf-8") == "# Team method\n"
     _commit(target)
@@ -215,7 +253,7 @@ def test_update_keeps_a_profile_override_of_a_base_managed_file(tmp_path: Path) 
     assert update.run(target, dry_run=False, console=_Console()) == 0
     assert (target / "INSTRUCTION.md").read_text(encoding="utf-8") == "# Team method\n"  # kept
     m = json.loads((target / MANIFEST_PATH).read_text(encoding="utf-8"))
-    assert "INSTRUCTION.md" in m["seed"] and "INSTRUCTION.md" in m["profile"]["files"]
+    assert "INSTRUCTION.md" in m["profile"]["files"] and "INSTRUCTION.md" not in m["seed"]
 
 
 def test_update_does_not_accumulate_stale_default_seed_for_a_profiled_project(
@@ -226,7 +264,8 @@ def test_update_does_not_accumulate_stale_default_seed_for_a_profiled_project(
     # into the manifest on a cross-date update, accruing a stale entry every time.
     target = tmp_path / "proj"
     target.mkdir()
-    cli.build(_config(target), Scaffolder(target), _make_profile(tmp_path, "team", {"x.md": "x\n"}))
+    prof = _make_profile(tmp_path, "team", {"x.md": "x\n"}, by_path=True)
+    cli.build(_config(target), Scaffolder(target), prof)
     # Simulate an earlier scaffold: re-date the bootstrap RFC on disk + in the manifest.
     rfc_dir = target / "docs/rfc/active"
     [boot] = list(rfc_dir.glob("*-adopt-agent-native-setup.md"))
@@ -243,7 +282,118 @@ def test_update_does_not_accumulate_stale_default_seed_for_a_profiled_project(
     nm = json.loads((target / MANIFEST_PATH).read_text(encoding="utf-8"))
     adopts = [f for f in nm["files"] if f.endswith("-adopt.md") or "adopt-agent-native" in f]
     assert len(adopts) == 1  # exactly one bootstrap RFC tracked — no stale carry-forward
-    assert "x.md" in nm["seed"]  # the profile overlay IS still preserved
+    assert "x.md" in nm["files"]  # the profile overlay IS still preserved (managed)
+
+
+# --- Phase 2: the profile-update path -------------------------------------------------------
+
+
+def test_update_refreshes_a_managed_profile_file_on_a_compatible_bump(tmp_path: Path) -> None:
+    # The headline: ship a new (compatible) profile version, and `update` pulls the new file.
+    prof = _make_profile(tmp_path, "team", {"docs/house.md": "v1\n"}, version="0.1.0", by_path=True)
+    target = tmp_path / "proj"
+    target.mkdir()
+    cli.build(_config(target), Scaffolder(target), prof)
+    _commit(target)
+
+    _bump_profile(prof.root, version="0.1.1", files={"docs/house.md": "v2\n"})  # same 0.1 series
+    assert update.run(target, dry_run=False, console=_Console()) == 0
+
+    assert (target / "docs/house.md").read_text(encoding="utf-8") == "v2\n"  # refreshed
+    m = json.loads((target / MANIFEST_PATH).read_text(encoding="utf-8"))
+    assert m["profile"]["version"] == "0.1.1"  # new version recorded
+
+
+def test_update_refreshes_a_profile_override_of_a_base_seed_file(tmp_path: Path) -> None:
+    # Regression: a profile can *manage* a file the base ships as seed (e.g. README.md). The
+    # managed overlay must clear the base's seed mark, or a new profile version never refreshes.
+    prof = _make_profile(
+        tmp_path, "team", {"README.md": "team v1\n"}, version="0.1.0", by_path=True
+    )
+    target = tmp_path / "proj"
+    target.mkdir()
+    cli.build(_config(target), Scaffolder(target), prof)
+    m = json.loads((target / MANIFEST_PATH).read_text(encoding="utf-8"))
+    assert "README.md" not in m["seed"]  # the managed overlay overrode the base seed mark
+    assert "README.md" in m["profile"]["files"]
+    _commit(target)
+
+    _bump_profile(prof.root, version="0.1.1", files={"README.md": "team v2\n"})
+    assert update.run(target, dry_run=False, console=_Console()) == 0
+    assert (target / "README.md").read_text(
+        encoding="utf-8"
+    ) == "team v2\n"  # refreshed, not frozen
+
+
+def test_update_reports_an_edited_profile_file_as_a_conflict(tmp_path: Path) -> None:
+    # A profile file the user edited is never clobbered — it's surfaced as a conflict instead.
+    prof = _make_profile(tmp_path, "team", {"docs/house.md": "v1\n"}, version="0.1.0", by_path=True)
+    target = tmp_path / "proj"
+    target.mkdir()
+    cli.build(_config(target), Scaffolder(target), prof)
+    (target / "docs/house.md").write_text("my own edit\n", encoding="utf-8")
+    _commit(target)
+
+    _bump_profile(prof.root, version="0.1.1", files={"docs/house.md": "v2\n"})
+    console = _Console()
+    assert update.run(target, dry_run=False, console=console) == 0
+    assert (target / "docs/house.md").read_text(encoding="utf-8") == "my own edit\n"  # kept
+    assert "docs/house.md" in console.text  # surfaced for the user to reconcile
+
+
+def test_update_does_not_refresh_a_seed_profile_file(tmp_path: Path) -> None:
+    # A file listed in the profile's `seed` is write-once — a new version does NOT touch it.
+    prof = _make_profile(
+        tmp_path,
+        "team",
+        {"starter.md": "v1\n"},
+        version="0.1.0",
+        seed=("starter.md",),
+        by_path=True,
+    )
+    target = tmp_path / "proj"
+    target.mkdir()
+    cli.build(_config(target), Scaffolder(target), prof)
+    _commit(target)
+
+    _bump_profile(prof.root, version="0.1.1", files={"starter.md": "v2\n"})
+    assert update.run(target, dry_run=False, console=_Console()) == 0
+    assert (target / "starter.md").read_text(encoding="utf-8") == "v1\n"  # frozen, not refreshed
+
+
+def test_a_breaking_profile_bump_gates_then_proceeds_with_yes(tmp_path: Path) -> None:
+    prof = _make_profile(tmp_path, "team", {"docs/house.md": "v1\n"}, version="1.0.0", by_path=True)
+    target = tmp_path / "proj"
+    target.mkdir()
+    cli.build(_config(target), Scaffolder(target), prof)
+    _commit(target)
+
+    _bump_profile(prof.root, version="2.0.0", files={"docs/house.md": "v2\n"})  # breaking (major)
+    console = _Console()
+    assert update.run(target, dry_run=False, console=console, assume_yes=False) == 2  # refused
+    assert "needs confirmation" in console.text and "profile team 1.0.0 → 2.0.0" in console.text
+    assert (target / "docs/house.md").read_text(encoding="utf-8") == "v1\n"  # nothing changed
+
+    assert update.run(target, dry_run=False, console=_Console(), assume_yes=True) == 0  # confirmed
+    assert (target / "docs/house.md").read_text(encoding="utf-8") == "v2\n"
+
+
+def test_update_degrades_when_the_profile_cannot_be_re_resolved(tmp_path: Path) -> None:
+    # If the profile source is gone at update time, the base still updates and the profile's
+    # files are kept frozen, with a warning — not a crash, not a silent drop.
+    prof = _make_profile(tmp_path, "team", {"docs/house.md": "v1\n"}, version="0.1.0", by_path=True)
+    target = tmp_path / "proj"
+    target.mkdir()
+    cli.build(_config(target), Scaffolder(target), prof)
+    _commit(target)
+
+    shutil.rmtree(prof.root)  # the profile directory no longer exists
+    console = _Console()
+    assert update.run(target, dry_run=False, console=console) == 0
+    assert "couldn't be re-resolved" in console.text  # warned
+    assert (target / "docs/house.md").read_text(encoding="utf-8") == "v1\n"  # kept frozen
+    m = json.loads((target / MANIFEST_PATH).read_text(encoding="utf-8"))
+    assert m["profile"]["name"] == "team"  # provenance preserved
 
 
 # --- authoring CLI --------------------------------------------------------------------------

@@ -112,10 +112,11 @@ class Scaffolder:
         self.track_new(link, existed=existed)
         self.recorded[link_rel] = f"symlink:{rel_dest}"
 
-    def overlay(self, rel: str, content: str) -> bool:
-        """Write a profile-composition file at ``rel`` and mark it **seed** (child-owned,
-        never refreshed on update). Unlike ``write`` (first-writer-wins), this *supersedes* a
-        file the base layer wrote in this same run — a later layer is meant to win. A file
+    def overlay(self, rel: str, content: str, *, seed: bool = True) -> bool:
+        """Write a profile-composition file at ``rel``. ``seed=True`` marks it write-once
+        (never refreshed on update); ``seed=False`` makes it managed (refreshed when the
+        profile ships a new version). Unlike ``write`` (first-writer-wins), this *supersedes*
+        a file the base layer wrote in this same run — a later layer is meant to win. A file
         that **pre-existed** this scaffold is the user's: left untouched unless ``--force``,
         keeping the non-destructive contract. Returns ``True`` if it wrote, ``False`` if it
         skipped a pre-existing user file (so the caller knows which paths the profile owns)."""
@@ -139,7 +140,12 @@ class Scaffolder:
         if not created_this_run and not preexisting:
             self.new_paths.append(path)  # a brand-new path this overlay created
         self.record(rel, content)
-        self.seed.add(rel)
+        # The overlay is authoritative for this path: a managed overlay must *clear* a seed
+        # mark the base layer set (e.g. README.md), or it would never refresh on update.
+        if seed:
+            self.seed.add(rel)
+        else:
+            self.seed.discard(rel)
         return True
 
     def rollback(self) -> int:

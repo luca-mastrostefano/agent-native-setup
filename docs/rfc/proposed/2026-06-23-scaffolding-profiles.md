@@ -60,15 +60,19 @@ Reframe the product around one interface: **the wizard becomes the built-in `def
 profile, and the engine resolves, runs, and updates a stack of profiles.** Ship it in two
 phases so the high-value, low-risk core lands first. Seven coupled decisions.
 
-> **Implementation status (Phase 1, started).** The seed-composition core has landed:
-> `profiles.py` (load/resolve/validate a `profile.json` + `templates/` profile), the
-> `Scaffolder.overlay` child-last writer, `--profile <name|path>` composing `extends: default`
-> as seed (§2/§3), the manifest `profile` provenance block, update preserving the block and the
-> overlaid seed files, and the `profile init`/`list` authoring CLI (§7). **Not yet:**
-> `extends: null` (standalone), `profile save` (derive from a project) and `show`, the
-> `url`/fetch + `contributions/` resolution and the trust preview (§6/§7), the `update_source`
-> nudge, and all of Phase 2 (managed, versioned, migratable child layers). `- [ ] Implemented`
-> stays unchecked until the surface is substantially complete; the RFC remains `Proposed`.
+> **Implementation status (Phases 1–2, in progress).** Composition + the per-profile update
+> stream have landed: `profiles.py` (load/resolve/validate a `profile.json` + `templates/`),
+> the `Scaffolder.overlay` child-last writer, `--profile <name|path>` composing `extends:
+> default` (§2/§3), the manifest `profile` provenance block, and the `profile init`/`list`
+> authoring CLI (§7). Profile files are **managed by default** (a `seed` list marks write-once
+> ones); on update the engine **re-resolves the profile from its recorded source and re-applies
+> it**, so managed files refresh / edited ones conflict / removed ones drop — and the profile's
+> own **`version` gates** a breaking bump (§4). An unresolvable profile degrades to frozen with
+> a warning. **Not yet:** `extends: null` (standalone), `profile save`/`show`, the `url`/fetch +
+> `contributions/` resolution and trust preview (§6/§7), the `update_source` nudge, and
+> per-profile *migrations* (renames/removes are handled by classify, but structural moves of
+> user content aren't). `- [ ] Implemented` stays unchecked until that surface is complete; the
+> RFC remains `Proposed`.
 
 ### 1. A profile is a versioned, resolvable generator
 
