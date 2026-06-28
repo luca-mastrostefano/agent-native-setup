@@ -223,17 +223,22 @@ re-asked); `-y` runs use each prompt's default.
 A profile can also contribute **startup instructions**: an `onboarding` list (markdown steps
 folded into the project's one-time, self-deleting `ONBOARDING.md`) and a `session_start` list
 (shell commands appended to the `.claude` SessionStart hooks, run every session — each is
-wrapped so a failure can't disrupt the session). They *merge* into the base's onboarding/hooks
-rather than replacing them.
+wrapped so a failure can't disrupt the session). For an `extends: default` profile they *merge*
+into the base's onboarding/hooks; a standalone profile gets a profile-only `ONBOARDING.md` and a
+minimal hooks `settings.json` of its own. (Use `onboarding` for things templates can't express —
+e.g. *"recreate the `CLAUDE.md` symlink"*.)
 
 **Updating to a new profile version.** Bump the profile's `version` when you change its
 templates. In projects scaffolded from it, `agent-native-setup update` then refreshes those
 files — each is **managed** (refreshed when the user hasn't touched it; reported as a conflict
 to reconcile if they have), unless you list it under `seed` (shipped once, never refreshed). A
-breaking bump (major, or the minor pre-1.0) pauses for confirmation, just like a base update.
-For `update` to pull the new version, the profile must still be resolvable then — the same
-path, or a name in `~/.config/agent-native-setup/profiles/` — otherwise the base still updates
-and the profile's files are left as-is.
+breaking bump (major, or the minor pre-1.0) pauses for confirmation, just like a base update;
+and a bump that introduces **new `session_start` commands** lists them and asks before applying
+(even on a non-breaking bump) — new shell shouldn't start running on a machine unannounced.
+`agent-native-setup update --check` (also wired into the SessionStart hook) **nudges** when a
+newer version exists at the profile's source. For `update` to pull it, the profile must still be
+resolvable then — the same path, or a name in `~/.config/agent-native-setup/profiles/` —
+otherwise the base still updates and the profile's files are left as-is.
 
 > **Still experimental.** `profile save` (derive a
 > profile from an existing project), and fetching a profile straight from a git URL are not

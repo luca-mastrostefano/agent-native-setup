@@ -387,6 +387,7 @@ def run(target: Path, *, dry_run: bool, console: Any, assume_yes: bool = False) 
     profile, degraded_block = _reresolve_profile(old, console)
     profile_change: tuple[str, str, str] | None = None
     update_answers: dict[str, object] | None = None
+    new_hooks: list[str] = []
     if profile is not None:
         old_profile = old.get("profile") or {}
         old_pv = str(old_profile.get("version") or "0.0.0")
@@ -395,6 +396,13 @@ def run(target: Path, *, dry_run: bool, console: Any, assume_yes: bool = False) 
             gated = True
             profile_change = (profile.name, old_pv, profile.version)
         version_changed = version_changed or pdecision != versioning.NOOP
+        # Trust (RFC 2026-06-23 §7): a profile bump can ship *new* SessionStart shell commands
+        # that run every session. Require confirmation before applying them — even on a
+        # non-breaking bump — so new code can't silently start running on the user's machine.
+        old_hooks = set(old_profile.get("session_start", []) or [])
+        new_hooks = [h for h in profile.session_start if h not in old_hooks]
+        if new_hooks:
+            gated = True
         # Replay the scaffold-time answers (never re-prompt, RFC 2026-06-26); a prompt the bumped
         # profile added with no recorded answer falls back to its default.
         recorded = old_profile.get("answers")
@@ -427,6 +435,7 @@ def run(target: Path, *, dry_run: bool, console: Any, assume_yes: bool = False) 
                     agent_steps,
                     assume_yes=assume_yes,
                     profile_change=profile_change,
+                    new_hooks=new_hooks,
                 )
             )
             is not None
@@ -474,6 +483,7 @@ def run(target: Path, *, dry_run: bool, console: Any, assume_yes: bool = False) 
                 dry_run=True,
                 agent_steps=agent_steps,
                 version_changed=version_changed,
+                new_hooks=new_hooks,
             )
             return 0
         apply(plan, sc.recorded, Path(tmp), target)
@@ -497,7 +507,12 @@ def run(target: Path, *, dry_run: bool, console: Any, assume_yes: bool = False) 
             json.dumps(new_manifest, indent=2) + "\n", encoding="utf-8"
         )
     _print_plan(
-        console, plan, dry_run=False, agent_steps=agent_steps, version_changed=version_changed
+        console,
+        plan,
+        dry_run=False,
+        agent_steps=agent_steps,
+        version_changed=version_changed,
+        new_hooks=new_hooks,
     )
     return 0
 
@@ -510,29 +525,43 @@ def _confirm_gate(
     *,
     assume_yes: bool,
     profile_change: tuple[str, str, str] | None = None,
+    new_hooks: Sequence[str] = (),
 ) -> int | None:
-    """Confirm a breaking-boundary update. Returns ``None`` to proceed, or an exit code to
-    stop with (0 = user declined, 2 = needs --yes in a non-interactive run). Names whichever
-    of the base setup and the composed profile actually crossed a breaking boundary."""
+    """Confirm a breaking-boundary update *or* one that introduces new every-session profile
+    commands (RFC 2026-06-23 §7 — trust). Returns ``None`` to proceed, or an exit code to stop
+    with (0 = user declined, 2 = needs --yes in a non-interactive run). Names whichever of the
+    base setup and the composed profile crossed a breaking boundary, and lists any new hooks."""
     changes = []
     if from_v != to_v:
         changes.append(f"setup {from_v} → {to_v}")
     if profile_change is not None:
         name, old_pv, new_pv = profile_change
         changes.append(f"profile {name} {old_pv} → {new_pv}")
-    what = "; ".join(changes) or f"{from_v} → {to_v}"
-    detail = f" with {len(agent_steps)} migration step(s) to apply" if agent_steps else ""
+    breaking = bool(changes) or bool(agent_steps)
+    reasons = list(changes)
+    if agent_steps:
+        reasons.append(f"{len(agent_steps)} migration step(s)")
+    if new_hooks:
+        reasons.append(f"{len(new_hooks)} new every-session command(s)")
+    what = "; ".join(reasons) or f"{from_v} → {to_v}"
+    headline = "Breaking update" if breaking else "Profile update"
+    # Show the actual commands before asking — the whole point of the trust gate is that the
+    # user sees the shell that will run, not just a count.
+    if new_hooks:
+        console.print("[yellow]This update adds SessionStart command(s) that run every session:[/]")
+        for h in new_hooks:
+            console.print(f"  [yellow]$[/] {h}")
     if assume_yes:
         return None
     if not sys.stdin.isatty():
         console.print(
-            f"[red]Breaking update ({what}){detail}[/] needs confirmation. Preview with "
-            "[bold]--dry-run[/], then re-run with [bold]--yes[/] to proceed."
+            f"[red]{headline} ({what})[/] needs confirmation. Preview with [bold]--dry-run[/], "
+            "then re-run with [bold]--yes[/] to proceed."
         )
         return 2
     import questionary
 
-    if questionary.confirm(f"Breaking update ({what}){detail} — proceed?", default=False).ask():
+    if questionary.confirm(f"{headline} ({what}) — proceed?", default=False).ask():
         return None
     console.print("[yellow]Aborted[/] — no changes made.")
     return 0
@@ -545,8 +574,17 @@ def _print_plan(
     dry_run: bool,
     agent_steps: Sequence[Migration] = (),
     version_changed: bool = True,
+    new_hooks: Sequence[str] = (),
 ) -> None:
     verb = "Would" if dry_run else "Did"
+    # In a dry run the trust gate hasn't run, so surface new every-session commands here instead.
+    if dry_run and new_hooks:
+        console.print(
+            "[yellow]Would add SessionStart command(s) that run every session "
+            "(confirmed on apply):[/]"
+        )
+        for h in new_hooks:
+            console.print(f"  [yellow]$[/] {h}")
     if plan.is_noop and not agent_steps:
         msg = "nothing to change" if version_changed else "no drift from the scaffold"
         console.print(f"[green]Already up to date[/] — {msg}.")
@@ -581,6 +619,31 @@ def _print_plan(
         console.print("\n[dim]Review [/][bold]git diff[/][dim] before committing.[/]")
 
 
+def _check_profile_update(old: dict, console: Any) -> None:
+    """Nudge if the composed profile has a newer version at its recorded source (RFC 2026-06-23
+    §6). The ``source`` is the profile's resolution pointer; re-resolving it yields the author's
+    current version — no separate `update_source` field or network call needed. Silent if there's
+    no profile, the source is gone, or it isn't newer (so it never cries wolf from a SessionStart
+    hook)."""
+    block = old.get("profile")
+    if not isinstance(block, dict) or not block.get("source"):
+        return
+    try:
+        prof = profiles.resolve(str(block["source"]))
+    except profiles.ProfileError:
+        prof = None
+    if prof is None:
+        return
+    installed_pv = str(block.get("version") or "0.0.0")
+    pdecision = versioning.decide(installed_pv, prof.version)
+    if pdecision in (versioning.AUTOPILOT, versioning.GATED):
+        flag = " [yellow](breaking)[/]" if pdecision == versioning.GATED else ""
+        console.print(
+            f"[dim]agent-native-setup:[/] profile [bold]{prof.name}[/] {installed_pv} → "
+            f"[bold]{prof.version}[/]{flag} available — run [bold]/update-agent-scaffolding[/]."
+        )
+
+
 def check(target: Path, console: Any) -> int:
     """Print a one-line staleness nudge (or nothing), comparing the project's scaffolding
     version to the latest release. Read-only and **silent on any error** — it runs from a
@@ -591,6 +654,7 @@ def check(target: Path, console: Any) -> int:
         old = _load_manifest(target)
         if old is None:
             return 0  # not a scaffolded project (or pre-manifest) — nothing to say
+        _check_profile_update(old, console)  # local, no network — independent of the base nudge
         installed = str(old.get("version") or "0.0.0")
         if versioning.parse(installed) == versioning.parse("0.0.0"):
             return 0  # no usable scaffolding version (raw-checkout dev) — don't cry wolf

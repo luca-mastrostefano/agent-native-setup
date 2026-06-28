@@ -74,12 +74,16 @@ phases so the high-value, low-risk core lands first. Seven coupled decisions.
 > session), merged into the base generators rather than clobbering them (recorded so a degraded
 > update keeps the hooks; warned when there's no Claude config to hold them). **`extends: null`
 > (standalone)** also landed — the engine skips the default generators and the profile provides
-> everything from scratch (its own AGENTS.md, etc.); onboarding/session_start, which extend the
-> default, are ignored for it. **Not yet:** `profile save`/`show`, the `url`/fetch +
-> `contributions/` resolution and trust preview (§6/§7), the `update_source` nudge, and
-> per-profile *migrations* (renames/removes are handled by classify, but structural moves of
-> user content aren't). `- [ ] Implemented` stays unchecked until that surface is complete; the
-> RFC remains `Proposed`.
+> everything from scratch (its own AGENTS.md, etc.); a standalone profile's onboarding/session_start
+> now apply too (a profile-only `ONBOARDING.md` and a minimal hooks `settings.json`). The
+> **update signal (§6)** and **trust preview (§7)** landed: `update --check` re-resolves the
+> profile from its recorded `source` and nudges when a newer `version` exists (no separate
+> `update_source` field — `source` is the pointer, no network), and an update that introduces
+> *new* `session_start` shell commands lists them and requires confirmation (even on a
+> non-breaking bump) before they run. **Not yet:** `profile save`/`show`, the `url`/fetch +
+> `contributions/` resolution, and per-profile *migrations* (renames/removes are handled by
+> classify, but structural moves of user content aren't). `- [ ] Implemented` stays unchecked
+> until that surface is complete; the RFC remains `Proposed`.
 
 ### 1. A profile is a versioned, resolvable generator
 
