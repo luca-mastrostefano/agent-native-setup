@@ -46,14 +46,14 @@ def _guarded(command: str) -> str:
 
 
 def write_session_start_settings(sc: Scaffolder, session_start: tuple[str, ...]) -> None:
-    """Write a minimal ``.claude/settings.json`` carrying only a standalone profile's guarded
-    SessionStart hooks. A standalone profile (``extends: null``) skips the full `generate` above,
-    so it owns its own permissions/agents — this just gives its every-session commands a home. If
-    the profile also ships its own ``settings.json`` template, that overlay supersedes this."""
-    guarded = [{"type": "command", "command": _guarded(c)} for c in session_start if c.strip()]
-    if not guarded:
-        return
-    settings = {"hooks": {"SessionStart": [{"hooks": guarded}]}}
+    """Write a minimal ``.claude/settings.json`` for a standalone profile (``extends: null``),
+    which skips the full `generate` above. Carries the version-check nudge — so a standalone
+    project still learns when its profile ships a newer version — followed by the profile's own
+    guarded SessionStart hooks. If the profile also ships its own ``settings.json`` template, that
+    overlay supersedes this (single-owner)."""
+    cmds = [{"type": "command", "command": UPDATE_CHECK_COMMAND}]
+    cmds += [{"type": "command", "command": _guarded(c)} for c in session_start if c.strip()]
+    settings = {"hooks": {"SessionStart": [{"hooks": cmds}]}}
     sc.write(".claude/settings.json", json.dumps(settings, indent=2) + "\n")
 
 

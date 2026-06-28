@@ -7,17 +7,27 @@ import os
 import shutil
 from pathlib import Path
 
-from jinja2 import ChainableUndefined, Environment
+from jinja2 import ChainableUndefined, Environment, StrictUndefined
 
 _env = Environment(trim_blocks=True, lstrip_blocks=True, keep_trailing_newline=True)
 # A separate env for evaluating prompt `when` expressions: ChainableUndefined makes *any*
 # missing reference — at any depth, e.g. an answer not gathered yet (`answers.x.y`) — evaluate
 # to a falsy Undefined rather than raising, so a `when` over not-yet-known answers just skips.
 _expr_env = Environment(undefined=ChainableUndefined)
+# Same config as `_env`, but raises on an undefined variable — used by `profile validate` to flag
+# a template typo (e.g. `{{ projetc_name }}`) that normal rendering would silently leave blank.
+_strict_env = Environment(
+    trim_blocks=True, lstrip_blocks=True, keep_trailing_newline=True, undefined=StrictUndefined
+)
 
 
 def render(template: str, **ctx: object) -> str:
     return _env.from_string(template).render(**ctx)
+
+
+def render_strict(template: str, **ctx: object) -> str:
+    """Like ``render`` but raises ``UndefinedError`` on any undefined variable (for validation)."""
+    return _strict_env.from_string(template).render(**ctx)
 
 
 def compile_expr(expr: str) -> object:

@@ -170,7 +170,9 @@ start from "exactly like ours," not just the generic baseline.
 
 ```bash
 agent-native-setup profile init my-team          # scaffold a profile skeleton
+agent-native-setup profile init my-team --standalone  # …or extends: null (from scratch)
 # …add files under my-team/templates/, then:
+agent-native-setup profile validate ./my-team    # check it loads + every template renders
 agent-native-setup my-app -o ./my-app --profile ./my-team
 agent-native-setup profile list                  # profiles in ~/.config/agent-native-setup/profiles
 ```
