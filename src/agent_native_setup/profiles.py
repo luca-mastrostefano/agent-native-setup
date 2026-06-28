@@ -23,7 +23,13 @@ from pathlib import Path
 from typing import Any
 
 from agent_native_setup.config import WizardConfig
-from agent_native_setup.scaffold import Scaffolder, compile_expr, eval_expr, render
+from agent_native_setup.scaffold import (
+    Scaffolder,
+    compile_expr,
+    eval_expr,
+    render,
+    render_strict,
+)
 
 PROFILE_MANIFEST = "profile.json"
 TEMPLATES_DIR = "templates"
@@ -328,13 +334,13 @@ def apply(
 _SKELETON_README = """\
 # {name} — agent-native-setup profile
 
-A profile composed on the built-in `default` setup (`extends: default`). When someone runs
+{intro} When someone runs
 
 ```bash
 agent-native-setup my-app -o ./my-app --profile {source_hint}
 ```
 
-they get the normal scaffold **plus** every file under `templates/`.
+{result}
 
 ## Layout
 
@@ -391,10 +397,11 @@ def _init(args: argparse.Namespace, console: Any) -> int:
         return 2
     (root / TEMPLATES_DIR).mkdir(parents=True)
     (root / TEMPLATES_DIR / ".gitkeep").write_text("", encoding="utf-8")
+    standalone = args.standalone
     manifest = {
         "name": args.name,
         "version": "0.1.0",
-        "extends": "default",
+        "extends": None if standalone else "default",
         "description": "TODO: one line describing this profile",
         "seed": [],
         "onboarding": [],
@@ -402,13 +409,64 @@ def _init(args: argparse.Namespace, console: Any) -> int:
         "prompts": [],
     }
     (root / PROFILE_MANIFEST).write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
+    if standalone:
+        intro = "A **standalone** profile (`extends: null`) — it replaces the default setup."
+        result = (
+            "they get **only** the files under `templates/` (no default scaffold), so ship "
+            "your own `AGENTS.md`, etc."
+        )
+    else:
+        intro = "A profile composed on the built-in `default` setup (`extends: default`)."
+        result = "they get the normal scaffold **plus** every file under `templates/`."
     (root / "README.md").write_text(
-        _SKELETON_README.format(name=args.name, source_hint=f"./{args.name}"), encoding="utf-8"
+        _SKELETON_README.format(
+            name=args.name, source_hint=f"./{args.name}", intro=intro, result=result
+        ),
+        encoding="utf-8",
     )
-    console.print(f"[green]Created profile[/] {root}")
+    console.print(f"[green]Created {'standalone ' if standalone else ''}profile[/] {root}")
     console.print(
         f"  Add files under [bold]{args.name}/templates/[/], then scaffold with "
         f"[bold]--profile {root}[/]."
+    )
+    return 0
+
+
+def _validate(args: argparse.Namespace, console: Any) -> int:
+    """Author-side check: the profile loads (schema/prompts/when), every ``.j2`` template renders,
+    and each ``seed`` entry names a file the profile actually ships — so a broken profile is caught
+    here, not when a consumer scaffolds with it. Rendering is *strict* (the validation context has
+    the same keys as a real scaffold, so an undefined variable can only be a typo that scaffolding
+    would silently leave blank) — catching both Jinja syntax errors and undefined-name typos."""
+    root = Path(args.path).expanduser().resolve()
+    try:
+        prof = load(root)
+    except ProfileError as exc:
+        console.print(f"[red]✗ invalid:[/] {exc}")
+        return 1
+    errors: list[str] = []
+    ctx = _context(
+        WizardConfig(project_name="example", output_dir=root, languages=[]),
+        default_answers(prof),
+    )
+    files = prof.template_files()
+    for out_rel, src in files:
+        if src.suffix == ".j2":
+            try:
+                render_strict(src.read_text(encoding="utf-8"), **ctx)
+            except Exception as exc:  # Jinja syntax error or undefined variable — name the template
+                errors.append(f"template {out_rel}: {exc}")
+    outputs = {out_rel for out_rel, _ in files}
+    for s in sorted(prof.seed):
+        if s not in outputs:
+            errors.append(f"seed entry {s!r} doesn't match any file under templates/")
+    if errors:
+        for e in errors:
+            console.print(f"[red]✗[/] {e}")
+        return 1
+    console.print(
+        f"[green]✓ {prof.name} {prof.version} valid[/] — extends={prof.extends!r}, "
+        f"{len(files)} file(s), {len(prof.prompts)} prompt(s)."
     )
     return 0
 
@@ -443,8 +501,17 @@ def run_cli(argv: list[str], console: Any) -> int:
     init = sub.add_parser("init", help="scaffold a new profile skeleton")
     init.add_argument("name", help="profile name (also the directory name)")
     init.add_argument("-o", "--output", default=".", help="parent directory (default: cwd)")
+    init.add_argument(
+        "--standalone",
+        action="store_true",
+        help="extends: null — start from scratch instead of composing on the default",
+    )
     sub.add_parser("list", help="list profiles in the user profiles dir")
+    val = sub.add_parser("validate", help="check a profile loads and its templates render")
+    val.add_argument("path", help="path to the profile directory")
     args = p.parse_args(argv)
     if args.cmd == "init":
         return _init(args, console)
+    if args.cmd == "validate":
+        return _validate(args, console)
     return _list(console)
