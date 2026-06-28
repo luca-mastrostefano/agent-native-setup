@@ -365,7 +365,8 @@ runs (`-y`) use each prompt's `default`; the answers are recorded and replayed o
 
 - `onboarding` — a list of markdown steps folded into the project's `ONBOARDING.md`, which an
   agent runs **once** on first session (then it self-deletes). Use it for one-time setup
-  ("run `task team-setup`", "request access to X").
+  ("run `task team-setup`", "request access to X") and for things a template can't express —
+  e.g. "recreate the `CLAUDE.md` symlink: `ln -s AGENTS.md CLAUDE.md`".
 - `session_start` — a list of shell commands appended to the `.claude` **SessionStart** hooks,
   run at the start of **every** session (e.g. `echo` a reminder into the agent's context). Each
   is wrapped so a failing command can't disrupt the session.

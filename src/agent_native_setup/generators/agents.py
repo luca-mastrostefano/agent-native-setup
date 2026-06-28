@@ -45,6 +45,18 @@ def _guarded(command: str) -> str:
     return f"{{ {command.strip()} ; }} || true"
 
 
+def write_session_start_settings(sc: Scaffolder, session_start: tuple[str, ...]) -> None:
+    """Write a minimal ``.claude/settings.json`` carrying only a standalone profile's guarded
+    SessionStart hooks. A standalone profile (``extends: null``) skips the full `generate` above,
+    so it owns its own permissions/agents — this just gives its every-session commands a home. If
+    the profile also ships its own ``settings.json`` template, that overlay supersedes this."""
+    guarded = [{"type": "command", "command": _guarded(c)} for c in session_start if c.strip()]
+    if not guarded:
+        return
+    settings = {"hooks": {"SessionStart": [{"hooks": guarded}]}}
+    sc.write(".claude/settings.json", json.dumps(settings, indent=2) + "\n")
+
+
 def _session_list_command(config: WizardConfig) -> str:
     """Command the SessionStart hook runs to inject the live command surface.
 

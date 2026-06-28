@@ -247,19 +247,26 @@ def _steps(config: WizardConfig, profile_steps: tuple[str, ...] = ()) -> list[st
     return steps
 
 
-def generate(config: WizardConfig, sc: Scaffolder, profile_steps: tuple[str, ...] = ()) -> None:
+def generate(
+    config: WizardConfig,
+    sc: Scaffolder,
+    profile_steps: tuple[str, ...] = (),
+    *,
+    base: bool | None = None,
+) -> None:
     # Meaningful when there's tooling to activate, or a profile contributed setup steps; a
-    # bare contract with nothing to do needs no runbook.
-    has_base = config.include_quality or config.include_ci
+    # bare contract with nothing to do needs no runbook. ``base`` overrides the default-flow
+    # detection: a standalone profile passes ``base=False`` so its steps stand alone (the
+    # default's toolchain/baseline steps would reference tooling it never scaffolded).
+    has_base = (config.include_quality or config.include_ci) if base is None else base
     if not has_base and not profile_steps:
         return
     if has_base:
         # The profile's steps extend the default flow (slotted before the bootstrap commit).
         steps = _steps(config, profile_steps)
     else:
-        # No default tooling to activate (a `--no-quality --no-ci` base, or — in future — a
-        # standalone profile that doesn't extend the default): the profile's steps *are* the
-        # onboarding, followed by the self-delete.
+        # No default tooling to activate (a `--no-quality --no-ci` base, or a standalone profile
+        # that doesn't extend the default): the profile's steps *are* the onboarding, then self-delete.
         steps = [*profile_steps, "**Delete this file** — onboarding is done."]
     body = HEADER.format(name=config.project_name)
     body += "\n".join(f"{i}. {step}" for i, step in enumerate(steps, 1)) + "\n"
