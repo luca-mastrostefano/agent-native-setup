@@ -1,0 +1,11 @@
+# {{ project_name }} — team conventions
+
+Service tier: **{{ answers.tier }}**.
+{% if env.existing_project %}
+> This repo already had code when it was scaffolded — the quality gate runs on changed files
+> only, so day one isn't a wall of red.
+{% endif %}
+
+- Open a PR for every change; the `code-reviewer` runs before merge.
+- Keep `docs/architecture/` current when you add a component.
+- Languages in play: {{ languages | join(", ") or "none selected" }}.

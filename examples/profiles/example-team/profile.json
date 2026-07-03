@@ -1,0 +1,18 @@
+{
+  "name": "example-team",
+  "version": "1.0.0",
+  "extends": "default",
+  "description": "A tiny reference profile: a prompt, the env namespace, a seed file, a house agent, and startup hooks.",
+  "seed": ["docs/team-notes.md"],
+  "prompts": [
+    {
+      "name": "tier",
+      "type": "select",
+      "message": "Service tier for this project?",
+      "choices": ["standard", "premium"],
+      "default": "standard"
+    }
+  ],
+  "onboarding": ["Skim `docs/conventions.md` — the team's house rules for this repo."],
+  "session_start": ["echo 'example-team: run make quality before pushing'"]
+}
