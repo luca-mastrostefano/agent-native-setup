@@ -177,6 +177,11 @@ agent-native-setup my-app -o ./my-app --profile ./my-team
 agent-native-setup profile list                  # profiles in ~/.config/agent-native-setup/profiles
 ```
 
+`profile init` also drops an **`AGENTS.md`** at the profile root (and a `README.md`) — a contract
+that lets an assistant help you *build* the profile. Those root files are **meta**: only what's
+under `templates/` ever ships, so your notes/scratch/harness live at the root and never leak into
+scaffolded projects.
+
 A profile is a directory with a `profile.json` and a `templates/` tree. A full example:
 
 ```json

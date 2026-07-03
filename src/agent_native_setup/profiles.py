@@ -389,6 +389,33 @@ confirmation. For `update` to pull your changes, the profile must still be resol
 Add your files under `templates/`, then point `--profile` at this directory.
 """
 
+_SKELETON_AGENTS = """\
+# Building the {name} profile — agent contract
+
+You're helping build an **agent-native-setup profile** in this directory. A profile is just two
+things: `profile.json` (its config) and `templates/` (the files it ships into scaffolded
+projects). **Everything else here — including this file — is ignored by the profile**; it's
+scratch/harness for building it, so keep your notes, specs, and working files at the root, not
+under `templates/`. See [`README.md`](./README.md) for the full field reference.
+
+## Rules
+
+- **Deliverables go in `templates/`.** A file at `templates/foo/bar.md` lands at `foo/bar.md` in
+  every project scaffolded from this profile. Your own scratch stays **outside** `templates/` so
+  it never ships.
+- **Use `.j2` for anything project-specific.** A file ending in `.j2` is rendered (Jinja) with
+  `project_name` / `slug` / `description` / `languages`, the profile's `answers.<name>`, and an
+  `env.<name>` namespace (detected facts) — then the `.j2` is stripped. Everything else ships
+  verbatim (so a literal `${{{{ ... }}}}` is safe).
+- **Mark write-once files as `seed`** in `profile.json` (a starter README, say): seed files are
+  shipped once and never overwritten by an update. Everything else under `templates/` is
+  *managed* — refreshed when the profile ships a new `version`.
+- **`extends`**: `"default"` composes on the built-in setup; `null` is standalone (from scratch —
+  then ship the project's own `AGENTS.md` under `templates/AGENTS.md`, distinct from *this* file).
+- **Before calling it done, run `agent-native-setup profile validate .`** and fix every finding —
+  it loads the profile, strict-renders every template (catching typos), and checks `seed` entries.
+"""
+
 
 def _init(args: argparse.Namespace, console: Any) -> int:
     root = Path(args.output).expanduser().resolve() / args.name
@@ -424,11 +451,15 @@ def _init(args: argparse.Namespace, console: Any) -> int:
         ),
         encoding="utf-8",
     )
+    # An agent contract for *building* the profile: it lives at the profile root (not under
+    # templates/), so it's meta — never shipped — and lets an assistant help author the profile.
+    (root / "AGENTS.md").write_text(_SKELETON_AGENTS.format(name=args.name), encoding="utf-8")
     console.print(f"[green]Created {'standalone ' if standalone else ''}profile[/] {root}")
     console.print(
-        f"  Add files under [bold]{args.name}/templates/[/], then scaffold with "
-        f"[bold]--profile {root}[/]."
+        f"  Add files under [bold]{args.name}/templates/[/], validate with "
+        f"[bold]profile validate {root}[/], then scaffold with [bold]--profile {root}[/]."
     )
+    console.print("  [dim]AGENTS.md guides an assistant building it; README.md has the details.[/]")
     return 0
 
 

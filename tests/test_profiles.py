@@ -1146,10 +1146,27 @@ def test_profile_init_scaffolds_a_skeleton(tmp_path: Path) -> None:
     manifest = json.loads((root / "profile.json").read_text(encoding="utf-8"))
     assert manifest["name"] == "myteam" and manifest["extends"] == "default"
     assert (root / "templates").is_dir() and (root / "README.md").exists()
+    # An agent contract for *building* the profile ships at the root (meta, never shipped).
+    assert (root / "AGENTS.md").exists() and not (root / "templates" / "AGENTS.md").exists()
     # It's immediately loadable as a (empty) profile.
     assert profiles.load(root).name == "myteam"
     # Re-running onto an existing dir refuses rather than clobbering.
     assert cli.main(["profile", "init", "myteam", "-o", str(tmp_path)]) == 2
+
+
+def test_init_harness_files_are_meta_never_scaffolded(tmp_path: Path) -> None:
+    # The root-level harness (AGENTS.md/README.md) guides the author; it's not part of the
+    # profile — only files under templates/ are — so a scaffold never ships it.
+    assert cli.main(["profile", "init", "team", "-o", str(tmp_path)]) == 0
+    prof = profiles.load(tmp_path / "team")
+    shipped = [rel for rel, _ in prof.template_files()]
+    assert "AGENTS.md" not in shipped and "README.md" not in shipped  # harness is meta
+    target = tmp_path / "proj"
+    target.mkdir()
+    cli.build(_config(target), Scaffolder(target), prof)
+    m = json.loads((target / MANIFEST_PATH).read_text(encoding="utf-8"))
+    assert "AGENTS.md" not in m["profile"]["files"]  # not owned by the profile
+    assert "README.md" not in m["profile"]["files"]
 
 
 def test_profile_init_standalone_writes_extends_null(tmp_path: Path) -> None:
