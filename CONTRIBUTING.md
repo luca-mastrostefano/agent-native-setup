@@ -14,3 +14,9 @@
 - The change traces directly to the task — no drive-by edits.
 - It's verified by a test or an explicit check.
 - Linters and hooks pass.
+
+## Contributing a profile
+
+Profiles let a team or the community ship their own agent-native setup. To author one — or
+contribute an example — see [`examples/profiles/README.md`](./examples/profiles/README.md).
+Every example must pass `agent-native-setup profile validate` (CI enforces it).
