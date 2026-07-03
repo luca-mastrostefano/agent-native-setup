@@ -7,16 +7,20 @@ import os
 import shutil
 from pathlib import Path
 
-from jinja2 import ChainableUndefined, Environment, StrictUndefined
+from jinja2 import ChainableUndefined, StrictUndefined
+from jinja2.sandbox import SandboxedEnvironment
 
-_env = Environment(trim_blocks=True, lstrip_blocks=True, keep_trailing_newline=True)
+# Sandboxed (RFC 2026-07-03-profile-safety §3): a profile template is untrusted input, so block
+# attribute/method access that could reach Python at render time. The base scaffold's own templates
+# render clean under the sandbox (verified by the suite); the cost is only render-time escape.
+_env = SandboxedEnvironment(trim_blocks=True, lstrip_blocks=True, keep_trailing_newline=True)
 # A separate env for evaluating prompt `when` expressions: ChainableUndefined makes *any*
 # missing reference — at any depth, e.g. an answer not gathered yet (`answers.x.y`) — evaluate
 # to a falsy Undefined rather than raising, so a `when` over not-yet-known answers just skips.
-_expr_env = Environment(undefined=ChainableUndefined)
+_expr_env = SandboxedEnvironment(undefined=ChainableUndefined)
 # Same config as `_env`, but raises on an undefined variable — used by `profile validate` to flag
 # a template typo (e.g. `{{ projetc_name }}`) that normal rendering would silently leave blank.
-_strict_env = Environment(
+_strict_env = SandboxedEnvironment(
     trim_blocks=True, lstrip_blocks=True, keep_trailing_newline=True, undefined=StrictUndefined
 )
 

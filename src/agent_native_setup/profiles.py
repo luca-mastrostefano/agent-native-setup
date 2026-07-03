@@ -114,6 +114,9 @@ class Profile:
             "version": self.version,
             "extends": self.extends,
             "source": self.source,
+            # The derived safety tier (RFC 2026-07-03-profile-safety §4), so `update` can re-derive
+            # and gate a safe → unsafe transition — new code the user hasn't consented to.
+            "safety": classify_safety(self)[0],
         }
         # Recorded so a degraded update (profile gone) can keep the SessionStart hooks instead
         # of regenerating settings.json without them. Onboarding is one-time/transient, so it
@@ -318,8 +321,17 @@ def apply(
     user's own file pre-existed, or a ``.j2`` that rendered empty, is not claimed), so the
     project manifest records exactly them and ``update`` re-applies the profile to refresh them."""
     ctx = _context(config, answers)
+    target_root = sc.target.resolve()
     owned: list[str] = []
     for out_rel, src in profile.template_files():
+        # Path confinement (RFC 2026-07-03-profile-safety §2): refuse an output that escapes the
+        # project before writing. `out_rel` comes from `relative_to(templates/)` so it can't itself
+        # be absolute or contain `..`; the real vector this catches is a **symlink parent already in
+        # the target** that redirects the write outside (resolve() follows it). Defensive against
+        # the others too.
+        dest = (sc.target / out_rel).resolve()
+        if dest != target_root and target_root not in dest.parents:
+            raise ProfileError(f"profile output path escapes the project: {out_rel!r}")
         raw = src.read_text(encoding="utf-8")
         if src.name.endswith(".j2"):
             content = render(raw, **ctx)
@@ -498,10 +510,16 @@ def _validate(args: argparse.Namespace, console: Any) -> int:
         for e in errors:
             console.print(f"[red]✗[/] {e}")
         return 1
+    tier, reasons = classify_safety(prof)
     console.print(
         f"[green]✓ {prof.name} {prof.version} valid[/] — extends={prof.extends!r}, "
-        f"{len(files)} file(s), {len(prof.prompts)} prompt(s)."
+        f"{len(files)} file(s), {len(prof.prompts)} prompt(s), safety: [bold]{tier}[/]."
     )
+    if reasons:
+        console.print(
+            f"  [dim]{tier} because:[/] {'; '.join(reasons[:4])}"
+            + (" …" if len(reasons) > 4 else "")
+        )
     return 0
 
 
@@ -511,8 +529,8 @@ _SETUP_ADD_DIRS = (".claude/", "tools/checks/")
 # Date-stamped, regenerated fresh per project → non-deterministic; never a real delta.
 _BOOTSTRAP_RFC = re.compile(r"docs/rfc/.+-adopt-agent-native-setup\.md$")
 # Writing any of these is code-by-proxy (RFC 2026-07-03-ecosystem-core §4) → the profile is
-# "unsafe". This is a disclosure heuristic, NOT the security boundary (the derived classifier is
-# unbuilt): a non-match still discloses "assume code-carrying" below, never claims inert.
+# "unsafe" (see classify_safety). Not exhaustive by design — the classifier fails closed, so any
+# path that's neither a known sink nor known-inert is treated as unsafe anyway.
 _SINK_PREFIXES = (".git/hooks/", ".github/workflows/", ".claude/settings.json", ".vscode/")
 _SINK_NAMES = (
     "Makefile",
@@ -529,6 +547,37 @@ _SINK_NAMES = (
     "tox.ini",
     ".gitattributes",
 )
+# Provably-inert output paths — the only ones that let a profile earn a `safe` verdict. Kept
+# minimal; the set grows to earn more profiles `safe` (RFC 2026-07-03-profile-safety §1, Open Qs).
+_INERT_SUFFIXES = (".md", ".txt", ".rst")
+_INERT_NAMES = (".gitignore", ".editorconfig", "LICENSE", "LICENSE.md", "NOTICE")
+
+
+def _is_sink(out_rel: str) -> bool:
+    return out_rel.startswith(_SINK_PREFIXES) or out_rel.rsplit("/", 1)[-1] in _SINK_NAMES
+
+
+def _is_inert(out_rel: str) -> bool:
+    return out_rel.endswith(_INERT_SUFFIXES) or out_rel.rsplit("/", 1)[-1] in _INERT_NAMES
+
+
+def classify_safety(profile: Profile) -> tuple[str, list[str]]:
+    """Derive a profile's safety tier from its *content* (RFC 2026-07-03-profile-safety §1) — never
+    a declared field. ``"unsafe"`` when it carries code: ``session_start`` hooks (every session),
+    agent-executed ``onboarding`` steps, or a template that writes an execution sink or a
+    not-provably-inert path (allowlist + fail-closed: unknown ⇒ unsafe). Returns ``(tier, reasons)``
+    with the concrete reasons, so consent (once fetch gates on it) can be informed."""
+    reasons: list[str] = []
+    if profile.session_start:
+        reasons.append(f"{len(profile.session_start)} session_start hook(s) run every session")
+    if profile.onboarding:
+        reasons.append(f"{len(profile.onboarding)} onboarding step(s) are agent-executed")
+    for out_rel, _ in profile.template_files():
+        if _is_sink(out_rel):
+            reasons.append(f"writes an execution sink: {out_rel}")
+        elif not _is_inert(out_rel):
+            reasons.append(f"writes a not-provably-inert file: {out_rel}")
+    return ("unsafe" if reasons else "safe", reasons)
 
 
 def _parameterize(
@@ -637,9 +686,6 @@ def _save(args: argparse.Namespace, console: Any) -> int:
         if is_seed:
             seed_list.append(rel)
 
-    unsafe = bool(onboarding_steps) or any(
-        rel.startswith(_SINK_PREFIXES) or rel.rsplit("/", 1)[-1] in _SINK_NAMES for rel in captured
-    )
     pj = {
         "name": args.name,
         "version": "0.1.0",
@@ -678,7 +724,7 @@ def _save(args: argparse.Namespace, console: Any) -> int:
         )
     if excluded:
         console.print(f"  [dim]skipped (regenerated per project):[/] {', '.join(excluded)}")
-    tier = "unsafe — code-carrying" if unsafe else "assume code-carrying until the classifier lands"
+    tier, _ = classify_safety(load(out))  # the real classifier on the written draft
     console.print(f"  [yellow]safety:[/] {tier}. Review, then run [bold]profile validate {out}[/].")
     return 0
 
