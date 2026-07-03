@@ -14,7 +14,7 @@ import pytest
 from agent_native_setup import cli, profiles, update, update_check
 from agent_native_setup.config import WizardConfig
 from agent_native_setup.manifest import MANIFEST_PATH
-from agent_native_setup.scaffold import Scaffolder
+from agent_native_setup.scaffold import Scaffolder, render
 
 
 class _Console:
@@ -215,7 +215,9 @@ def test_build_with_profile_records_the_block_and_owned_files(tmp_path: Path) ->
 
     m = json.loads((target / MANIFEST_PATH).read_text(encoding="utf-8"))
     block = m["profile"]
-    assert {k: block[k] for k in ("name", "version", "extends", "source")} == prof.manifest_block()
+    keys = ("name", "version", "extends", "source", "safety")
+    assert {k: block[k] for k in keys} == prof.manifest_block()
+    assert block["safety"] == "safe"  # only a .md agent, no hooks → derived safe
     assert block["files"] == [".claude/agents/team.md"]  # exactly what the profile owns
     assert ".claude/agents/team.md" in m["files"]
     assert ".claude/agents/team.md" not in m["seed"]  # managed by default (refreshed on update)
@@ -1135,6 +1137,100 @@ def test_degraded_update_of_a_standalone_project_does_not_regenerate_the_default
     assert (target / "AGENTS.md").read_text(encoding="utf-8") == "v1\n"  # frozen, kept
     assert not (target / "INSTRUCTION.md").exists()  # default NOT leaked in
     assert not (target / ".claude").exists()
+
+
+# --- safety: derived classifier, sandbox, path confinement, update re-gate ------------------
+
+
+def test_classify_safety_declarative_is_safe(tmp_path: Path) -> None:
+    prof = _make_profile(
+        tmp_path, "d", {"docs/notes.md.j2": "{{ project_name }}\n", "x.txt": "hi\n"}
+    )
+    assert profiles.classify_safety(prof) == ("safe", [])
+
+
+def test_classify_safety_hooks_sinks_and_unknown_are_unsafe(tmp_path: Path) -> None:
+    prof = _make_profile(
+        tmp_path,
+        "u",
+        {".github/workflows/ci.yml": "on: push\n", "weird.xyz": "x\n"},
+        session_start=("echo hi",),
+        onboarding=("do it",),
+    )
+    tier, reasons = profiles.classify_safety(prof)
+    assert tier == "unsafe"
+    assert any("session_start" in r for r in reasons)
+    assert any("onboarding" in r for r in reasons)
+    assert any("execution sink" in r and "ci.yml" in r for r in reasons)
+    assert any("not-provably-inert" in r and "weird.xyz" in r for r in reasons)  # fail-closed
+
+
+def test_manifest_records_the_derived_safety_tier(tmp_path: Path) -> None:
+    target = tmp_path / "proj"
+    target.mkdir()
+    prof = _make_profile(tmp_path, "u", {"Makefile": "all:\n\techo hi\n"})  # a sink → unsafe
+    cli.build(_config(target), Scaffolder(target), prof)
+    m = json.loads((target / MANIFEST_PATH).read_text(encoding="utf-8"))
+    assert m["profile"]["safety"] == "unsafe"
+
+
+def test_sandboxed_render_blocks_python_escape() -> None:
+    # a hostile profile template can't reach Python internals to execute code
+    assert render("{{ ''.__class__ }}").strip() == ""  # attribute denied → Undefined, no leak
+    with pytest.raises(Exception):  # noqa: B017 - the escape chain raises SecurityError
+        render("{{ ''.__class__.__mro__[1].__subclasses__() }}")
+
+
+def test_apply_refuses_an_output_path_that_escapes_the_target(tmp_path: Path) -> None:
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    target = tmp_path / "proj"
+    target.mkdir()
+    (target / "sub").symlink_to(outside)  # a symlink in the target that points outside it
+    prof = _make_profile(
+        tmp_path, "evil", {"sub/evil.md": "x\n"}
+    )  # would write through the symlink
+    with pytest.raises(profiles.ProfileError, match="escapes"):
+        profiles.apply(prof, _config(target), Scaffolder(target), {})
+
+
+def test_update_gates_a_safe_to_unsafe_flip(tmp_path: Path) -> None:
+    # A profile that flips safe → unsafe via something the hook-check misses (a new sink file)
+    # still requires confirmation — new code the user hasn't consented to.
+    target = tmp_path / "proj"
+    target.mkdir()
+    prof = _make_profile(tmp_path, "team", {"docs/x.md": "v1\n"}, version="0.1.0", by_path=True)
+    cli.build(_config(target), Scaffolder(target), prof)
+    _commit(target)
+    assert profiles.classify_safety(prof) == ("safe", [])  # only a .md → safe
+
+    _bump_profile(prof.root, version="0.1.1", files={"Makefile": "all:\n\techo hi\n"})  # → unsafe
+    # --dry-run must disclose the flip (the gate message points the user here to review).
+    dry = _Console()
+    assert update.run(target, dry_run=True, console=dry) == 0
+    assert "unsafe" in dry.text
+    console = _Console()
+    assert update.run(target, dry_run=False, console=console) == 2  # blocked without --yes
+    assert "unsafe" in console.text
+    assert update.run(target, dry_run=False, console=_Console(), assume_yes=True) == 0  # consented
+
+
+def test_update_does_not_spuriously_gate_a_pre_safety_manifest(tmp_path: Path) -> None:
+    # A project scaffolded before the safety tier was recorded (no `safety` key) must not get a
+    # spurious safe → unsafe prompt just because the current profile is unsafe.
+    target = tmp_path / "proj"
+    target.mkdir()
+    prof = _make_profile(
+        tmp_path, "team", {"Makefile": "all:\n\techo hi\n"}, version="0.1.0", by_path=True
+    )  # already unsafe
+    cli.build(_config(target), Scaffolder(target), prof)
+    m = json.loads((target / MANIFEST_PATH).read_text(encoding="utf-8"))
+    m["profile"].pop("safety", None)  # simulate a pre-feature manifest
+    (target / MANIFEST_PATH).write_text(json.dumps(m, indent=2) + "\n", encoding="utf-8")
+    _commit(target)
+
+    _bump_profile(prof.root, version="0.1.1", files={"Makefile": "all:\n\techo v2\n"})
+    assert update.run(target, dry_run=False, console=_Console()) == 0  # no spurious safety gate
 
 
 # --- authoring CLI --------------------------------------------------------------------------

@@ -85,9 +85,9 @@ classifier must treat as unsafe:
   unsafe, not safe.** The stage-C/D RFC pins the mechanism (a positive "known-inert" set,
   extension/location heuristics), but the *shape* — allowlist + fail-closed — is decided here.
 
-Also required for the safe tier to be *real*: render with `SandboxedEnvironment` (today we use a
-plain `Environment`, so a hostile template can call Python) and confine output paths (the writer
-today does `path = self.target / rel` with no traversal or symlink-escape guard).
+Also required for the safe tier to be *real*: render with `SandboxedEnvironment` (else a hostile
+template can call Python) and confine output paths (else the writer's `path = self.target / rel`
+has no traversal or symlink-escape guard). **Both landed** in RFC 2026-07-03-profile-safety.
 
 **5. The gate holds across the lifecycle, not just install.** A profile installed *safe* whose
 v2 adds a hook, a plugin, or a sink write must **re-require `--allow-code` on update** (or block),

@@ -184,6 +184,12 @@ scaffolded and then customized, and it extracts an `extends: default` profile fr
 project name parameterized, `seed` status preserved, and symlinks turned into onboarding steps.
 It's read-only on the source and produces a review-ready draft (run `profile validate` on it).
 
+**Safety.** Profile templates are untrusted input, so they render in a **sandbox** (a hostile
+template can't reach Python) and every output path is **confined** to the project (no `../`
+escape). Each profile is classified **safe** or **unsafe** from its content (`session_start` hooks,
+`onboarding` steps, or writing an execution sink like a CI workflow or `Makefile` → unsafe;
+`validate` shows the tier), and an `update` that flips a profile safe → unsafe asks before applying.
+
 `profile init` also drops an **`AGENTS.md`** at the profile root (and a `README.md`) — a contract
 that lets an assistant help you *build* the profile. Those root files are **meta**: only what's
 under `templates/` ever ships, so your notes/scratch/harness live at the root and never leak into

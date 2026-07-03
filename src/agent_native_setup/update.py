@@ -388,6 +388,7 @@ def run(target: Path, *, dry_run: bool, console: Any, assume_yes: bool = False) 
     profile_change: tuple[str, str, str] | None = None
     update_answers: dict[str, object] | None = None
     new_hooks: list[str] = []
+    safety_flip: list[str] = []
     if profile is not None:
         old_profile = old.get("profile") or {}
         old_pv = str(old_profile.get("version") or "0.0.0")
@@ -403,6 +404,14 @@ def run(target: Path, *, dry_run: bool, console: Any, assume_yes: bool = False) 
         new_hooks = [h for h in profile.session_start if h not in old_hooks]
         if new_hooks:
             gated = True
+        # Safety re-gate (RFC 2026-07-03-profile-safety §4): a profile that flips *safe → unsafe*
+        # is introducing code the user hasn't consented to (new onboarding or a new sink file the
+        # hook check above misses). Content-based — needs no provenance.
+        if old_profile.get("safety") == "safe":
+            tier, reasons = profiles.classify_safety(profile)
+            if tier == "unsafe":
+                safety_flip = reasons
+                gated = True
         # Replay the scaffold-time answers (never re-prompt, RFC 2026-06-26); a prompt the bumped
         # profile added with no recorded answer falls back to its default.
         recorded = old_profile.get("answers")
@@ -436,6 +445,7 @@ def run(target: Path, *, dry_run: bool, console: Any, assume_yes: bool = False) 
                     assume_yes=assume_yes,
                     profile_change=profile_change,
                     new_hooks=new_hooks,
+                    safety_flip=safety_flip,
                 )
             )
             is not None
@@ -484,6 +494,7 @@ def run(target: Path, *, dry_run: bool, console: Any, assume_yes: bool = False) 
                 agent_steps=agent_steps,
                 version_changed=version_changed,
                 new_hooks=new_hooks,
+                safety_flip=safety_flip,
             )
             return 0
         apply(plan, sc.recorded, Path(tmp), target)
@@ -513,6 +524,7 @@ def run(target: Path, *, dry_run: bool, console: Any, assume_yes: bool = False) 
         agent_steps=agent_steps,
         version_changed=version_changed,
         new_hooks=new_hooks,
+        safety_flip=safety_flip,
     )
     return 0
 
@@ -526,11 +538,12 @@ def _confirm_gate(
     assume_yes: bool,
     profile_change: tuple[str, str, str] | None = None,
     new_hooks: Sequence[str] = (),
+    safety_flip: Sequence[str] = (),
 ) -> int | None:
     """Confirm a breaking-boundary update *or* one that introduces new every-session profile
-    commands (RFC 2026-06-23 §7 — trust). Returns ``None`` to proceed, or an exit code to stop
-    with (0 = user declined, 2 = needs --yes in a non-interactive run). Names whichever of the
-    base setup and the composed profile crossed a breaking boundary, and lists any new hooks."""
+    commands / flips the profile safe → unsafe (RFC 2026-06-23 §7, 2026-07-03-profile-safety §4 —
+    trust). Returns ``None`` to proceed, or an exit code to stop with (0 = user declined, 2 = needs
+    --yes in a non-interactive run). Names whichever boundary was crossed, and shows the code."""
     changes = []
     if from_v != to_v:
         changes.append(f"setup {from_v} → {to_v}")
@@ -543,14 +556,20 @@ def _confirm_gate(
         reasons.append(f"{len(agent_steps)} migration step(s)")
     if new_hooks:
         reasons.append(f"{len(new_hooks)} new every-session command(s)")
+    if safety_flip:
+        reasons.append("profile now code-carrying (unsafe)")
     what = "; ".join(reasons) or f"{from_v} → {to_v}"
     headline = "Breaking update" if breaking else "Profile update"
-    # Show the actual commands before asking — the whole point of the trust gate is that the
-    # user sees the shell that will run, not just a count.
+    # Show the actual code before asking — the whole point of the trust gate is that the user
+    # sees what will run, not just a count.
     if new_hooks:
         console.print("[yellow]This update adds SessionStart command(s) that run every session:[/]")
         for h in new_hooks:
             console.print(f"  [yellow]$[/] {h}")
+    if safety_flip:
+        console.print("[yellow]This update makes the profile code-carrying (unsafe):[/]")
+        for r in safety_flip:
+            console.print(f"  [yellow]•[/] {r}")
     if assume_yes:
         return None
     if not sys.stdin.isatty():
@@ -575,9 +594,11 @@ def _print_plan(
     agent_steps: Sequence[Migration] = (),
     version_changed: bool = True,
     new_hooks: Sequence[str] = (),
+    safety_flip: Sequence[str] = (),
 ) -> None:
     verb = "Would" if dry_run else "Did"
-    # In a dry run the trust gate hasn't run, so surface new every-session commands here instead.
+    # In a dry run the trust gate hasn't run, so surface new every-session commands and a
+    # safe → unsafe flip here instead — the gate message points the user to --dry-run to review.
     if dry_run and new_hooks:
         console.print(
             "[yellow]Would add SessionStart command(s) that run every session "
@@ -585,6 +606,12 @@ def _print_plan(
         )
         for h in new_hooks:
             console.print(f"  [yellow]$[/] {h}")
+    if dry_run and safety_flip:
+        console.print(
+            "[yellow]Would make the profile code-carrying (unsafe, confirmed on apply):[/]"
+        )
+        for r in safety_flip:
+            console.print(f"  [yellow]•[/] {r}")
     if plan.is_noop and not agent_steps:
         msg = "nothing to change" if version_changed else "no drift from the scaffold"
         console.print(f"[green]Already up to date[/] — {msg}.")
