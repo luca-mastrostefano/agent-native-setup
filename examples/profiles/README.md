@@ -31,6 +31,10 @@ agent-native-setup demo -o /tmp/demo --profile ./examples/profiles/example-team 
 See any profile's generated `AGENTS.md` for the full authoring contract, and the
 [main README's Profiles section](../../README.md#profiles-experimental) for the field reference.
 
+**Already have a customized project?** `agent-native-setup profile save <project> <name>` extracts
+an `extends: default` profile from that project's *delta* from the default (the files you changed
+or added), read-only on the source — a shortcut to a review-ready draft.
+
 ## Contributing a profile here
 
 Open a PR adding `examples/profiles/<name>/`. Keep it **small and declarative** — a focused

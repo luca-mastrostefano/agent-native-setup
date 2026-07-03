@@ -18,6 +18,9 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
+import re
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -502,6 +505,184 @@ def _validate(args: argparse.Namespace, console: Any) -> int:
     return 0
 
 
+# Files a saved profile captures only when user-*added* under these prefixes — dirs the scaffold
+# owns exclusively, so a new file there is house content, not the project's own source.
+_SETUP_ADD_DIRS = (".claude/", "tools/checks/")
+# Date-stamped, regenerated fresh per project → non-deterministic; never a real delta.
+_BOOTSTRAP_RFC = re.compile(r"docs/rfc/.+-adopt-agent-native-setup\.md$")
+# Writing any of these is code-by-proxy (RFC 2026-07-03-ecosystem-core §4) → the profile is
+# "unsafe". This is a disclosure heuristic, NOT the security boundary (the derived classifier is
+# unbuilt): a non-match still discloses "assume code-carrying" below, never claims inert.
+_SINK_PREFIXES = (".git/hooks/", ".github/workflows/", ".claude/settings.json", ".vscode/")
+_SINK_NAMES = (
+    "Makefile",
+    "Taskfile.yml",
+    "taskfile.yml",
+    "justfile",
+    ".pre-commit-config.yaml",
+    ".envrc",
+    "pyproject.toml",
+    "package.json",
+    "conftest.py",
+    "sitecustomize.py",
+    "setup.cfg",
+    "tox.ini",
+    ".gitattributes",
+)
+
+
+def _parameterize(
+    content: bytes, name: str, slug: str, rel: str, subs: list[tuple[str, str, int]]
+) -> tuple[str | None, str]:
+    """Return ``(text_or_None, template_name)``. Word-boundary-substitutes the project name/slug
+    with ``{{ project_name }}`` / ``{{ slug }}`` (never a substring), recording each in ``subs``.
+    A parameterized file gets a ``.j2`` suffix; a binary/undecodable file ships verbatim."""
+    try:
+        text = content.decode("utf-8")
+    except UnicodeDecodeError:
+        return None, rel  # binary → verbatim, no rendering
+    tokens = [(name, "{{ project_name }}")]
+    if slug and slug != name:  # if slug == name we can't tell which token a match wants → use name
+        tokens.append((slug, "{{ slug }}"))
+    total = 0
+    for needle, token in tokens:
+        if not needle:
+            continue
+        pat = re.compile(r"\b" + re.escape(needle) + r"\b")
+        n = len(pat.findall(text))
+        if n:
+            text = pat.sub(token, text)
+            subs.append((rel, token, n))
+            total += n
+    return text, (rel + ".j2" if total else rel)
+
+
+def _save(args: argparse.Namespace, console: Any) -> int:
+    """Extract an ``extends: default`` profile from a scaffolded project's *delta* from the default
+    (RFC 2026-07-03-profile-save). Read-only on the source; writes a review-ready draft."""
+    from agent_native_setup import manifest as manifest_mod
+    from agent_native_setup import update
+
+    project = Path(args.project).expanduser().resolve()
+    old = update._load_manifest(project)
+    if old is None:
+        console.print(
+            f"[red]No {manifest_mod.MANIFEST_PATH} in {project}[/] — `profile save` needs a "
+            "project that agent-native-setup scaffolded."
+        )
+        return 2
+    out = Path(args.output).expanduser().resolve() / args.name
+    if out.exists():
+        console.print(f"[red]{out} already exists[/] — choose another name or location.")
+        return 2
+
+    files: dict[str, str] = old.get("files", {})
+    seed_set = set(old.get("seed", []))
+    captured: dict[str, tuple[bytes, bool]] = {}  # rel -> (content, is_seed)
+    onboarding_steps: list[str] = []
+    excluded: list[str] = []
+
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp_path = Path(tmp)
+        config = update._config_from_manifest(old, tmp_path)
+        update._regenerate(config, tmp_path)  # the default baseline the project was born from
+
+        for rel in sorted(files):
+            if rel == manifest_mod.MANIFEST_PATH:
+                continue
+            if _BOOTSTRAP_RFC.search(rel):  # non-deterministic → not a real delta
+                excluded.append(rel)
+                continue
+            pf = project / rel
+            if pf.is_symlink():  # templates can't carry a symlink → recreate it via onboarding
+                target = os.readlink(pf)
+                onboarding_steps.append(f"Recreate the `{rel}` symlink: `ln -s {target} {rel}`")
+                continue
+            if not pf.is_file():
+                continue  # user deleted it — nothing to capture
+            content = pf.read_bytes()
+            base = tmp_path / rel
+            if base.is_file() and base.read_bytes() == content:
+                continue  # pristine → the default provides it; the profile extends it
+            captured[rel] = (content, rel in seed_set)  # edited → the user's version
+
+        # User-added files, only where the scaffold owns the directory (else it's their source).
+        transient = {"ONBOARDING.md", ".claude/commands/onboard.md"}  # one-time, self-deleting
+        added_elsewhere: list[str] = []
+        for pf in sorted(project.rglob("*")):
+            if not pf.is_file() or pf.is_symlink():
+                continue
+            rel = pf.relative_to(project).as_posix()
+            if rel in files or rel == manifest_mod.MANIFEST_PATH or rel.startswith(".git/"):
+                continue
+            if rel in transient:
+                continue  # never capture the transient first-run apparatus
+            if any(rel.startswith(d) for d in _SETUP_ADD_DIRS):
+                captured[rel] = (pf.read_bytes(), False)  # house content → managed
+            else:
+                added_elsewhere.append(rel)
+
+    # Write the profile: render captured files into templates/, parameterizing name/slug.
+    (out / TEMPLATES_DIR).mkdir(parents=True)
+    subs: list[tuple[str, str, int]] = []
+    seed_list: list[str] = []
+    for rel, (content, is_seed) in sorted(captured.items()):
+        text, tmpl_name = _parameterize(content, config.project_name, config.slug, rel, subs)
+        dst = out / TEMPLATES_DIR / tmpl_name
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        if text is None:
+            dst.write_bytes(content)
+        else:
+            dst.write_text(text, encoding="utf-8")
+        if is_seed:
+            seed_list.append(rel)
+
+    unsafe = bool(onboarding_steps) or any(
+        rel.startswith(_SINK_PREFIXES) or rel.rsplit("/", 1)[-1] in _SINK_NAMES for rel in captured
+    )
+    pj = {
+        "name": args.name,
+        "version": "0.1.0",
+        "extends": "default",
+        "description": f"TODO: describe this profile (saved from {project.name}).",
+        "seed": sorted(seed_list),
+        "onboarding": onboarding_steps,
+        "session_start": [],
+        "prompts": [],
+    }
+    (out / PROFILE_MANIFEST).write_text(json.dumps(pj, indent=2) + "\n", encoding="utf-8")
+    (out / "README.md").write_text(
+        _SKELETON_README.format(
+            name=args.name,
+            source_hint=f"./{args.name}",
+            intro="A profile composed on the built-in `default` setup (`extends: default`).",
+            result="they get the normal scaffold **plus** every file under `templates/`.",
+        ),
+        encoding="utf-8",
+    )
+    (out / "AGENTS.md").write_text(_SKELETON_AGENTS.format(name=args.name), encoding="utf-8")
+
+    console.print(f"[green]Saved profile[/] {out} — {len(captured)} file(s) from the delta.")
+    if seed_list:
+        console.print(f"  [dim]seed (write-once):[/] {', '.join(seed_list)}")
+    for rel, token, n in subs:
+        console.print(f"  [cyan]param[/] {rel}: {n} -> {token}")
+    for step in onboarding_steps:
+        console.print(f"  [magenta]onboarding[/] {step}")
+    if added_elsewhere:
+        console.print(
+            f"  [yellow]not captured[/] ({len(added_elsewhere)} added file(s) outside setup dirs — "
+            "review and copy any house content into templates/ by hand): "
+            + ", ".join(added_elsewhere[:8])
+            + (" …" if len(added_elsewhere) > 8 else "")
+        )
+    if excluded:
+        console.print(f"  [dim]skipped (regenerated per project):[/] {', '.join(excluded)}")
+    tier = "unsafe — code-carrying" if unsafe else "assume code-carrying until the classifier lands"
+    console.print(f"  [yellow]safety:[/] {tier}. Review, then run [bold]profile validate {out}[/].")
+    return 0
+
+
 def _list(console: Any) -> int:
     found = (
         sorted(p.parent for p in USER_PROFILE_DIR.glob(f"*/{PROFILE_MANIFEST}"))
@@ -540,9 +721,15 @@ def run_cli(argv: list[str], console: Any) -> int:
     sub.add_parser("list", help="list profiles in the user profiles dir")
     val = sub.add_parser("validate", help="check a profile loads and its templates render")
     val.add_argument("path", help="path to the profile directory")
+    save = sub.add_parser("save", help="extract a profile from a scaffolded project's delta")
+    save.add_argument("project", help="path to a project agent-native-setup scaffolded")
+    save.add_argument("name", help="profile name (also the directory name)")
+    save.add_argument("-o", "--output", default=".", help="parent directory (default: cwd)")
     args = p.parse_args(argv)
     if args.cmd == "init":
         return _init(args, console)
     if args.cmd == "validate":
         return _validate(args, console)
+    if args.cmd == "save":
+        return _save(args, console)
     return _list(console)

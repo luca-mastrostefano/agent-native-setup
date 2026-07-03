@@ -80,7 +80,9 @@ phases so the high-value, low-risk core lands first. Seven coupled decisions.
 > profile from its recorded `source` and nudges when a newer `version` exists (no separate
 > `update_source` field — `source` is the pointer, no network), and an update that introduces
 > *new* `session_start` shell commands lists them and requires confirmation (even on a
-> non-breaking bump) before they run. **Not yet:** `profile save`/`show`, the `url`/fetch +
+> non-breaking bump) before they run. **`profile save`** also landed (RFC 2026-07-03-profile-save):
+> it extracts a composing profile from a scaffolded project's *delta* from the default (reusing
+> the regenerate/classify machinery). **Not yet:** `profile show`, the `url`/fetch +
 > `contributions/` resolution, and per-profile *migrations* (renames/removes are handled by
 > classify, but structural moves of user content aren't). `- [ ] Implemented` stays unchecked
 > until that surface is complete; the RFC remains `Proposed`.
