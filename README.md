@@ -175,7 +175,14 @@ agent-native-setup profile init my-team --standalone  # …or extends: null (fro
 agent-native-setup profile validate ./my-team    # check it loads + every template renders
 agent-native-setup my-app -o ./my-app --profile ./my-team
 agent-native-setup profile list                  # profiles in ~/.config/agent-native-setup/profiles
+agent-native-setup profile save ./my-app team    # …or extract a profile from a customized project
 ```
+
+`profile save <project> <name>` is the reverse of authoring: point it at a project you
+scaffolded and then customized, and it extracts an `extends: default` profile from that project's
+**delta** from the default — only the files you changed or added (in setup-owned dirs), with the
+project name parameterized, `seed` status preserved, and symlinks turned into onboarding steps.
+It's read-only on the source and produces a review-ready draft (run `profile validate` on it).
 
 `profile init` also drops an **`AGENTS.md`** at the profile root (and a `README.md`) — a contract
 that lets an assistant help you *build* the profile. Those root files are **meta**: only what's
