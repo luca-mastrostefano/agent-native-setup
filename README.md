@@ -170,10 +170,17 @@ start from "exactly like ours," not just the generic baseline.
 
 ```bash
 agent-native-setup profile init my-team          # scaffold a profile skeleton
+agent-native-setup profile init my-team --standalone  # …or extends: null (from scratch)
 # …add files under my-team/templates/, then:
+agent-native-setup profile validate ./my-team    # check it loads + every template renders
 agent-native-setup my-app -o ./my-app --profile ./my-team
 agent-native-setup profile list                  # profiles in ~/.config/agent-native-setup/profiles
 ```
+
+`profile init` also drops an **`AGENTS.md`** at the profile root (and a `README.md`) — a contract
+that lets an assistant help you *build* the profile. Those root files are **meta**: only what's
+under `templates/` ever ships, so your notes/scratch/harness live at the root and never leak into
+scaffolded projects.
 
 A profile is a directory with a `profile.json` and a `templates/` tree. A full example:
 

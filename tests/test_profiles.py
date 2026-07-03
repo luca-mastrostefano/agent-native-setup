@@ -1098,7 +1098,8 @@ def test_standalone_profile_emits_onboarding_and_session_start(tmp_path: Path) -
     assert "Commit the scaffold" not in onboarding  # no default toolchain/baseline flow
     settings = json.loads((target / ".claude/settings.json").read_text(encoding="utf-8"))
     cmds = [h["command"] for h in settings["hooks"]["SessionStart"][0]["hooks"]]
-    assert cmds == ["{ echo hi ; } || true"]  # only the profile's guarded hook
+    assert cmds[-1] == "{ echo hi ; } || true"  # the profile's guarded hook
+    assert any("update --check" in c for c in cmds)  # standalone still gets the version nudge
 
 
 def test_update_a_standalone_project_refreshes_only_profile_files(tmp_path: Path) -> None:
@@ -1145,10 +1146,64 @@ def test_profile_init_scaffolds_a_skeleton(tmp_path: Path) -> None:
     manifest = json.loads((root / "profile.json").read_text(encoding="utf-8"))
     assert manifest["name"] == "myteam" and manifest["extends"] == "default"
     assert (root / "templates").is_dir() and (root / "README.md").exists()
+    # An agent contract for *building* the profile ships at the root (meta, never shipped).
+    assert (root / "AGENTS.md").exists() and not (root / "templates" / "AGENTS.md").exists()
     # It's immediately loadable as a (empty) profile.
     assert profiles.load(root).name == "myteam"
     # Re-running onto an existing dir refuses rather than clobbering.
     assert cli.main(["profile", "init", "myteam", "-o", str(tmp_path)]) == 2
+
+
+def test_init_harness_files_are_meta_never_scaffolded(tmp_path: Path) -> None:
+    # The root-level harness (AGENTS.md/README.md) guides the author; it's not part of the
+    # profile — only files under templates/ are — so a scaffold never ships it.
+    assert cli.main(["profile", "init", "team", "-o", str(tmp_path)]) == 0
+    prof = profiles.load(tmp_path / "team")
+    shipped = [rel for rel, _ in prof.template_files()]
+    assert "AGENTS.md" not in shipped and "README.md" not in shipped  # harness is meta
+    target = tmp_path / "proj"
+    target.mkdir()
+    cli.build(_config(target), Scaffolder(target), prof)
+    m = json.loads((target / MANIFEST_PATH).read_text(encoding="utf-8"))
+    assert "AGENTS.md" not in m["profile"]["files"]  # not owned by the profile
+    assert "README.md" not in m["profile"]["files"]
+
+
+def test_profile_init_standalone_writes_extends_null(tmp_path: Path) -> None:
+    assert cli.main(["profile", "init", "solo", "-o", str(tmp_path), "--standalone"]) == 0
+    root = tmp_path / "solo"
+    assert json.loads((root / "profile.json").read_text(encoding="utf-8"))["extends"] is None
+    assert profiles.load(root).standalone
+    assert "standalone" in (root / "README.md").read_text(encoding="utf-8").lower()
+
+
+def test_profile_validate_accepts_a_good_profile(tmp_path: Path) -> None:
+    prof = _make_profile(tmp_path, "team", {"docs/x.md.j2": "hi {{ project_name }}\n"})
+    assert cli.main(["profile", "validate", str(prof.root)]) == 0
+
+
+def test_profile_validate_flags_a_broken_template(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    prof = _make_profile(tmp_path, "team", {"bad.md.j2": "{% if oops %}\n"})  # unclosed if
+    assert cli.main(["profile", "validate", str(prof.root)]) == 1
+    assert "bad.md" in capsys.readouterr().out  # names the offending template
+
+
+def test_profile_validate_flags_an_undefined_variable_typo(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # Strict rendering catches a typo'd variable that normal scaffolding would leave blank.
+    prof = _make_profile(tmp_path, "team", {"x.md.j2": "hi {{ projetc_name }}\n"})
+    assert cli.main(["profile", "validate", str(prof.root)]) == 1
+    assert "x.md" in capsys.readouterr().out
+
+
+def test_profile_validate_flags_a_seed_entry_with_no_file(tmp_path: Path) -> None:
+    # `seed` names a path the profile doesn't actually ship → likely a typo, caught before a
+    # consumer ever scaffolds with it.
+    prof = _make_profile(tmp_path, "team", {"real.md": "x\n"}, seed=("ghost.md",))
+    assert cli.main(["profile", "validate", str(prof.root)]) == 1
 
 
 def test_profile_list_reports_user_dir(
