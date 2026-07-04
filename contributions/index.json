@@ -1,0 +1,11 @@
+{
+  "profiles": [
+    {
+      "name": "example-team",
+      "url": "git+https://github.com/luca-mastrostefano/agent-native-setup.git#subdir=examples/profiles/example-team",
+      "description": "A tiny reference profile: a prompt, the env namespace, a seed file, a house .claude agent, and startup hooks.",
+      "author": "agent-native-setup",
+      "tags": ["example", "reference"]
+    }
+  ]
+}

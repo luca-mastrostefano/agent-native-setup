@@ -169,24 +169,31 @@ default one — their `.claude/` agents, MCP config, house rules, extra gates �
 start from "exactly like ours," not just the generic baseline.
 
 ```bash
-agent-native-setup profile init my-team          # scaffold a profile skeleton
-agent-native-setup profile init my-team --standalone  # …or extends: null (from scratch)
-# …add files under my-team/templates/, then:
-agent-native-setup profile validate ./my-team    # check it loads + every template renders
-agent-native-setup my-app -o ./my-app --profile ./my-team
-agent-native-setup profile list                  # profiles in ~/.config/agent-native-setup/profiles
-agent-native-setup profile save ./my-app team    # …or extract a profile from a customized project
-agent-native-setup profile add git+https://github.com/acme/profile.git   # install a published one
-agent-native-setup my-app -o ./my-app --profile git+https://github.com/acme/profile.git  # …or use directly
+# Find & use a community profile
+agent-native-setup profile search python         # search the community index (name/description/tags)
+agent-native-setup profile list --community       # …or browse the whole index
+agent-native-setup my-app --profile git+https://github.com/acme/profile.git    # use one by URL
+agent-native-setup profile add git+https://github.com/acme/profile.git         # …or install it by name
+
+# Make & share your own
+agent-native-setup profile init my-team           # scaffold a skeleton (--standalone = from scratch)
+agent-native-setup profile save ./my-app team     # …or extract one from a project you tuned
+agent-native-setup profile validate ./my-team     # check it loads + every template renders
+agent-native-setup profile publish ./my-team      # print its shareable URL + index entry (then PR it)
 ```
 
-**Sharing profiles.** Publish a profile on any git host and consume it by URL —
-`--profile git+https://…` (optionally `@v1.2.0` to pin, `#subdir=team` for a monorepo), or
-`profile add <url>` to install it under a name. The fetch is data-only (an https/ssh allowlist, no
-submodules). A **safe** profile (declarative — sandboxed, no hooks/sinks) applies with no prompt; a
-fetched **unsafe** (code-carrying) one asks for `--allow-code` and remembers your consent per exact
-content (`profile trust --list` / `profile untrust` to review or revoke). A local or `~/.config`
-profile is trusted — the gate is for code fetched from the internet.
+**Discover, then share.** Profiles are found through a curated, zero-infra
+[community index](contributions/index.json) — a PR-gated list of URLs (each profile lives in its own
+repo). `profile search` / `list --community` read it; `profile publish` prints the entry to PR. A
+team can point `AGENT_NATIVE_SETUP_INDEX_URL` at a private index. A listing is *discovery, not
+endorsement* — trust is decided at fetch, not by being listed.
+
+**Trust.** Consume a profile by URL (`--profile git+https://…`, optionally `@v1.2.0` to pin,
+`#subdir=team` for a monorepo) or `profile add <url>` to install by name. The fetch is data-only (an
+https/ssh allowlist, no submodules). A **safe** profile (declarative — sandboxed, no hooks/sinks)
+applies with no prompt; a fetched **unsafe** (code-carrying) one asks for `--allow-code` and
+remembers your consent per exact content (`profile trust --list` / `untrust` to review or revoke). A
+local or `~/.config` profile is trusted — the gate is for code fetched from the internet.
 
 `profile save <project> <name>` is the reverse of authoring: point it at a project you
 scaffolded and then customized, and it extracts an `extends: default` profile from that project's

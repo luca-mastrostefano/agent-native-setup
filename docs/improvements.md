@@ -84,7 +84,8 @@ that needs a real decision into an RFC in `docs/rfc/proposed/`.
   `2026-06-23-scaffolding-profiles` and largely shipped: `--profile` composition, `profile
   init`/`list`/`validate`/`save`/`add`, standalone `extends: null`, versioned update propagation
   with trust gate + version nudge, declarative `prompts`/`when`/`env` + startup contributions, the
-  safety mechanism (derived classifier, sandboxed rendering, path confinement), and **git-URL fetch
-  on content-hash trust** (`--allow-code`, `trust`/`untrust`). Remaining: `profile show`, a curated
-  **registry/index** (discovery, `profile search`), and **code-plugin** profiles — see the
-  `ecosystem-core` / `profile-fetch` RFCs, not here.*
+  safety mechanism (derived classifier, sandboxed rendering, path confinement), **git-URL fetch
+  on content-hash trust** (`--allow-code`, `trust`/`untrust`), and **community discovery** (a curated
+  `contributions/index.json`, `profile search`/`list --community`/`publish`). Remaining:
+  `profile show` and **code-plugin** profiles (the ecosystem-core stage-D one-way door) — see the
+  `ecosystem-core` RFC, not here.*
