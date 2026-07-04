@@ -388,17 +388,70 @@ def default_answers(profile: Profile) -> dict[str, Any]:
     return {p.name: p.effective_default for p in profile.prompts}
 
 
-def gather_answers(profile: Profile, config: WizardConfig, *, interactive: bool) -> dict[str, Any]:
+def parse_answer_overrides(pairs: list[str], profile: Profile) -> dict[str, Any]:
+    """Parse ``--answer NAME=VALUE`` pairs against the profile's prompts (RFC 2026-06-26) — the
+    headless way to answer a prompt with something other than its default. Each name must match a
+    prompt and each value must fit its type (select/checkbox members checked against ``choices``,
+    confirm parsed as a boolean word); errors are user-facing ``ProfileError``s."""
+    prompts = {p.name: p for p in profile.prompts}
+    overrides: dict[str, Any] = {}
+    for pair in pairs:
+        name, eq, value = pair.partition("=")
+        if not eq:
+            raise ProfileError(f"--answer {pair!r} is not NAME=VALUE")
+        p = prompts.get(name)
+        if p is None:
+            known = ", ".join(prompts) or "(this profile has no prompts)"
+            raise ProfileError(f"--answer: no prompt named {name!r} — prompts: {known}")
+        if name in overrides:  # a silent last-wins could mask a pipeline copy-paste mistake
+            raise ProfileError(f"--answer {name!r} given more than once")
+        if p.type == "text":
+            overrides[name] = value
+        elif p.type == "confirm":
+            word = value.strip().lower()
+            if word not in ("true", "false", "yes", "no", "1", "0"):
+                raise ProfileError(f"--answer {name}: {value!r} is not a boolean (true/false)")
+            overrides[name] = word in ("true", "yes", "1")
+        elif p.type == "select":
+            if value not in p.choices:
+                raise ProfileError(
+                    f"--answer {name}: {value!r} is not a choice ({', '.join(p.choices)})"
+                )
+            overrides[name] = value
+        else:  # checkbox: comma-separated members ("" = none)
+            picked = [v for v in (s.strip() for s in value.split(",")) if v]
+            bad = [v for v in picked if v not in p.choices]
+            if bad:
+                raise ProfileError(
+                    f"--answer {name}: {', '.join(bad)} not in choices ({', '.join(p.choices)})"
+                )
+            overrides[name] = picked
+    return overrides
+
+
+def gather_answers(
+    profile: Profile,
+    config: WizardConfig,
+    *,
+    interactive: bool,
+    overrides: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     """Resolve the profile's prompt answers: ask interactively, else use defaults. A prompt with
     a ``when`` is only asked when that expression (over the answers gathered so far + the base
-    context) is truthy; a skipped prompt takes its default, so ``answers`` always has every name."""
+    context) is truthy; a skipped prompt takes its default, so ``answers`` always has every name.
+    ``overrides`` (from ``--answer``) win unconditionally — an overridden prompt is never asked,
+    and its answer feeds later ``when`` expressions."""
+    overrides = overrides or {}
     if not profile.prompts or not interactive:
-        return default_answers(profile)
+        return {**default_answers(profile), **overrides}
     import questionary
 
     answers: dict[str, Any] = {}
     for p in profile.prompts:
         d = p.effective_default
+        if p.name in overrides:
+            answers[p.name] = overrides[p.name]
+            continue
         if p.when is not None and not eval_expr(p.when, **_context(config, answers)):
             answers[p.name] = d  # condition false → don't ask, use the default
             continue
@@ -491,8 +544,8 @@ for select/checkbox). Answers are exposed to `.j2` templates under
 `.j2` that renders **empty** is not shipped, so wrap a whole file in `{{% if … %}}` for
 conditional inclusion. A prompt may also carry a `when` (a Jinja expression over earlier
 answers) so it's only asked when relevant — e.g. `"when": "answers.use_db"`. Non-interactive
-runs (`-y`) use each prompt's `default`; the answers are recorded and replayed on `update`
-(never re-asked).
+runs (`-y`) use each prompt's `default` unless overridden headlessly with
+`--answer name=value`; the answers are recorded and replayed on `update` (never re-asked).
 
 ## Startup instructions
 
