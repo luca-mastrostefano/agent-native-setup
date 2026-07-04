@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import shutil
 import tempfile
 import unittest
 from pathlib import Path
@@ -30,6 +31,12 @@ def _write_profile(root: Path, name: str, *, template: str = "hi\n") -> Path:
 class CheckIndexTest(unittest.TestCase):
     def setUp(self) -> None:
         self.tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.tmp, ignore_errors=True)
+
+    def test_an_entry_without_a_url_fails(self) -> None:
+        # resolve("") is the built-in default — a listing that names nothing is broken, not ok.
+        idx = _write_index(self.tmp, [{"name": "hollow"}])
+        self.assertEqual(check_index.main(["--index", str(idx)]), 1)
 
     def test_valid_entries_pass(self) -> None:
         # Local-path entries keep the test offline; git+ entries exercise the same resolve().

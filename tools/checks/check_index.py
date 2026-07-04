@@ -18,21 +18,16 @@ import sys
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(REPO_ROOT / "src"))  # runnable without an editable install
+sys.path.insert(0, str(REPO_ROOT / "src"))  # find the package from a checkout (deps still needed)
 
 from agent_native_setup import profiles  # noqa: E402
 
 
-class _Console:
-    """Plain-stdout console (this is CI tooling — no rich dependency on markup rendering)."""
-
-    def print(self, *args: object, **_kw: object) -> None:
-        print(*args)
-
-
 def check_index(index_path: Path) -> int:
+    from rich.console import Console  # a hard dep of the package — render markup, don't leak it
+
     entries = json.loads(index_path.read_text(encoding="utf-8"))["profiles"]
-    console = _Console()
+    console = Console()
     failures: list[str] = []
     for e in entries:
         name, url = e.get("name", "?"), e.get("url", "")
