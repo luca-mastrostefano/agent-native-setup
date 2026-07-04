@@ -303,6 +303,8 @@ the phases above (they have no ground to stand on until the engine exists):
   (§2) is already N-ary. Design the manifest's layer stack and per-file owner index for N now,
   so `extends: <another-profile>` (company-base → team-frontend) is a forward-compatible
   addition rather than a schema break; build it only when demand appears.
+  *Retired by RFC 2026-07-04-profile-extends: extension is git-native (fork + upstream merge),
+  so the stack stays two layers and the design-for-N guidance has no remaining customer.*
 
 ### User stories
 

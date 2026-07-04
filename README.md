@@ -204,6 +204,21 @@ scaffolded and then customized, and it extracts an `extends: default` profile fr
 project name parameterized, `seed` status preserved, and symlinks turned into onboarding steps.
 It's read-only on the source and produces a review-ready draft (run `profile validate` on it).
 
+**Extend.** To build on a community profile — "that base plus our house files" — fork it with
+git; there is deliberately no in-tool extension mechanism
+([why](docs/rfc/proposed/2026-07-04-profile-extends.md): git's three-way merge beats any overlay
+we could ship, and you review base changes before releasing them to your own consumers):
+
+```bash
+git clone https://github.com/acme/python-backend-profile.git my-profile
+cd my-profile && git remote rename origin upstream
+# edit templates/, set your own name/version in profile.json, push to your repo, tag, publish
+git fetch upstream && git merge upstream/main   # later: take base improvements, then bump + tag
+```
+
+Your consumers get each release through the normal `update` flow; `git diff upstream/main` stays
+the view of exactly what you changed on the base.
+
 **Safety.** Profile templates are untrusted input, so they render in a **sandbox** (a hostile
 template can't reach Python) and every output path is **confined** to the project (no `../`
 escape). Each profile is classified **safe** or **unsafe** from its content (`session_start` hooks,
