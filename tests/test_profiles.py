@@ -770,6 +770,96 @@ def test_when_true_asks_the_dependent_prompt(
     assert "Engine?" in asked
 
 
+# --- --answer overrides (headless answers) ----------------------------------------------------
+
+
+_TYPED_PROMPTS = [
+    {"name": "svc", "type": "text", "message": "Service?"},
+    {"name": "db", "type": "confirm", "message": "DB?", "default": True},
+    {"name": "tier", "type": "select", "message": "Tier?", "choices": ["basic", "premium"]},
+    {"name": "extras", "type": "checkbox", "message": "Extras?", "choices": ["a", "b", "c"]},
+]
+
+
+def test_parse_answer_overrides_coerces_each_type(tmp_path: Path) -> None:
+    prof = _make_profile(tmp_path, "team", {}, prompts=_TYPED_PROMPTS)
+    got = profiles.parse_answer_overrides(["svc=api", "db=no", "tier=premium", "extras=a,c"], prof)
+    assert got == {"svc": "api", "db": False, "tier": "premium", "extras": ["a", "c"]}
+    assert profiles.parse_answer_overrides(["extras="], prof) == {"extras": []}
+    # a text value may contain '=' — only the first splits
+    assert profiles.parse_answer_overrides(["svc=a=b"], prof) == {"svc": "a=b"}
+
+
+@pytest.mark.parametrize(
+    ("pair", "match"),
+    [
+        ("svc", "not NAME=VALUE"),
+        ("nope=1", "no prompt named 'nope'"),
+        ("db=maybe", "not a boolean"),
+        ("tier=gold", "not a choice"),
+        ("extras=a,z", "not in choices"),
+    ],
+)
+def test_parse_answer_overrides_rejects_bad_input(tmp_path: Path, pair: str, match: str) -> None:
+    prof = _make_profile(tmp_path, "team", {}, prompts=_TYPED_PROMPTS)
+    with pytest.raises(profiles.ProfileError, match=match):
+        profiles.parse_answer_overrides([pair], prof)
+
+
+def test_overridden_prompt_is_never_asked_and_feeds_when(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    asked = _fake_questionary(monkeypatch, {"confirm": False, "text": "postgres"})
+    prof = _make_profile(tmp_path, "team", {}, prompts=_DB_PROMPTS)
+    answers = profiles.gather_answers(
+        prof, _config(tmp_path / "x"), interactive=True, overrides={"use_db": True}
+    )
+    # use_db came from --answer (not the stubbed False), and its value made `when` ask engine.
+    assert answers == {"use_db": True, "engine": "postgres"}
+    assert asked == ["Engine?"]
+
+
+def test_overrides_merge_over_defaults_non_interactively(tmp_path: Path) -> None:
+    prof = _make_profile(tmp_path, "team", {}, prompts=_TYPED_PROMPTS)
+    answers = profiles.gather_answers(
+        prof, _config(tmp_path / "x"), interactive=False, overrides={"tier": "premium"}
+    )
+    assert answers == {"svc": "", "db": True, "tier": "premium", "extras": []}
+
+
+def test_answer_flag_end_to_end(tmp_path: Path) -> None:
+    prof = _make_profile(
+        tmp_path,
+        "team",
+        {"docs/tier.md.j2": "tier: {{ answers.tier }}"},
+        prompts=[
+            {
+                "name": "tier",
+                "type": "select",
+                "message": "Tier?",
+                "choices": ["basic", "premium"],
+                "default": "basic",
+            }
+        ],
+    )
+    target = tmp_path / "proj"
+    args = ["demo", "-o", str(target), "-y", "--no-git", "--profile", str(prof.root)]
+    rc = cli.main([*args, "--answer", "tier=premium"])
+    assert rc == 0
+    assert (target / "docs" / "tier.md").read_text(encoding="utf-8") == "tier: premium"
+    # the override is recorded in the manifest, so update replays it
+    manifest = json.loads((target / ".agent-native-setup.json").read_text(encoding="utf-8"))
+    assert manifest["profile"]["answers"] == {"tier": "premium"}
+
+
+def test_answer_flag_errors_without_profile_or_with_bad_value(tmp_path: Path) -> None:
+    assert cli.main(["demo", "-o", str(tmp_path / "p1"), "-y", "--no-git", "--answer", "x=1"]) == 2
+    prof = _make_profile(tmp_path, "team", {}, prompts=_TYPED_PROMPTS)
+    args = ["demo", "-o", str(tmp_path / "p2"), "-y", "--no-git", "--profile", str(prof.root)]
+    rc = cli.main([*args, "--answer", "tier=gold"])
+    assert rc == 2
+
+
 def test_when_false_skipped_select_lands_its_type_default(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

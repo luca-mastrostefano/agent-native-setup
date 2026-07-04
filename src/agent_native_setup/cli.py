@@ -47,6 +47,14 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         action="store_true",
         help="consent to a fetched code-carrying (unsafe) profile without an interactive prompt",
     )
+    p.add_argument(
+        "--answer",
+        action="append",
+        default=[],
+        metavar="NAME=VALUE",
+        help="answer a profile prompt headlessly (repeatable) — e.g. --answer tier=premium; "
+        "unanswered prompts are asked interactively, or take their default with -y",
+    )
     p.add_argument("--languages", type=_csv, default=None, help=f"comma-sep: {','.join(LANG_KEYS)}")
     p.add_argument("--tools", type=_csv, default=None, help=f"comma-sep: {','.join(AI_TOOLS)}")
     p.add_argument("--no-agents", dest="agents", action="store_false")
@@ -544,6 +552,9 @@ def main(argv: list[str] | None = None) -> int:
     except profiles.ProfileError as exc:
         console.print(f"[red]{exc}[/]")
         return 2
+    if args.answer and profile is None:
+        console.print("[red]--answer needs --profile[/] — answers belong to a profile's prompts.")
+        return 2
     answers: dict[str, object] | None = None
     if profile is not None:
         # Consent gate (RFC 2026-07-04): a fetched, code-carrying profile needs consent before it
@@ -566,7 +577,14 @@ def main(argv: list[str] | None = None) -> int:
                 "targets no Claude `.claude/` config[/] — those hooks won't be applied."
             )
         try:
-            answers = profiles.gather_answers(profile, config, interactive=interactive)
+            overrides = profiles.parse_answer_overrides(args.answer, profile)
+        except profiles.ProfileError as exc:
+            console.print(f"[red]{exc}[/]")
+            return 2
+        try:
+            answers = profiles.gather_answers(
+                profile, config, interactive=interactive, overrides=overrides
+            )
         except (KeyboardInterrupt, EOFError):
             console.print("\n[yellow]Cancelled.[/]")
             return 130
