@@ -895,18 +895,34 @@ def _index_url_for(name: str) -> str | None:
 def _resolve_ref(ref: str, console: Any) -> Profile | None:
     """``resolve``, falling back to an exact-name community-index lookup for a bare name
     (RFC 2026-07-04-community-index §6) — so ``add``/``show`` work straight off a ``search`` hit
-    without copy-pasting the URL. Locals always win (the fallback only runs when ``resolve``
-    finds nothing); the resolved URL goes through the identical transport allowlist and consent
-    gate as a hand-typed one, and the printed line keeps the redirection visible."""
+    without copy-pasting the URL. Locals always win (a broken local profile reports its own
+    error — it is never shadowed by an index listing); an index URL must itself be ``git+`` so
+    it goes through the identical transport allowlist and consent gate as a hand-typed one (a
+    path-shaped entry would resolve as trusted-local and skip the gate); and the printed line
+    keeps the redirection visible."""
     try:
         return resolve(ref, console=console)
     except ProfileError:
         # Only a bare name consults the index — never a URL or anything path-shaped.
         if ref.startswith("git+") or "/" in ref or "\\" in ref:
             raise
+        # A local profile that exists but fails to load must report its own error, not be
+        # silently shadowed by whatever the index lists under the same name.
+        local = (
+            Path(ref).expanduser() / PROFILE_MANIFEST,
+            USER_PROFILE_DIR / ref / PROFILE_MANIFEST,
+        )
+        if any(m.is_file() for m in local):
+            raise
         url = _index_url_for(ref)
         if url is None:
             raise
+        if not url.startswith("git+"):
+            # The consent gate keys provenance on the git+ scheme (is_untrusted_source) — a
+            # path/other-shaped index URL would masquerade as trusted-local. Refuse it.
+            raise ProfileError(
+                f"community index entry for {ref!r} is not a git+ URL — refusing it"
+            ) from None
         from rich.markup import escape  # the URL is attacker-controlled index data
 
         console.print(f"[dim]{escape(ref)} → community index → {escape(url)}[/]")
