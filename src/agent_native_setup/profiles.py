@@ -45,6 +45,13 @@ TRUST_STORE = Path.home() / ".config" / "agent-native-setup" / "trusted.json"
 # git+https:// / git+ssh:// only — never ext::/file::/transport-command URLs, which run a shell
 # command at clone time (RFC 2026-07-04 §1). An enforced allowlist, not a convention.
 ALLOWED_TRANSPORTS = ("https", "ssh")
+# Community index (RFC 2026-07-04-community-index): a curated list of profile URLs. The canonical
+# one lives in this repo; a private/team index overrides via the env var. Fetched as *data* only.
+INDEX_URL = (
+    "https://raw.githubusercontent.com/luca-mastrostefano/agent-native-setup/main/"
+    "contributions/index.json"
+)
+INDEX_ENV = "AGENT_NATIVE_SETUP_INDEX_URL"
 EXTENDS_VALUES = ("default", None)  # "default" composes on the base; null = standalone
 PROMPT_TYPES = ("text", "select", "confirm", "checkbox")
 
@@ -754,6 +761,154 @@ def _confirm_trust(name: str) -> bool:
     return bool(questionary.confirm(f"Trust {name!r} and run its code?", default=False).ask())
 
 
+# --- community index: discovery (RFC 2026-07-04-community-index) ------------------------------
+
+_INDEX_CACHE_TTL = 24 * 60 * 60  # a listing is a moving target — refresh at most daily
+_INDEX_FAILURE_TTL = 60 * 60  # cache a failure briefly so we don't re-pay the timeout each run
+
+
+def _index_cache_path() -> Path:
+    base = os.environ.get("XDG_CACHE_HOME") or os.path.expanduser("~/.cache")
+    return Path(base) / "agent-native-setup" / "community-index.json"
+
+
+def _fetch_index(now: float) -> list[dict]:
+    """The community index entries, served from a <24h cache when possible. Read-only, **data
+    only** (never clones/applies), and **silent on any failure** → ``[]`` (like `update --check`).
+    Entries are validated for shape only; a listing grants no trust — the URL still goes through the
+    fetch allowlist + consent gate at `add` time."""
+    url = os.environ.get(INDEX_ENV) or INDEX_URL
+    path = _index_cache_path()
+    try:
+        cached = json.loads(path.read_text(encoding="utf-8"))
+        if cached.get("url") == url:  # a changed index URL invalidates the cache
+            ttl = _INDEX_CACHE_TTL if cached.get("entries") else _INDEX_FAILURE_TTL
+            if now - cached.get("checked_at", 0) < ttl:
+                return cached.get("entries") or []
+    except (OSError, ValueError):
+        pass
+    entries: list[dict] | None = None
+    try:
+        if url.startswith(("https://", "http://")):  # http(s) only — never file:// etc.
+            import urllib.request
+
+            with urllib.request.urlopen(url, timeout=2.0) as resp:
+                data = json.loads(resp.read(1_000_000))  # cap the body — a larger index is hostile
+            raw = data.get("profiles") if isinstance(data, dict) else None
+            if isinstance(raw, list):
+                entries = [e for e in raw if isinstance(e, dict) and e.get("name") and e.get("url")]
+    except Exception:  # network / parse failure — advisory only, never raise
+        entries = None
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(
+            json.dumps({"checked_at": now, "url": url, "entries": entries}), encoding="utf-8"
+        )
+    except OSError:
+        pass
+    return entries or []
+
+
+def _print_index_entries(entries: list[dict], console: Any) -> None:
+    from rich.markup import escape  # entry fields are attacker-controlled remote data — never let
+
+    for e in entries:  # them inject console markup (a forged "verified" line, hidden text, …)
+        name, url = escape(str(e["name"])), escape(str(e["url"]))
+        desc = escape(str(e.get("description", "")))
+        console.print(f"  [bold]{name}[/]{' — ' + desc if desc else ''}")
+        console.print(f"    [dim]{url}[/]")
+    console.print(
+        "\n[dim]A listing isn't vetting — `profile add <url>` classifies it, and an unsafe "
+        "(code-carrying) profile asks for consent.[/]"
+    )
+
+
+def _search(args: argparse.Namespace, console: Any) -> int:
+    import time
+
+    entries = _fetch_index(time.time())
+    if not entries:
+        console.print("[yellow]Couldn't reach the community index[/] (offline, or it's empty).")
+        return 0
+    q = args.query.lower()
+    hits = [
+        e
+        for e in entries
+        if q in e["name"].lower()
+        or q in e.get("description", "").lower()
+        or q in " ".join(e.get("tags", [])).lower()
+    ]
+    if not hits:
+        console.print(f"[yellow]No community profiles match {args.query!r}.[/]")
+        return 0
+    console.print(f"[cyan]Community profiles matching {args.query!r}:[/]")
+    _print_index_entries(hits, console)
+    return 0
+
+
+def _publish(args: argparse.Namespace, console: Any) -> int:
+    """Validate a profile and print its shareable URL + a ready-to-PR index entry — the tail of the
+    author flow (RFC 2026-07-04-community-index §5). Does not push or open a PR."""
+    root = Path(args.path).expanduser().resolve()
+    if _validate(argparse.Namespace(path=str(root)), console) != 0:
+        return 1
+    prof = load(root)
+    url = args.url or _infer_git_url(root)
+    tag = _git_tag(root)
+    if url and tag:
+        url = f"{url}@{tag}"
+    elif url:
+        console.print(
+            "[yellow]No tag on the current commit[/] — tag a version "
+            "([bold]git tag v1.0.0[/]) and append [bold]@v1.0.0[/] to the URL for a reproducible "
+            "listing."
+        )
+    url = url or "git+https://<your-repo>.git@v1.0.0"
+    entry = {
+        "name": prof.name,
+        "url": url,
+        "description": prof.description,
+        "author": "TODO: your name/handle",
+    }
+    console.print(f"\n[green]Shareable URL:[/] [bold]--profile {url}[/]")
+    console.print("[green]Add this entry[/] to a PR against `contributions/index.json`:")
+    console.print(json.dumps(entry, indent=2))
+    return 0
+
+
+def _infer_git_url(path: Path) -> str | None:
+    """Best-effort ``git+https://…`` from the profile dir's ``origin`` remote (https or ssh)."""
+    try:
+        out = subprocess.run(
+            ["git", "-C", str(path), "remote", "get-url", "origin"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if out.returncode != 0 or not out.stdout.strip():
+        return None
+    remote = out.stdout.strip()
+    if remote.startswith("https://"):
+        return "git+" + remote
+    m = re.match(r"git@([^:]+):(.+)", remote)  # git@host:owner/repo(.git) → git+ssh://…
+    return f"git+ssh://git@{m.group(1)}/{m.group(2)}" if m else None
+
+
+def _git_tag(path: Path) -> str | None:
+    try:
+        out = subprocess.run(
+            ["git", "-C", str(path), "describe", "--tags", "--exact-match"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        return out.stdout.strip() if out.returncode == 0 and out.stdout.strip() else None
+    except (OSError, subprocess.SubprocessError):
+        return None
+
+
 def _parameterize(
     content: bytes, name: str, slug: str, rel: str, subs: list[tuple[str, str, int]]
 ) -> tuple[str | None, str]:
@@ -903,7 +1058,17 @@ def _save(args: argparse.Namespace, console: Any) -> int:
     return 0
 
 
-def _list(console: Any) -> int:
+def _list(args: argparse.Namespace, console: Any) -> int:
+    if getattr(args, "community", False):
+        import time
+
+        entries = _fetch_index(time.time())
+        if not entries:
+            console.print("[yellow]Couldn't reach the community index[/] (offline, or it's empty).")
+            return 0
+        console.print("[cyan]Community profiles[/] (from the index):")
+        _print_index_entries(entries, console)
+        return 0
     found = (
         sorted(p.parent for p in USER_PROFILE_DIR.glob(f"*/{PROFILE_MANIFEST}"))
         if USER_PROFILE_DIR.is_dir()
@@ -999,7 +1164,8 @@ def run_cli(argv: list[str], console: Any) -> int:
         action="store_true",
         help="extends: null — start from scratch instead of composing on the default",
     )
-    sub.add_parser("list", help="list profiles in the user profiles dir")
+    lst = sub.add_parser("list", help="list profiles (yours, or --community from the index)")
+    lst.add_argument("--community", action="store_true", help="list the community index instead")
     val = sub.add_parser("validate", help="check a profile loads and its templates render")
     val.add_argument("path", help="path to the profile directory")
     save = sub.add_parser("save", help="extract a profile from a scaffolded project's delta")
@@ -1012,6 +1178,11 @@ def run_cli(argv: list[str], console: Any) -> int:
     add.add_argument(
         "--allow-code", action="store_true", help="consent to a fetched code-carrying profile"
     )
+    search = sub.add_parser("search", help="find community profiles in the index")
+    search.add_argument("query", help="match against name / description / tags")
+    pub = sub.add_parser("publish", help="validate + print a profile's shareable URL and entry")
+    pub.add_argument("path", help="path to the profile directory")
+    pub.add_argument("--url", help="the git+https://… URL it's published at (else inferred)")
     untrust = sub.add_parser("untrust", help="revoke consent for a fetched profile")
     untrust.add_argument("ref", help="a trusted content hash (or prefix) or profile name")
     trust = sub.add_parser("trust", help="manage consent for fetched profiles")
@@ -1025,8 +1196,12 @@ def run_cli(argv: list[str], console: Any) -> int:
         return _save(args, console)
     if args.cmd == "add":
         return _add(args, console)
+    if args.cmd == "search":
+        return _search(args, console)
+    if args.cmd == "publish":
+        return _publish(args, console)
     if args.cmd == "untrust":
         return _untrust(args, console)
     if args.cmd == "trust":
         return _trust_list(console)
-    return _list(console)
+    return _list(args, console)
