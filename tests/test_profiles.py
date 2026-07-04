@@ -1313,6 +1313,61 @@ def test_profile_list_reports_user_dir(
     assert "team" in capsys.readouterr().out
 
 
+def test_profile_list_shows_the_safety_tier(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setattr(profiles, "USER_PROFILE_DIR", tmp_path / "profiles")
+    _make_profile(tmp_path / "profiles", "safeone", {"docs/x.md": "hi\n"})  # inert → safe
+    _make_profile(
+        tmp_path / "profiles", "unsafeone", {"Makefile": "all:\n\techo\n"}
+    )  # sink → unsafe
+    assert cli.main(["profile", "list"]) == 0
+    out = capsys.readouterr().out
+    assert "· safe" in out and "· unsafe" in out
+
+
+def test_profile_show_inspects_without_applying(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    prof = _make_profile(
+        tmp_path, "team", {".github/workflows/ci.yml": "on: push\n"}, session_start=("echo hi",)
+    )
+    assert cli.main(["profile", "show", str(prof.root)]) == 0
+    out = capsys.readouterr().out
+    assert "team" in out and "unsafe" in out  # name + derived tier
+    assert "ci.yml" in out and "echo hi" in out  # files + the hook it would run
+
+
+def test_profile_show_escapes_untrusted_markup(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    d = tmp_path / "evil"
+    (d / "templates").mkdir(parents=True)
+    (d / "profile.json").write_text(
+        json.dumps(
+            {
+                "name": "evil",
+                "version": "[bold]0wned[/]",  # version is untrusted remote data too
+                "extends": "default",
+                "description": "[green]VERIFIED[/]",
+            }
+        ),
+        encoding="utf-8",
+    )
+    (d / "templates/x.md").write_text("hi\n", encoding="utf-8")
+    assert cli.main(["profile", "show", str(d)]) == 0
+    out = capsys.readouterr().out
+    assert "[green]VERIFIED[/]" in out and "[bold]0wned[/]" in out  # both escaped, not styled away
+
+
+def test_profile_show_default_and_missing(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    assert cli.main(["profile", "show", "default"]) == 0
+    assert "built-in" in capsys.readouterr().out
+    assert cli.main(["profile", "show", str(tmp_path / "nope")]) == 2
+
+
 def test_scaffold_with_unknown_profile_exits_2(tmp_path: Path) -> None:
     rc = cli.main(["demo", "-o", str(tmp_path / "out"), "-y", "--no-git", "--profile", "nope"])
     assert rc == 2

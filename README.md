@@ -172,6 +172,7 @@ start from "exactly like ours," not just the generic baseline.
 # Find & use a community profile
 agent-native-setup profile search python         # search the community index (name/description/tags)
 agent-native-setup profile list --community       # …or browse the whole index
+agent-native-setup profile show git+https://github.com/acme/profile.git   # inspect one before adopting
 agent-native-setup my-app --profile git+https://github.com/acme/profile.git    # use one by URL
 agent-native-setup profile add git+https://github.com/acme/profile.git         # …or install it by name
 
