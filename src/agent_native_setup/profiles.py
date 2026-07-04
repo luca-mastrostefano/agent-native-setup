@@ -1080,15 +1080,52 @@ def _list(args: argparse.Namespace, console: Any) -> int:
             "[bold]agent-native-setup profile init <name>[/], or pass a path to [bold]--profile[/]."
         )
         return 0
+    from rich.markup import escape  # an installed-from-URL profile's fields are remote data
+
     console.print(f"[cyan]Profiles in[/] {USER_PROFILE_DIR}:")
     for d in found:
         try:
             p = load(d, source=d.name)
-            console.print(
-                f"  [bold]{p.name}[/] {p.version} — {p.description or '(no description)'}"
-            )
+            tier = classify_safety(p)[0]
+            desc = escape(p.description) or "(no description)"
+            console.print(f"  [bold]{escape(p.name)}[/] {escape(p.version)} · {tier} — {desc}")
         except ProfileError as exc:
-            console.print(f"  [red]{d.name}[/] — invalid: {exc}")
+            console.print(f"  [red]{escape(d.name)}[/] — invalid: {exc}")
+    return 0
+
+
+def _show(args: argparse.Namespace, console: Any) -> int:
+    """Inspect a profile — a path, a ``~/.config`` name, or a ``git+…`` URL — **without applying
+    it**: its files, prompts, startup, and derived safety tier. Read-only (fetches a URL into the
+    cache but runs no code and asks for no consent), so you can see exactly what a community profile
+    *would* do before you `add` it. Fields are escaped — a fetched profile's are untrusted data."""
+    from rich.markup import escape
+
+    try:
+        prof = resolve(args.ref, console=console)
+    except ProfileError as exc:
+        console.print(f"[red]{exc}[/]")
+        return 2
+    if prof is None:
+        console.print("[cyan]default[/] — the built-in setup (no profile overlay).")
+        return 0
+    tier, reasons = classify_safety(prof)
+    kind = "standalone" if prof.standalone else "extends default"
+    desc = escape(prof.description) or "(no description)"
+    console.print(f"[cyan]{escape(prof.name)}[/] {escape(prof.version)} — {desc}")
+    console.print(f"  {kind}  ·  safety: [bold]{tier}[/]")
+    for r in reasons:
+        console.print(f"    [yellow]•[/] {escape(r)}")
+    files = [rel for rel, _ in prof.template_files()]
+    console.print(f"  files ({len(files)}): {escape(', '.join(files)) or '(none)'}")
+    if prof.prompts:
+        console.print(f"  prompts: {escape(', '.join(p.name for p in prof.prompts))}")
+    if prof.onboarding:
+        console.print(f"  onboarding: {len(prof.onboarding)} step(s)")
+    if prof.session_start:
+        console.print("  session_start (runs every session):")
+        for cmd in prof.session_start:
+            console.print(f"    [yellow]$[/] {escape(cmd)}")
     return 0
 
 
@@ -1168,6 +1205,8 @@ def run_cli(argv: list[str], console: Any) -> int:
     lst.add_argument("--community", action="store_true", help="list the community index instead")
     val = sub.add_parser("validate", help="check a profile loads and its templates render")
     val.add_argument("path", help="path to the profile directory")
+    show = sub.add_parser("show", help="inspect a profile (files/prompts/safety) without applying")
+    show.add_argument("ref", help="a path, a ~/.config name, or a git+https://… URL")
     save = sub.add_parser("save", help="extract a profile from a scaffolded project's delta")
     save.add_argument("project", help="path to a project agent-native-setup scaffolded")
     save.add_argument("name", help="profile name (also the directory name)")
@@ -1192,6 +1231,8 @@ def run_cli(argv: list[str], console: Any) -> int:
         return _init(args, console)
     if args.cmd == "validate":
         return _validate(args, console)
+    if args.cmd == "show":
+        return _show(args, console)
     if args.cmd == "save":
         return _save(args, console)
     if args.cmd == "add":
