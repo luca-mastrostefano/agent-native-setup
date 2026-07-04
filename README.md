@@ -176,7 +176,17 @@ agent-native-setup profile validate ./my-team    # check it loads + every templa
 agent-native-setup my-app -o ./my-app --profile ./my-team
 agent-native-setup profile list                  # profiles in ~/.config/agent-native-setup/profiles
 agent-native-setup profile save ./my-app team    # …or extract a profile from a customized project
+agent-native-setup profile add git+https://github.com/acme/profile.git   # install a published one
+agent-native-setup my-app -o ./my-app --profile git+https://github.com/acme/profile.git  # …or use directly
 ```
+
+**Sharing profiles.** Publish a profile on any git host and consume it by URL —
+`--profile git+https://…` (optionally `@v1.2.0` to pin, `#subdir=team` for a monorepo), or
+`profile add <url>` to install it under a name. The fetch is data-only (an https/ssh allowlist, no
+submodules). A **safe** profile (declarative — sandboxed, no hooks/sinks) applies with no prompt; a
+fetched **unsafe** (code-carrying) one asks for `--allow-code` and remembers your consent per exact
+content (`profile trust --list` / `profile untrust` to review or revoke). A local or `~/.config`
+profile is trusted — the gate is for code fetched from the internet.
 
 `profile save <project> <name>` is the reverse of authoring: point it at a project you
 scaffolded and then customized, and it extracts an `extends: default` profile from that project's
@@ -260,10 +270,10 @@ newer version exists at the profile's source. For `update` to pull it, the profi
 resolvable then — the same path, or a name in `~/.config/agent-native-setup/profiles/` —
 otherwise the base still updates and the profile's files are left as-is.
 
-> **Still experimental.** `profile save` (derive a
-> profile from an existing project), and fetching a profile straight from a git URL are not
-> built yet — see
-> [`docs/rfc/proposed/2026-06-23-scaffolding-profiles.md`](docs/rfc/proposed/2026-06-23-scaffolding-profiles.md).
+> **Still experimental.** The profile system is complete for authoring, composing, updating,
+> safety, and git-URL distribution; a curated **registry/index** (discovery, `profile search`) and
+> arbitrary **code-plugin** profiles are the remaining frontier — see the RFCs under
+> [`docs/rfc/proposed/`](docs/rfc/proposed/) (`ecosystem-core`, `profile-fetch`).
 
 ## Philosophy
 

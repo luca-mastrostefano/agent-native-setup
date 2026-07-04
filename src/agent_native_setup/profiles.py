@@ -17,9 +17,12 @@ without Jinja mangling them.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import re
+import shutil
+import subprocess
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
@@ -37,6 +40,11 @@ from agent_native_setup.scaffold import (
 PROFILE_MANIFEST = "profile.json"
 TEMPLATES_DIR = "templates"
 USER_PROFILE_DIR = Path.home() / ".config" / "agent-native-setup" / "profiles"
+CACHE_ROOT = Path.home() / ".cache" / "agent-native-setup" / "profiles"
+TRUST_STORE = Path.home() / ".config" / "agent-native-setup" / "trusted.json"
+# git+https:// / git+ssh:// only — never ext::/file::/transport-command URLs, which run a shell
+# command at clone time (RFC 2026-07-04 §1). An enforced allowlist, not a convention.
+ALLOWED_TRANSPORTS = ("https", "ssh")
 EXTENDS_VALUES = ("default", None)  # "default" composes on the base; null = standalone
 PROMPT_TYPES = ("text", "select", "confirm", "checkbox")
 
@@ -102,9 +110,10 @@ class Profile:
         files: list[tuple[str, Path]] = []
         if base.is_dir():
             for p in sorted(base.rglob("*")):
-                if p.is_file():
-                    rel = p.relative_to(base).as_posix()
-                    files.append((rel[:-3] if rel.endswith(".j2") else rel, p))
+                if p.is_symlink() or not p.is_file():
+                    continue  # skip symlinks — a template pointing outside the profile can't ship
+                rel = p.relative_to(base).as_posix()
+                files.append((rel[:-3] if rel.endswith(".j2") else rel, p))
         return files
 
     def manifest_block(self) -> dict[str, object]:
@@ -225,13 +234,100 @@ def load(path: Path, *, source: str | None = None) -> Profile:
     )
 
 
-def resolve(name_or_path: str) -> Profile | None:
+def _parse_git_url(spec: str) -> tuple[str, str, str]:
+    """Parse ``git+<transport>://…[@ref][#subdir=path]`` → ``(clone_url, ref, subdir)``, enforcing
+    the https/ssh transport allowlist. The ``@ref`` lives in the *path* (after the first ``/`` past
+    ``://``) so it's never confused with an ssh URL's ``user@host``."""
+    body = spec[len("git+") :]
+    subdir = ""
+    if "#subdir=" in body:
+        body, subdir = body.split("#subdir=", 1)
+    if "://" not in body:
+        raise ProfileError(
+            f"invalid git profile URL {spec!r} — expected git+https://… / git+ssh://…"
+        )
+    scheme = body.split("://", 1)[0]
+    if scheme not in ALLOWED_TRANSPORTS:
+        raise ProfileError(
+            f"unsupported transport {scheme!r} in {spec!r} — only git+https:// and git+ssh:// are "
+            "allowed (ext::/file:: can execute a command at clone time)"
+        )
+    ref = ""
+    slash = body.find("/", body.index("://") + 3)
+    if slash != -1 and "@" in body[slash:]:
+        idx = body.rindex("@")
+        body, ref = body[:idx], body[idx + 1 :]
+    subdir = subdir.strip("/")
+    if ref.startswith("-"):  # else git parses it as an option, not a ref (argument injection)
+        raise ProfileError(f"invalid ref {ref!r} in {spec!r} — a ref can't start with '-'")
+    if ".." in Path(subdir).parts:  # confine the subdir to the cache (no traversal escape)
+        raise ProfileError(f"invalid subdir {subdir!r} in {spec!r} — '..' is not allowed")
+    return body, ref, subdir
+
+
+def _pinned(ref: str) -> bool:
+    """A ref that names an immutable point (a commit sha or a version tag) → cache forever; a
+    branch (``main``) is a moving target → re-fetch."""
+    return bool(re.match(r"^[0-9a-f]{7,40}$", ref) or re.match(r"^v?\d", ref))
+
+
+def _fetch_git(spec: str, console: Any) -> Path:
+    """Clone (or reuse) a git-URL profile into the cache and return its directory. **Data-only**:
+    the transport allowlist (`_parse_git_url`) + ``--no-recurse-submodules`` mean nothing runs at
+    fetch time (RFC 2026-07-04 §1). A pinned ref is cached forever; a moving ref re-fetches; on a
+    fetch failure an existing cache is reused with a warning."""
+    clone_url, ref, subdir = _parse_git_url(spec)
+    cache_dir = CACHE_ROOT / hashlib.sha256(spec.encode()).hexdigest()[:16]
+    root = cache_dir / subdir if subdir else cache_dir
+    if ref and _pinned(ref) and (root / PROFILE_MANIFEST).is_file():
+        return root  # immutable → reuse, no network
+    CACHE_ROOT.mkdir(parents=True, exist_ok=True)
+    staging = cache_dir.with_name(cache_dir.name + ".new")
+    if staging.exists():
+        shutil.rmtree(staging)
+    try:
+        subprocess.run(
+            ["git", "clone", "--quiet", "--no-recurse-submodules", clone_url, str(staging)],
+            check=True,
+            capture_output=True,
+            timeout=120,
+        )
+        if ref:
+            subprocess.run(
+                ["git", "-C", str(staging), "checkout", "--quiet", ref],
+                check=True,
+                capture_output=True,
+                timeout=30,
+            )
+        if cache_dir.exists():
+            shutil.rmtree(cache_dir)
+        staging.rename(cache_dir)
+    except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as exc:
+        if staging.exists():
+            shutil.rmtree(staging)
+        if (root / PROFILE_MANIFEST).is_file():
+            console.print(f"[yellow]Couldn't fetch {spec} — using the cached copy.[/]")
+        else:
+            err = getattr(exc, "stderr", b"") or b""
+            detail = err.decode(errors="replace").strip() if isinstance(err, bytes) else str(exc)
+            raise ProfileError(f"failed to fetch profile {spec!r}: {detail[:300]}") from None
+    if not (root / PROFILE_MANIFEST).is_file():
+        where = f" (subdir {subdir!r})" if subdir else ""
+        raise ProfileError(f"no {PROFILE_MANIFEST} in fetched profile {spec!r}{where}")
+    return root
+
+
+def resolve(name_or_path: str, *, console: Any = None) -> Profile | None:
     """Resolve a ``--profile`` reference. ``default`` (or empty) → ``None`` (the built-in
-    default, no overlay). A path containing a ``profile.json`` → that profile. A bare name →
-    the user profiles dir (``~/.config/agent-native-setup/profiles/<name>``). Raises
-    ``ProfileError`` with a clear message when it can't be found."""
+    default, no overlay). A ``git+https://…`` / ``git+ssh://…`` URL → fetched into the cache. A path
+    containing a ``profile.json`` → that profile. A bare name → the user profiles dir
+    (``~/.config/agent-native-setup/profiles/<name>``). The recorded ``source`` is the reference
+    verbatim, so ``update`` re-resolves (and re-fetches a URL). Raises ``ProfileError`` when it
+    can't be found."""
     if name_or_path in ("", "default"):
         return None
+    if name_or_path.startswith("git+"):
+        return load(_fetch_git(name_or_path, console or _NullConsole()), source=name_or_path)
     candidate = Path(name_or_path).expanduser()
     if (candidate / PROFILE_MANIFEST).is_file():
         return load(candidate, source=name_or_path)
@@ -239,9 +335,13 @@ def resolve(name_or_path: str) -> Profile | None:
     if (in_user_dir / PROFILE_MANIFEST).is_file():
         return load(in_user_dir, source=name_or_path)
     raise ProfileError(
-        f"profile {name_or_path!r} not found — pass a path to a profile directory, or place it "
+        f"profile {name_or_path!r} not found — pass a path, a git+https://… URL, or a name "
         f"under {USER_PROFILE_DIR}"
     )
+
+
+class _NullConsole:
+    def print(self, *args: object, **kwargs: object) -> None: ...
 
 
 def _context(config: WizardConfig, answers: dict[str, Any]) -> dict[str, Any]:
@@ -580,6 +680,80 @@ def classify_safety(profile: Profile) -> tuple[str, list[str]]:
     return ("unsafe" if reasons else "safe", reasons)
 
 
+# --- fetch trust: content-hash pre-trust + consent (RFC 2026-07-04) --------------------------
+
+
+def content_hash(profile: Profile) -> str:
+    """A stable hash over **exactly `profile.json` + every file under `templates/`** — the surface
+    that gets applied and copied — so consent binds to precisely what lands, version-independent of
+    any tag (RFC 2026-07-04 §4)."""
+    entries = [("profile.json", (profile.root / PROFILE_MANIFEST).read_bytes())]
+    entries += [(out_rel, src.read_bytes()) for out_rel, src in profile.template_files()]
+    h = hashlib.sha256()
+    for rel, data in sorted(entries):
+        h.update(rel.encode() + b"\0" + hashlib.sha256(data).hexdigest().encode() + b"\n")
+    return h.hexdigest()
+
+
+def is_untrusted_source(source: str) -> bool:
+    """A fetched (URL) profile is untrusted provenance; a local path / ``~/.config`` name is
+    trusted (you have it / authored it) — provenance is the source scheme (RFC 2026-07-04 §3)."""
+    return source.startswith("git+")
+
+
+def _load_trust() -> dict[str, str]:
+    try:
+        data = json.loads(TRUST_STORE.read_text(encoding="utf-8"))
+        return data if isinstance(data, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def _save_trust(store: dict[str, str]) -> None:
+    TRUST_STORE.parent.mkdir(parents=True, exist_ok=True)
+    TRUST_STORE.write_text(json.dumps(store, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+
+def consent(profile: Profile, *, allow_code: bool, interactive: bool, console: Any) -> bool:
+    """Gate a **fetched, code-carrying** profile (RFC 2026-07-04 §4). Returns True to proceed.
+    A trusted-provenance (local) or `safe` profile passes freely; an `unsafe` fetched profile whose
+    content hash isn't already trusted needs consent (`--allow-code` or an interactive yes), which
+    is then recorded **per artifact** so a re-fetch of the same content doesn't re-ask."""
+    if not is_untrusted_source(profile.source):
+        return True  # local / authored → trusted
+    tier, reasons = classify_safety(profile)
+    if tier == "safe":
+        return True  # provably can't run code (sandboxed, confined, no hooks/sinks)
+    h = content_hash(profile)
+    if h in _load_trust():
+        return True  # this exact artifact was consented before
+    console.print(
+        f":warning:  [yellow]{profile.name!r} is a fetched, code-carrying (unsafe) profile[/] — "
+        "it will run code on your machine:"
+    )
+    for r in reasons:
+        console.print(f"  [yellow]•[/] {r}")
+    if allow_code or (interactive and _confirm_trust(profile.name)):
+        store = _load_trust()
+        store[h] = profile.name
+        _save_trust(store)
+        return True
+    if interactive:
+        console.print("[yellow]Declined[/] — not applied.")
+    else:
+        console.print(
+            "[red]Refused[/] — a fetched code-carrying profile needs [bold]--allow-code[/] "
+            "(or run interactively to confirm)."
+        )
+    return False
+
+
+def _confirm_trust(name: str) -> bool:
+    import questionary
+
+    return bool(questionary.confirm(f"Trust {name!r} and run its code?", default=False).ask())
+
+
 def _parameterize(
     content: bytes, name: str, slug: str, rel: str, subs: list[tuple[str, str, int]]
 ) -> tuple[str | None, str]:
@@ -753,6 +927,67 @@ def _list(console: Any) -> int:
     return 0
 
 
+def _add(args: argparse.Namespace, console: Any) -> int:
+    """Fetch (or resolve) a profile, gate its code once, and install it into the user profiles dir
+    as a trusted local profile — the npm-install model (RFC 2026-07-04 §5). Copies **only**
+    `profile.json` + `templates/` (the classified/hashed surface); skips symlinks."""
+    import sys
+
+    try:
+        prof = resolve(args.url, console=console)
+    except ProfileError as exc:
+        console.print(f"[red]{exc}[/]")
+        return 2
+    if prof is None:
+        console.print("[red]'default' is built in — nothing to add.[/]")
+        return 2
+    if not consent(
+        prof, allow_code=args.allow_code, interactive=sys.stdin.isatty(), console=console
+    ):
+        return 1
+    dest = USER_PROFILE_DIR / (args.name or prof.name)
+    if dest.exists():
+        console.print(f"[red]{dest} already exists[/] — choose another name, or remove it first.")
+        return 2
+    src_templates = prof.root / TEMPLATES_DIR
+    (dest / TEMPLATES_DIR).mkdir(parents=True)
+    shutil.copy2(prof.root / PROFILE_MANIFEST, dest / PROFILE_MANIFEST)
+    for pth in src_templates.rglob("*"):
+        if pth.is_symlink() or not pth.is_file():
+            continue  # only regular files under templates/ — no symlinks, no rest-of-checkout
+        out = dest / TEMPLATES_DIR / pth.relative_to(src_templates)
+        out.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(pth, out)
+    console.print(
+        f"[green]Added[/] {dest.name} → {dest}. Use it with [bold]--profile {dest.name}[/]."
+    )
+    return 0
+
+
+def _untrust(args: argparse.Namespace, console: Any) -> int:
+    store = _load_trust()
+    matches = [h for h, n in store.items() if args.ref in (h, n) or h.startswith(args.ref)]
+    if not matches:
+        console.print(f"[yellow]No trusted profile matching {args.ref!r}.[/]")
+        return 1
+    for h in matches:
+        del store[h]
+    _save_trust(store)
+    console.print(f"[green]Revoked[/] {len(matches)} trusted entry(ies).")
+    return 0
+
+
+def _trust_list(console: Any) -> int:
+    store = _load_trust()
+    if not store:
+        console.print("[yellow]No trusted (consented) fetched profiles.[/]")
+        return 0
+    console.print("[cyan]Trusted fetched profiles (content hash):[/]")
+    for h, n in sorted(store.items(), key=lambda kv: (kv[1], kv[0])):
+        console.print(f"  [bold]{n}[/] {h[:12]}")
+    return 0
+
+
 def run_cli(argv: list[str], console: Any) -> int:
     p = argparse.ArgumentParser(prog="agent-native-setup profile", description="Author profiles.")
     sub = p.add_subparsers(dest="cmd", required=True)
@@ -771,6 +1006,16 @@ def run_cli(argv: list[str], console: Any) -> int:
     save.add_argument("project", help="path to a project agent-native-setup scaffolded")
     save.add_argument("name", help="profile name (also the directory name)")
     save.add_argument("-o", "--output", default=".", help="parent directory (default: cwd)")
+    add = sub.add_parser("add", help="fetch/install a profile (git+URL or path) into the user dir")
+    add.add_argument("url", help="a git+https://… / git+ssh://… URL, a path, or a name")
+    add.add_argument("name", nargs="?", help="install name (default: the profile's own name)")
+    add.add_argument(
+        "--allow-code", action="store_true", help="consent to a fetched code-carrying profile"
+    )
+    untrust = sub.add_parser("untrust", help="revoke consent for a fetched profile")
+    untrust.add_argument("ref", help="a trusted content hash (or prefix) or profile name")
+    trust = sub.add_parser("trust", help="manage consent for fetched profiles")
+    trust.add_argument("--list", action="store_true", help="list trusted (consented) profiles")
     args = p.parse_args(argv)
     if args.cmd == "init":
         return _init(args, console)
@@ -778,4 +1023,10 @@ def run_cli(argv: list[str], console: Any) -> int:
         return _validate(args, console)
     if args.cmd == "save":
         return _save(args, console)
+    if args.cmd == "add":
+        return _add(args, console)
+    if args.cmd == "untrust":
+        return _untrust(args, console)
+    if args.cmd == "trust":
+        return _trust_list(console)
     return _list(console)
