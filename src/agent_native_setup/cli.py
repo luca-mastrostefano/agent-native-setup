@@ -38,8 +38,14 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     p.add_argument(
         "--profile",
         default=None,
-        help="compose a profile on the default setup: a path to a profile dir, or a name in "
-        "~/.config/agent-native-setup/profiles (see `agent-native-setup profile --help`)",
+        help="compose a profile on the default setup: a path, a name in "
+        "~/.config/agent-native-setup/profiles, or a git+https://… URL "
+        "(see `agent-native-setup profile --help`)",
+    )
+    p.add_argument(
+        "--allow-code",
+        action="store_true",
+        help="consent to a fetched code-carrying (unsafe) profile without an interactive prompt",
     )
     p.add_argument("--languages", type=_csv, default=None, help=f"comma-sep: {','.join(LANG_KEYS)}")
     p.add_argument("--tools", type=_csv, default=None, help=f"comma-sep: {','.join(AI_TOOLS)}")
@@ -534,12 +540,18 @@ def main(argv: list[str] | None = None) -> int:
         )
 
     try:
-        profile = profiles.resolve(args.profile) if args.profile else None
+        profile = profiles.resolve(args.profile, console=console) if args.profile else None
     except profiles.ProfileError as exc:
         console.print(f"[red]{exc}[/]")
         return 2
     answers: dict[str, object] | None = None
     if profile is not None:
+        # Consent gate (RFC 2026-07-04): a fetched, code-carrying profile needs consent before it
+        # runs. A local/authored or `safe` profile passes freely; an already-trusted artifact too.
+        if not profiles.consent(
+            profile, allow_code=args.allow_code, interactive=interactive, console=console
+        ):
+            return 2
         kind = "standalone — from scratch" if profile.standalone else "composed on default"
         console.print(f"[cyan]Profile:[/] {profile.name} {profile.version} ({kind}).")
         # SessionStart hooks live in .claude/settings.json. For a composed profile that means the

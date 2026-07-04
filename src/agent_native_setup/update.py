@@ -321,7 +321,7 @@ def _reresolve_profile(old: dict, console: Any) -> tuple[profiles.Profile | None
     profile = None
     if source:
         try:
-            profile = profiles.resolve(str(source))
+            profile = profiles.resolve(str(source), console=console)  # re-fetches a git URL
         except profiles.ProfileError:
             profile = None
     if profile is None:
@@ -433,6 +433,13 @@ def run(target: Path, *, dry_run: bool, console: Any, assume_yes: bool = False) 
                 "[red]Working tree isn't clean[/] — commit or stash first so the update's "
                 "diff is unambiguously its own. (Or preview with [bold]--dry-run[/].)"
             )
+            return 2
+        # Re-consent (RFC 2026-07-04 §6): a *fetched* profile whose re-fetched content is unsafe and
+        # not already trusted — e.g. a moving ref that advanced to new code — must re-gate, even if
+        # it was unsafe (and consented) before. `consent` no-ops for local / safe / already-trusted.
+        if profile is not None and not profiles.consent(
+            profile, allow_code=assume_yes, interactive=sys.stdin.isatty(), console=console
+        ):
             return 2
         if (
             gated

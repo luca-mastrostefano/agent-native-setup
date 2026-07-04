@@ -82,8 +82,9 @@ that needs a real decision into an RFC in `docs/rfc/proposed/`.
   (only us); lock the format with an RFC before any external user adopts it.
 - [77af693 · 2026-06-22] **Scaffolding config profiles** — *promoted to RFC
   `2026-06-23-scaffolding-profiles` and largely shipped: `--profile` composition, `profile
-  init`/`list`/`validate`/`save`, standalone `extends: null`, versioned update propagation with
-  the trust gate + version nudge, and declarative `prompts`/`when`/`env` + startup contributions.
-  Remaining: `profile show`, git-URL/package fetch + a registry, and the ecosystem-core direction
-  (RFC `2026-07-03-ecosystem-core`: derived safe/unsafe classification, `--allow-code`). Tracked
-  in those RFCs, not here.*
+  init`/`list`/`validate`/`save`/`add`, standalone `extends: null`, versioned update propagation
+  with trust gate + version nudge, declarative `prompts`/`when`/`env` + startup contributions, the
+  safety mechanism (derived classifier, sandboxed rendering, path confinement), and **git-URL fetch
+  on content-hash trust** (`--allow-code`, `trust`/`untrust`). Remaining: `profile show`, a curated
+  **registry/index** (discovery, `profile search`), and **code-plugin** profiles — see the
+  `ecosystem-core` / `profile-fetch` RFCs, not here.*

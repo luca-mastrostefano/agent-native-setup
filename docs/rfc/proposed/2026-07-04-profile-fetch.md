@@ -5,6 +5,14 @@
 - **Author:** Luca Mastrostefano
 - [ ] Implemented
 
+> **Status note:** the core **landed** — `git+https://`/`git+ssh://` fetch (enforced transport
+> allowlist, `--no-recurse-submodules`, cached, pinned-ref reuse, offline fallback), `content_hash`
+> over exactly `profile.json` + `templates/`, the `trusted.json` store, the provenance-aware
+> `consent` gate (fetched + unsafe + untrusted → `--allow-code`; safe/local pass freely; recorded
+> per artifact), `profile add`/`untrust`/`trust --list`, the `--allow-code` scaffold flag, and the
+> update re-fetch/re-gate. Deferred (Open questions): a registry/index, `@sha` verification. Kept
+> `Proposed` under the parent profiles RFC's umbrella.
+
 ## Context
 
 The local profile system is complete and hardened — author (`init`/`validate`/`save`), compose or
@@ -61,8 +69,10 @@ Consent is granted to *a specific artifact*, not a path or a moving target:
   the whole applied surface: `apply` renders only `templates/` and reads `session_start`/
   `onboarding` from `profile.json`; **`profile add` copies only that same set** (never the rest of
   the checkout — a repo's top-level `Taskfile`, docs, or a tree-shipped `.git/hooks/` are neither
-  hashed, classified, nor installed), and any symlink pointing outside the profile dir is skipped on
-  copy. It's version-independent of any tag.
+  hashed, classified, nor installed), and symlinks are skipped everywhere (`template_files`, copy).
+  It's version-independent of any tag. Caveat: the hash is byte-exact, so a checkout under
+  `core.autocrlf` can normalize line endings and re-prompt on another machine — that errs toward
+  *friction* (re-consent), never toward a silent bypass, which is the safe direction.
 - **Untrusted (fetched) + `unsafe`** → **gate**: show the classifier's reasons (the sinks, the
   `session_start` commands separated as *persistent*, the onboarding steps as *one-shot* — per
   ecosystem-core §5a), require consent, then **record the content hash** in a user trust store
