@@ -142,3 +142,106 @@ def test_the_committed_index_is_well_formed() -> None:
     for e in profs:
         assert e.get("name") and e.get("description"), e
         assert e.get("url", "").startswith("git+http"), e  # a git+https/ssh URL
+
+
+# --- adopt-by-name: `add <name>` / `show <name>` fall back to the index (RFC §6) ---------------
+
+
+def _local_profile(tmp_path: Path, name: str = "acme-backend") -> Path:
+    d = tmp_path / "src-profile"
+    (d / "templates" / "docs").mkdir(parents=True)
+    (d / "templates" / "docs" / "x.md").write_text("hi\n", encoding="utf-8")
+    (d / "profile.json").write_text(
+        json.dumps({"name": name, "version": "1.0.0", "extends": "default", "description": "d"}),
+        encoding="utf-8",
+    )
+    return d
+
+
+def _stub_fetch(monkeypatch: pytest.MonkeyPatch, src: Path) -> None:
+    """Stand in for the network clone: the git+ URL 'fetches' to a prepared local dir. The
+    profile still loads with the git+ source, so provenance/consent behave as for a real fetch."""
+    monkeypatch.setattr(profiles, "_fetch_git", lambda spec, console: src)
+
+
+_URL = "git+https://github.com/acme/backend.git@v1"
+
+
+def test_show_falls_back_to_an_index_name(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    _stub_fetch(monkeypatch, _local_profile(tmp_path))
+    _seed(tmp_path, [{"name": "acme-backend", "url": _URL, "description": "d"}])
+    c = _Console()
+    assert profiles._show(argparse.Namespace(ref="acme-backend"), c) == 0
+    assert "community index" in c.text  # the redirection is visible
+    assert "acme-backend[/] 1.0.0" in c.text  # rendered by the normal show path
+
+
+def test_add_falls_back_to_an_index_name(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    _stub_fetch(monkeypatch, _local_profile(tmp_path))
+    _seed(tmp_path, [{"name": "acme-backend", "url": _URL, "description": "d"}])
+    monkeypatch.setattr(profiles, "USER_PROFILE_DIR", tmp_path / "userdir")
+    c = _Console()
+    rc = profiles._add(argparse.Namespace(url="acme-backend", name=None, allow_code=False), c)
+    assert rc == 0  # the profile is safe (one .md) — no consent needed
+    assert (tmp_path / "userdir" / "acme-backend" / "profile.json").is_file()
+
+
+def test_index_name_fallback_keeps_the_transport_allowlist(tmp_path: Path) -> None:
+    # A poisoned index can point a NAME at any URL — but that URL still flows through the same
+    # allowlist as a hand-typed one, so an ext:: transport is rejected, not executed.
+    for url, match in [
+        ("git+ext://sh -c payload", "transport"),  # transport allowlist
+        ("git+ext::sh -c payload", "expected git"),  # not even URL-shaped
+    ]:
+        _seed(tmp_path, [{"name": "evil", "url": url, "description": "d"}])
+        with pytest.raises(profiles.ProfileError, match=match):
+            profiles._resolve_ref("evil", _Console())
+
+
+def test_a_non_git_index_url_is_refused(tmp_path: Path) -> None:
+    # A path-shaped entry would resolve as a trusted-LOCAL profile — provenance is keyed on the
+    # git+ scheme — and skip the consent gate entirely. Refused, never resolved.
+    src = _local_profile(tmp_path, name="python-best")
+    (src / "templates" / ".claude").mkdir()
+    (src / "templates" / ".claude" / "settings.json").write_text("{}", encoding="utf-8")
+    _seed(tmp_path, [{"name": "python-best", "url": str(src), "description": "d"}])
+    with pytest.raises(profiles.ProfileError, match="not a git\\+ URL"):
+        profiles._resolve_ref("python-best", _Console())
+
+
+def test_a_broken_local_profile_is_not_shadowed_by_the_index(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Locals always win — including a local profile that exists but fails to load: the user needs
+    # its parse error, not a silent redirect to whatever the index lists under that name.
+    userdir = tmp_path / "userdir"
+    (userdir / "acme-backend").mkdir(parents=True)
+    (userdir / "acme-backend" / "profile.json").write_text("{not json", encoding="utf-8")
+    monkeypatch.setattr(profiles, "USER_PROFILE_DIR", userdir)
+    _seed(tmp_path, [{"name": "acme-backend", "url": _URL, "description": "d"}])
+    c = _Console()
+    with pytest.raises(profiles.ProfileError, match="can't read"):
+        profiles._resolve_ref("acme-backend", c)
+    assert "community index" not in c.text
+
+
+def test_redirect_line_escapes_markup_in_the_index_url(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The redirect line prints attacker-controlled index data — markup must be inert, as in search.
+    _stub_fetch(monkeypatch, _local_profile(tmp_path))
+    _seed(
+        tmp_path,
+        [{"name": "acme-backend", "url": "git+https://h/[red]r[/].git", "description": "d"}],
+    )
+    c = _Console()
+    profiles._resolve_ref("acme-backend", c)
+    assert "\\[red]" in c.text  # escaped, inert
+
+
+def test_pathlike_and_unknown_refs_never_consult_the_index(tmp_path: Path) -> None:
+    _seed(tmp_path, [{"name": "some/dir", "url": str(tmp_path), "description": "d"}])
+    with pytest.raises(profiles.ProfileError, match="not found"):
+        profiles._resolve_ref("some/dir", _Console())  # path-shaped → no index lookup
+    with pytest.raises(profiles.ProfileError, match="not found"):
+        profiles._resolve_ref("not-listed", _Console())  # bare name, no entry → original error

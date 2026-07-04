@@ -877,9 +877,56 @@ def _print_index_entries(entries: list[dict], console: Any) -> None:
         console.print(f"  [bold]{name}[/]{' — ' + desc if desc else ''}")
         console.print(f"    [dim]{url}[/]")
     console.print(
-        "\n[dim]A listing isn't vetting — `profile add <url>` classifies it, and an unsafe "
-        "(code-carrying) profile asks for consent.[/]"
+        "\n[dim]A listing isn't vetting — `profile add <name>` (or `show <name>` to inspect "
+        "first) classifies it, and an unsafe (code-carrying) profile asks for consent.[/]"
     )
+
+
+def _index_url_for(name: str) -> str | None:
+    """Exact-name lookup in the community index — the ``add <name>`` fallback. Data-only."""
+    import time
+
+    for e in _fetch_index(time.time()):
+        if e["name"] == name:
+            return str(e["url"])
+    return None
+
+
+def _resolve_ref(ref: str, console: Any) -> Profile | None:
+    """``resolve``, falling back to an exact-name community-index lookup for a bare name
+    (RFC 2026-07-04-community-index §6) — so ``add``/``show`` work straight off a ``search`` hit
+    without copy-pasting the URL. Locals always win (a broken local profile reports its own
+    error — it is never shadowed by an index listing); an index URL must itself be ``git+`` so
+    it goes through the identical transport allowlist and consent gate as a hand-typed one (a
+    path-shaped entry would resolve as trusted-local and skip the gate); and the printed line
+    keeps the redirection visible."""
+    try:
+        return resolve(ref, console=console)
+    except ProfileError:
+        # Only a bare name consults the index — never a URL or anything path-shaped.
+        if ref.startswith("git+") or "/" in ref or "\\" in ref:
+            raise
+        # A local profile that exists but fails to load must report its own error, not be
+        # silently shadowed by whatever the index lists under the same name.
+        local = (
+            Path(ref).expanduser() / PROFILE_MANIFEST,
+            USER_PROFILE_DIR / ref / PROFILE_MANIFEST,
+        )
+        if any(m.is_file() for m in local):
+            raise
+        url = _index_url_for(ref)
+        if url is None:
+            raise
+        if not url.startswith("git+"):
+            # The consent gate keys provenance on the git+ scheme (is_untrusted_source) — a
+            # path/other-shaped index URL would masquerade as trusted-local. Refuse it.
+            raise ProfileError(
+                f"community index entry for {ref!r} is not a git+ URL — refusing it"
+            ) from None
+        from rich.markup import escape  # the URL is attacker-controlled index data
+
+        console.print(f"[dim]{escape(ref)} → community index → {escape(url)}[/]")
+        return resolve(url, console=console)
 
 
 def _search(args: argparse.Namespace, console: Any) -> int:
@@ -1156,14 +1203,15 @@ def _list(args: argparse.Namespace, console: Any) -> int:
 
 
 def _show(args: argparse.Namespace, console: Any) -> int:
-    """Inspect a profile — a path, a ``~/.config`` name, or a ``git+…`` URL — **without applying
-    it**: its files, prompts, startup, and derived safety tier. Read-only (fetches a URL into the
-    cache but runs no code and asks for no consent), so you can see exactly what a community profile
-    *would* do before you `add` it. Fields are escaped — a fetched profile's are untrusted data."""
+    """Inspect a profile — a path, a ``~/.config`` name, an index name, or a ``git+…`` URL —
+    **without applying it**: its files, prompts, startup, and derived safety tier. Read-only
+    (fetches a URL into the cache but runs no code and asks for no consent), so you can see exactly
+    what a community profile *would* do before you `add` it. Fields are escaped — a fetched
+    profile's are untrusted data."""
     from rich.markup import escape
 
     try:
-        prof = resolve(args.ref, console=console)
+        prof = _resolve_ref(args.ref, console)
     except ProfileError as exc:
         console.print(f"[red]{exc}[/]")
         return 2
@@ -1199,7 +1247,7 @@ def _add(args: argparse.Namespace, console: Any) -> int:
     import sys
 
     try:
-        prof = resolve(args.url, console=console)
+        prof = _resolve_ref(args.url, console)
     except ProfileError as exc:
         console.print(f"[red]{exc}[/]")
         return 2
@@ -1269,13 +1317,15 @@ def run_cli(argv: list[str], console: Any) -> int:
     val = sub.add_parser("validate", help="check a profile loads and its templates render")
     val.add_argument("path", help="path to the profile directory")
     show = sub.add_parser("show", help="inspect a profile (files/prompts/safety) without applying")
-    show.add_argument("ref", help="a path, a ~/.config name, or a git+https://… URL")
+    show.add_argument("ref", help="a path, a ~/.config name, an index name, or a git+https://… URL")
     save = sub.add_parser("save", help="extract a profile from a scaffolded project's delta")
     save.add_argument("project", help="path to a project agent-native-setup scaffolded")
     save.add_argument("name", help="profile name (also the directory name)")
     save.add_argument("-o", "--output", default=".", help="parent directory (default: cwd)")
     add = sub.add_parser("add", help="fetch/install a profile (git+URL or path) into the user dir")
-    add.add_argument("url", help="a git+https://… / git+ssh://… URL, a path, or a name")
+    add.add_argument(
+        "url", help="a git+https://… / git+ssh://… URL, a path, or a name (local or in the index)"
+    )
     add.add_argument("name", nargs="?", help="install name (default: the profile's own name)")
     add.add_argument(
         "--allow-code", action="store_true", help="consent to a fetched code-carrying profile"

@@ -175,7 +175,7 @@ agent-native-setup profile search python         # search the community index (n
 agent-native-setup profile list --community       # …or browse the whole index
 agent-native-setup profile show git+https://github.com/acme/profile.git   # inspect one before adopting
 agent-native-setup my-app --profile git+https://github.com/acme/profile.git    # use one by URL
-agent-native-setup profile add git+https://github.com/acme/profile.git         # …or install it by name
+agent-native-setup profile add acme-profile      # …or install a search hit by its index name
 
 # Make & share your own
 agent-native-setup profile init my-team           # scaffold a skeleton (--standalone = from scratch)
@@ -191,7 +191,8 @@ team can point `AGENT_NATIVE_SETUP_INDEX_URL` at a private index. A listing is *
 endorsement* — trust is decided at fetch, not by being listed.
 
 **Trust.** Consume a profile by URL (`--profile git+https://…`, optionally `@v1.2.0` to pin,
-`#subdir=team` for a monorepo) or `profile add <url>` to install by name. The fetch is data-only (an
+`#subdir=team` for a monorepo) or `profile add <url-or-index-name>` to install it (a bare name
+that isn't local is looked up in the index — the redirection is printed). The fetch is data-only (an
 https/ssh allowlist, no submodules). A **safe** profile (declarative — sandboxed, no hooks/sinks)
 applies with no prompt; a fetched **unsafe** (code-carrying) one asks for `--allow-code` and
 remembers your consent per exact content (`profile trust --list` / `untrust` to review or revoke). A
