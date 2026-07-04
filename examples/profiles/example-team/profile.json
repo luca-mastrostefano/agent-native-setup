@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "extends": "default",
   "description": "A tiny reference profile: a prompt, the env namespace, a seed file, a house agent, and startup hooks.",
+  "tags": ["example", "reference"],
   "seed": ["docs/team-notes.md"],
   "prompts": [
     {

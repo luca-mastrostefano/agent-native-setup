@@ -36,6 +36,7 @@ def _make_profile(
     onboarding: tuple[str, ...] = (),
     session_start: tuple[str, ...] = (),
     prompts: list[dict] | None = None,
+    tags: tuple[str, ...] = (),
     by_path: bool = False,
 ) -> profiles.Profile:
     d = root / name
@@ -46,6 +47,8 @@ def _make_profile(
         "extends": extends,
         "description": "x",
     }
+    if tags:
+        manifest["tags"] = list(tags)
     if seed:
         manifest["seed"] = list(seed)
     if onboarding:
@@ -1366,6 +1369,28 @@ def test_profile_show_default_and_missing(
     assert cli.main(["profile", "show", "default"]) == 0
     assert "built-in" in capsys.readouterr().out
     assert cli.main(["profile", "show", str(tmp_path / "nope")]) == 2
+
+
+def test_load_reads_and_validates_tags(tmp_path: Path) -> None:
+    prof = _make_profile(tmp_path, "team", {"docs/x.md": "hi\n"}, tags=("backend", "python"))
+    assert prof.tags == ("backend", "python")
+    bad = tmp_path / "bad"
+    (bad / "templates").mkdir(parents=True)
+    (bad / "profile.json").write_text(
+        json.dumps({"name": "x", "version": "1.0.0", "extends": "default", "tags": "notalist"}),
+        encoding="utf-8",
+    )
+    with pytest.raises(profiles.ProfileError, match="tags"):
+        profiles.load(bad)
+
+
+def test_show_and_publish_surface_tags(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    prof = _make_profile(tmp_path, "team", {"docs/x.md": "hi\n"}, tags=("backend", "design"))
+    assert cli.main(["profile", "show", str(prof.root)]) == 0
+    assert "backend, design" in capsys.readouterr().out  # show displays them
+    assert cli.main(["profile", "publish", str(prof.root)]) == 0
+    out = capsys.readouterr().out
+    assert '"tags"' in out and '"backend"' in out  # publish carries them into the index entry
 
 
 def test_scaffold_with_unknown_profile_exits_2(tmp_path: Path) -> None:
