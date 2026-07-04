@@ -1,0 +1,25 @@
+name: index-check
+# The community index (contributions/index.json) is a curated list of profile URLs — this
+# fetches every entry and runs the same load + strict-render validation as `profile validate`,
+# so a dead repo / gone tag / broken profile fails here instead of failing the next adopter
+# (RFC 2026-07-04-community-index, open question "CI check" — decided).
+on:
+  schedule:
+    - cron: "0 6 * * 1" # weekly: listings rot on their own schedule, not ours
+  pull_request:
+    paths: ["contributions/**"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  index-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - run: python -m pip install -e .
+      - run: python tools/checks/check_index.py
