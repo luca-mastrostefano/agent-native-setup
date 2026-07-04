@@ -142,3 +142,57 @@ def test_the_committed_index_is_well_formed() -> None:
     for e in profs:
         assert e.get("name") and e.get("description"), e
         assert e.get("url", "").startswith("git+http"), e  # a git+https/ssh URL
+
+
+# --- adopt-by-name: `add <name>` / `show <name>` fall back to the index (RFC §6) ---------------
+
+
+def _local_profile(tmp_path: Path, name: str = "acme-backend") -> Path:
+    d = tmp_path / "src-profile"
+    (d / "templates").mkdir(parents=True)
+    (d / "templates" / "docs" / "x.md").parent.mkdir(parents=True, exist_ok=True)
+    (d / "templates" / "docs" / "x.md").write_text("hi\n", encoding="utf-8")
+    (d / "profile.json").write_text(
+        json.dumps({"name": name, "version": "1.0.0", "extends": "default", "description": "d"}),
+        encoding="utf-8",
+    )
+    return d
+
+
+def test_show_falls_back_to_an_index_name(tmp_path: Path) -> None:
+    src = _local_profile(tmp_path)
+    _seed(tmp_path, [{"name": "acme-backend", "url": str(src), "description": "d"}])
+    c = _Console()
+    assert profiles._show(argparse.Namespace(ref="acme-backend"), c) == 0
+    assert "community index" in c.text  # the redirection is visible
+    assert "acme-backend[/] 1.0.0" in c.text  # rendered by the normal show path
+
+
+def test_add_falls_back_to_an_index_name(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    src = _local_profile(tmp_path)
+    _seed(tmp_path, [{"name": "acme-backend", "url": str(src), "description": "d"}])
+    monkeypatch.setattr(profiles, "USER_PROFILE_DIR", tmp_path / "userdir")
+    c = _Console()
+    rc = profiles._add(argparse.Namespace(url="acme-backend", name=None, allow_code=False), c)
+    assert rc == 0
+    assert (tmp_path / "userdir" / "acme-backend" / "profile.json").is_file()
+
+
+def test_index_name_fallback_keeps_the_transport_allowlist(tmp_path: Path) -> None:
+    # A poisoned index can point a NAME at any URL — but that URL still flows through the same
+    # allowlist as a hand-typed one, so an ext:: transport is rejected, not executed.
+    for url, match in [
+        ("git+ext://sh -c payload", "transport"),  # transport allowlist
+        ("git+ext::sh -c payload", "expected git"),  # not even URL-shaped
+    ]:
+        _seed(tmp_path, [{"name": "evil", "url": url, "description": "d"}])
+        with pytest.raises(profiles.ProfileError, match=match):
+            profiles._resolve_ref("evil", _Console())
+
+
+def test_pathlike_and_unknown_refs_never_consult_the_index(tmp_path: Path) -> None:
+    _seed(tmp_path, [{"name": "some/dir", "url": str(tmp_path), "description": "d"}])
+    with pytest.raises(profiles.ProfileError, match="not found"):
+        profiles._resolve_ref("some/dir", _Console())  # path-shaped → no index lookup
+    with pytest.raises(profiles.ProfileError, match="not found"):
+        profiles._resolve_ref("not-listed", _Console())  # bare name, no entry → original error

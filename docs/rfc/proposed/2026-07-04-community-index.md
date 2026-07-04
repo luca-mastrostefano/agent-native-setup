@@ -51,6 +51,16 @@ it *encodes the correct shape* a human gets wrong by hand — a pinned `@<tag>` 
 schema-valid entry — and **unpinned/broken URLs are the main failure mode of the curation burden**,
 so producing reproducible listings directly serves the index's maintainability.
 
+**6. Adopt by name — `add <name>` / `show <name>` fall back to the index.** When a ref is a bare
+name that resolves to nothing local (locals always win), `add`/`show` look it up in the index by
+exact name and proceed with the listed URL — the npm-install model, collapsing the
+`search` → copy URL → `add` journey to two short commands. This gives the index one new
+authority: it resolves a *name* to a URL. The exposure is unchanged in kind — a poisoned index
+could equally have listed that URL under an enticing name for the user to copy by hand — and the
+resolved URL flows through the identical transport allowlist and consent gate as a typed one.
+The printed `name → community index → <url>` line keeps the redirection visible, and anything
+URL- or path-shaped never consults the index.
+
 ## Consequences
 
 **Newly possible**
