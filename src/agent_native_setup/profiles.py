@@ -403,6 +403,8 @@ def parse_answer_overrides(pairs: list[str], profile: Profile) -> dict[str, Any]
         if p is None:
             known = ", ".join(prompts) or "(this profile has no prompts)"
             raise ProfileError(f"--answer: no prompt named {name!r} — prompts: {known}")
+        if name in overrides:  # a silent last-wins could mask a pipeline copy-paste mistake
+            raise ProfileError(f"--answer {name!r} given more than once")
         if p.type == "text":
             overrides[name] = value
         elif p.type == "confirm":

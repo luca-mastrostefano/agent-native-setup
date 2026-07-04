@@ -32,7 +32,9 @@ Three constraints shape it:
 
 > **Implementation status.** Landed (`profiles.py` `Prompt`/`_parse_prompts`/`gather_answers`,
 > the `answers` Jinja namespace + "renders-empty → skip", **conditional `when` prompts**,
-> answers recorded in the manifest and replayed by `update`). It stays under the still-`Proposed` scaffolding-profiles umbrella
+> answers recorded in the manifest and replayed by `update`, and the **`--answer NAME=VALUE`**
+> headless override — `parse_answer_overrides`, so an agent/CI run can answer a prompt with
+> something other than its default). It stays under the still-`Proposed` scaffolding-profiles umbrella
 > (RFC 2026-06-23), whose `- [ ] Implemented` tracks the whole feature; this slice is complete.
 
 ## Decision
@@ -90,7 +92,8 @@ verbatim.
 - **Scaffold, interactive:** after resolving the profile, run each prompt via `questionary`, in
   order — a prompt with a `when` that evaluates falsy (against the answers gathered so far) is
   skipped and takes its default. So `when` only changes *which questions appear*.
-- **Scaffold, non-interactive (`-y` / no TTY):** use each prompt's `default`, or a type default
+- **Scaffold, non-interactive (`-y` / no TTY):** use each prompt's `default` (unless overridden
+  with `--answer name=value` — validated against the prompt's type), or a type default
   (`""` / `false` / first choice / `[]`). `when` is moot here — nothing is asked.
 - **Recorded:** the resolved answers are stored in the manifest's `profile` block
   (`"answers": {…}`), beside the version and owned files.

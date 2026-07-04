@@ -806,6 +806,13 @@ def test_parse_answer_overrides_rejects_bad_input(tmp_path: Path, pair: str, mat
         profiles.parse_answer_overrides([pair], prof)
 
 
+def test_duplicate_answer_for_the_same_prompt_is_rejected(tmp_path: Path) -> None:
+    # last-wins would silently mask a pipeline copy-paste mistake — refuse instead
+    prof = _make_profile(tmp_path, "team", {}, prompts=_TYPED_PROMPTS)
+    with pytest.raises(profiles.ProfileError, match="more than once"):
+        profiles.parse_answer_overrides(["svc=a", "svc=b"], prof)
+
+
 def test_overridden_prompt_is_never_asked_and_feeds_when(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
