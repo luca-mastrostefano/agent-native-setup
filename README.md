@@ -221,6 +221,7 @@ A profile is a directory with a `profile.json` and a `templates/` tree. A full e
   "version": "1.0.0",
   "extends": "default",
   "description": "Our team's agent setup",
+  "tags": ["backend", "python"],
   "seed": ["docs/team-notes.md"],
   "prompts": [
     {"name": "tier",   "type": "select",  "message": "Service tier?",   "choices": ["basic", "enterprise"], "default": "basic"},
@@ -232,9 +233,10 @@ A profile is a directory with a `profile.json` and a `templates/` tree. A full e
 }
 ```
 
-Only `name`, `version`, and `extends` are required; `seed` / `prompts` / `onboarding` /
-`session_start` are optional. `agent-native-setup profile init` writes this skeleton **plus a
-README documenting every field** — start there. A `.j2` template then reads the answers and
+Only `name`, `version`, and `extends` are required; `tags` (freeform discovery keywords — who/what
+it targets, surfaced by `search`/`show` and carried into the community index by `publish`), `seed`,
+`prompts`, `onboarding`, and `session_start` are optional. `agent-native-setup profile init` writes
+this skeleton **plus a README documenting every field** — start there. A `.j2` template then reads the answers and
 environment: `tier = {{ answers.tier }}`, `{% if env.existing_project %}…{% endif %}`.
 
 With **`extends: "default"`**, every file

@@ -104,6 +104,9 @@ class Profile:
     session_start: tuple[str, ...] = ()
     # Questions the profile asks at scaffold; answers feed templates as ``answers.<name>``.
     prompts: tuple[Prompt, ...] = ()
+    # Freeform discovery tags — who/what it targets (e.g. "backend", "frontend", "design",
+    # "python", "general"). Advisory metadata; carried into the community index by `publish`.
+    tags: tuple[str, ...] = ()
 
     @property
     def standalone(self) -> bool:
@@ -238,6 +241,7 @@ def load(path: Path, *, source: str | None = None) -> Profile:
         onboarding=tuple(_str_list("onboarding")),
         session_start=tuple(_str_list("session_start")),
         prompts=_parse_prompts(data, manifest_path),
+        tags=tuple(_str_list("tags")),
     )
 
 
@@ -467,8 +471,9 @@ agent-native-setup my-app -o ./my-app --profile {source_hint}
 ## Layout
 
 - `profile.json` — name, version (your own semver), `extends` (`"default"` to compose on the
-  base setup, or `null` to be standalone / from scratch), description, an optional `seed` list,
-  and optional `onboarding` / `session_start` lists (below).
+  base setup, or `null` to be standalone / from scratch), description, optional `tags` (freeform
+  discovery keywords — who/what it targets, e.g. `backend` / `frontend` / `design` / `general`),
+  an optional `seed` list, and optional `onboarding` / `session_start` lists (below).
 - `templates/` — the files this profile ships. Paths are relative to the project root, so
   `templates/.claude/agents/foo.md` lands at `.claude/agents/foo.md`. A file ending in
   `.j2` is rendered (Jinja) with `project_name`, `slug`, `description`, `languages`, the
@@ -552,6 +557,7 @@ def _init(args: argparse.Namespace, console: Any) -> int:
         "version": "0.1.0",
         "extends": None if standalone else "default",
         "description": "TODO: one line describing this profile",
+        "tags": [],
         "seed": [],
         "onboarding": [],
         "session_start": [],
@@ -869,6 +875,7 @@ def _publish(args: argparse.Namespace, console: Any) -> int:
         "url": url,
         "description": prof.description,
         "author": "TODO: your name/handle",
+        "tags": list(prof.tags),  # carried from the profile's own tags
     }
     console.print(f"\n[green]Shareable URL:[/] [bold]--profile {url}[/]")
     console.print("[green]Add this entry[/] to a PR against `contributions/index.json`:")
@@ -1020,6 +1027,7 @@ def _save(args: argparse.Namespace, console: Any) -> int:
         "version": "0.1.0",
         "extends": "default",
         "description": f"TODO: describe this profile (saved from {project.name}).",
+        "tags": [],
         "seed": sorted(seed_list),
         "onboarding": onboarding_steps,
         "session_start": [],
@@ -1114,6 +1122,8 @@ def _show(args: argparse.Namespace, console: Any) -> int:
     desc = escape(prof.description) or "(no description)"
     console.print(f"[cyan]{escape(prof.name)}[/] {escape(prof.version)} — {desc}")
     console.print(f"  {kind}  ·  safety: [bold]{tier}[/]")
+    if prof.tags:
+        console.print(f"  tags: {escape(', '.join(prof.tags))}")
     for r in reasons:
         console.print(f"    [yellow]•[/] {escape(r)}")
     files = [rel for rel, _ in prof.template_files()]

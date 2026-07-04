@@ -96,7 +96,9 @@ so producing reproducible listings directly serves the index's maintainability.
 
 ## Open questions (for implementation)
 
-- The index **schema's** exact optional fields (`tags`? a recommended `@ref`?), and whether a **CI
-  check** validates every listed URL still resolves + `validate`s (catches rot/dead links).
+- **`tags` — decided:** freeform discovery keywords live on the **profile itself** (`profile.json`
+  `tags`), are shown by `show`, matched by `search`, and carried into the index entry by `publish`
+  (single source of truth). A recommended `@ref` and a **CI check** that every listed URL still
+  resolves + `validate`s (catches rot/dead links) remain open.
 - **Multiple** indexes (a config *list* of URLs) vs. the single env override — start with one, revisit.
 - **Ranking** as the list grows (exact/substring only for v1; relevance later).
