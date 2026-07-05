@@ -206,7 +206,7 @@ It's read-only on the source and produces a review-ready draft (run `profile val
 
 **Extend.** To build on a community profile — "that base plus our house files" — fork it with
 git; there is deliberately no in-tool extension mechanism
-([why](docs/rfc/proposed/2026-07-04-profile-extends.md): git's three-way merge beats any overlay
+([why](docs/rfc/active/2026-07-04-profile-extends.md): git's three-way merge beats any overlay
 we could ship, and you review base changes before releasing them to your own consumers):
 
 ```bash
@@ -253,38 +253,20 @@ A profile is a directory with a `profile.json` and a `templates/` tree. A full e
 Only `name`, `version`, and `extends` are required; `tags` (freeform discovery keywords — who/what
 it targets, surfaced by `search`/`show` and carried into the community index by `publish`), `seed`,
 `prompts`, `onboarding`, and `session_start` are optional. `agent-native-setup profile init` writes
-this skeleton **plus a README documenting every field** — start there. A `.j2` template then reads the answers and
-environment: `tier = {{ answers.tier }}`, `{% if env.existing_project %}…{% endif %}`.
+this skeleton **plus a README documenting every field** — start there.
 
-With **`extends: "default"`**, every file
-under `templates/` is laid down **on top of** the default scaffold; with **`extends: null`** the
-profile is **standalone** — the default generators are skipped and the profile provides
-everything from scratch (its own `AGENTS.md`, etc.). Files ending in `.j2` are rendered (Jinja,
-with `project_name` / `slug` / `description` / `languages`) and the `.j2` stripped; everything
-else ships verbatim, so files containing `${{ ... }}` (GitHub Actions) are safe. `--profile`
-takes a path, or a bare name resolved under `~/.config/agent-native-setup/profiles/`.
-
-Templates and `when` expressions can also read an **`env`** namespace of detected/resolved
-facts — `env.existing_project` (brownfield repo?), `env.detected_languages`, `env.runner`,
-`env.adoption`, the `env.has_quality`/`has_ci`/… toggles — so a profile adapts to the actual
-repo (e.g. ship a migration guide only `{% if env.existing_project %}`).
-
-A profile can ask its own **questions** (a mini wizard): a `prompts` list
-(`text`/`select`/`confirm`/`checkbox`, the same widgets the base wizard uses) whose answers are
-exposed to `.j2` templates as `answers.<name>` — so a profile can branch its content
-(`{% if answers.use_db %}…`) and conditionally include a file (a `.j2` that renders empty is
-skipped). A prompt can carry a `when` expression so it's only **asked when relevant** (ask the
-DB engine only `when: "answers.use_db"`). Answers are recorded and replayed on `update` (never
-re-asked); `-y` runs use each prompt's default, and `--answer name=value` (repeatable) answers
-one headlessly — so an agent or CI run can pick `--answer tier=premium` instead of the default.
-
-A profile can also contribute **startup instructions**: an `onboarding` list (markdown steps
-folded into the project's one-time, self-deleting `ONBOARDING.md`) and a `session_start` list
-(shell commands appended to the `.claude` SessionStart hooks, run every session — each is
-wrapped so a failure can't disrupt the session). For an `extends: default` profile they *merge*
-into the base's onboarding/hooks; a standalone profile gets a profile-only `ONBOARDING.md` and a
-minimal hooks `settings.json` of its own. (Use `onboarding` for things templates can't express —
-e.g. *"recreate the `CLAUDE.md` symlink"*.)
+In short: **`extends: "default"`** overlays every file under `templates/` on the default
+scaffold; **`extends: null`** is **standalone** (the default generators are skipped and the
+profile ships everything, its own `AGENTS.md` included). `.j2` templates render (sandboxed)
+against the project context — the profile's own **prompt answers** (`{{ answers.tier }}`; a
+`when` asks a question only when relevant, answers are recorded and replayed on `update`, and
+`-y` / `--answer name=value` cover headless runs) and an **`env`** namespace of detected facts
+(`{% if env.existing_project %}…`) — while every other file ships verbatim, so a literal
+`${{ ... }}` is safe. `onboarding` steps fold into the project's one-time `ONBOARDING.md`;
+`session_start` commands join the `.claude` SessionStart hooks (each wrapped so a failure can't
+disrupt a session). The full subsystem reference — resolution precedence, prompt types, the
+trust model, integration points — lives in
+[`docs/architecture/profiles.md`](docs/architecture/profiles.md).
 
 **Updating to a new profile version.** Bump the profile's `version` when you change its
 templates. In projects scaffolded from it, `agent-native-setup update` then refreshes those
@@ -298,10 +280,12 @@ newer version exists at the profile's source. For `update` to pull it, the profi
 resolvable then — the same path, or a name in `~/.config/agent-native-setup/profiles/` —
 otherwise the base still updates and the profile's files are left as-is.
 
-> **Still experimental.** The profile system is complete for authoring, composing, updating,
-> safety, and git-URL distribution; a curated **registry/index** (discovery, `profile search`) and
-> arbitrary **code-plugin** profiles are the remaining frontier — see the RFCs under
-> [`docs/rfc/proposed/`](docs/rfc/proposed/) (`ecosystem-core`, `profile-fetch`).
+> **Still experimental.** The community loop is complete end-to-end — authoring, composing,
+> prompts, updating, the safety/trust model, git-URL distribution, and discovery (the community
+> index, kept rot-free by CI) — but the format may still evolve with feedback. The deliberate
+> frontier: **code-plugin** profiles (arbitrary generator code — a one-way trust door we haven't
+> opened; `ecosystem-core`) and per-profile **migrations** (`scaffolding-profiles`), both under
+> [`docs/rfc/proposed/`](docs/rfc/proposed/).
 
 ## Philosophy
 

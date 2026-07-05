@@ -28,6 +28,7 @@ task typecheck  # type-check
 task test  # run tests
 task quality  # full local gate
 task rfc-sync  # sync RFCs to their Status folder
+task check-index  # fetch + validate every community-index entry (network)
 task improvement -- "<idea>"  # log an idea in docs/improvements.md
 ```
 

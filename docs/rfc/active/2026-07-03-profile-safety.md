@@ -1,9 +1,9 @@
 # Profile safety: derived classification, sandboxed rendering, path confinement, update re-gate
 
-- **Status:** Proposed
+- **Status:** Active
 - **Date:** 2026-07-03
 - **Author:** Luca Mastrostefano
-- [ ] Implemented
+- [x] Implemented
 
 > **Status note:** the content-based core **landed** — `profiles.classify_safety` (derived tier,
 > allowlist + fail-closed), **sandboxed rendering** (`SandboxedEnvironment` — the base scaffold

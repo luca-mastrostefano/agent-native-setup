@@ -1,9 +1,9 @@
 # Extending community profiles is git-native (no `extends: <url>` chains)
 
-- **Status:** Proposed
+- **Status:** Active
 - **Date:** 2026-07-04
 - **Author:** Luca Mastrostefano
-- [ ] Implemented
+- [x] Implemented
 
 ## Context
 

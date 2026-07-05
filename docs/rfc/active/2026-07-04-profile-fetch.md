@@ -1,9 +1,9 @@
 # Profile fetch: consume a profile from a git URL, on per-artifact content-hash trust
 
-- **Status:** Proposed
+- **Status:** Active
 - **Date:** 2026-07-04
 - **Author:** Luca Mastrostefano
-- [ ] Implemented
+- [x] Implemented
 
 > **Status note:** the core **landed** — `git+https://`/`git+ssh://` fetch (enforced transport
 > allowlist, `--no-recurse-submodules`, cached, pinned-ref reuse, offline fallback), `content_hash`

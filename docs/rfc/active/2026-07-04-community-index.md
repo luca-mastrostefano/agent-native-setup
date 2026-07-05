@@ -1,9 +1,9 @@
 # Community profile index: zero-infra discovery via a curated, PR-gated list
 
-- **Status:** Proposed
+- **Status:** Active
 - **Date:** 2026-07-04
 - **Author:** Luca Mastrostefano
-- [ ] Implemented
+- [x] Implemented
 
 ## Context
 

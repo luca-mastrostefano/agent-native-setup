@@ -1,9 +1,9 @@
 # `profile save`: extract a reusable profile from a project's delta
 
-- **Status:** Proposed
+- **Status:** Active
 - **Date:** 2026-07-03
 - **Author:** Luca Mastrostefano
-- [ ] Implemented
+- [x] Implemented
 
 > **Status note:** the **core landed** — `agent-native-setup profile save <project> <name>`
 > extracts the delta, parameterizes name/slug (word-boundary), preserves seed status, turns
