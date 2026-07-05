@@ -13,6 +13,7 @@ files from their constants, so drift in either direction fails here).
 from __future__ import annotations
 
 import datetime
+import json
 from pathlib import Path
 
 import pytest
@@ -91,6 +92,23 @@ def _matrix() -> list[tuple[str, dict]]:
         (
             "no-agents",
             dict(languages=["go"], ai_tools=["cursor"], include_agents=False),
+        ),
+        # Discriminator cells: each flips ONE conjunct of a compound gate that every other
+        # cell leaves co-varying, so a wrong gate translation cannot pass the matrix.
+        (
+            "bare-tools",  # claude present but agents off; ci on but GHA off; quality on but
+            # security off; docs on but no dependabot language (html)
+            dict(
+                languages=["html"],
+                ai_tools=["claude"],
+                include_agents=False,
+                include_security=False,
+                use_github_actions=False,
+            ),
+        ),
+        (
+            "legacy-no-quality",  # existing repo but quality off -> no blame-ignore-revs
+            dict(languages=["python"], existing_project=True, include_quality=False),
         ),
     ]
 
@@ -195,31 +213,38 @@ def test_flagship_profile_loads_and_validates() -> None:
     assert profiles._validate(argparse.Namespace(path=str(FLAGSHIP)), _Console()) == 0
 
 
-def test_built_templates_are_current() -> None:
+def test_built_templates_are_current(tmp_path: Path) -> None:
     """`build.py` output is committed — a generator-constant change without a rebuild fails
-    here with the exact command to run."""
+    here with the exact command to run. Builds into a scratch dir: the working tree is never
+    mutated, so the failure signal is repeatable and parallel-safe."""
     import subprocess
     import sys
-    import tempfile
 
-    with tempfile.TemporaryDirectory() as tmp:
-        snapshot = Path(tmp) / "templates"
-        import shutil
-
-        shutil.copytree(FLAGSHIP / "templates", snapshot)
-        subprocess.run(
-            [sys.executable, str(FLAGSHIP / "build.py")], check=True, capture_output=True
+    out = tmp_path / "templates"
+    proc = subprocess.run(
+        [sys.executable, str(FLAGSHIP / "build.py"), "--out", str(out)],
+        capture_output=True,
+        text=True,
+    )
+    assert proc.returncode == 0, f"build.py failed:\n{proc.stderr}"
+    fresh = {p.relative_to(out).as_posix(): p.read_bytes() for p in out.rglob("*") if p.is_file()}
+    committed_root = FLAGSHIP / "templates"
+    committed = {
+        p.relative_to(committed_root).as_posix(): p.read_bytes()
+        for p in committed_root.rglob("*")
+        if p.is_file()
+    }
+    # Every built file must exist, byte-identical, in the committed tree (hand-written .j2
+    # templates may exist beyond the built set; orphans of RENAMED build outputs are caught
+    # because build.py owns every path it ever emitted via the committed build manifest).
+    for rel, content in fresh.items():
+        assert rel in committed, f"built template {rel} is not committed — run build.py"
+        assert committed[rel] == content, (
+            f"{rel} is stale — run: python profiles/agent-native-baseline/build.py"
         )
-        current = {
-            p.relative_to(FLAGSHIP / "templates").as_posix(): p.read_bytes()
-            for p in (FLAGSHIP / "templates").rglob("*")
-            if p.is_file()
-        }
-        snapped = {
-            p.relative_to(snapshot).as_posix(): p.read_bytes()
-            for p in snapshot.rglob("*")
-            if p.is_file()
-        }
-        assert current == snapped, (
-            "built templates are stale — run: python profiles/agent-native-baseline/build.py"
-        )
+    built_list = json.loads((FLAGSHIP / ".built-manifest.json").read_text(encoding="utf-8"))
+    assert sorted(fresh) == sorted(built_list), (
+        "build manifest out of date — run: python profiles/agent-native-baseline/build.py"
+    )
+    for rel in built_list:
+        assert rel in fresh, f"orphaned built template {rel} — removed from PORTS but committed"

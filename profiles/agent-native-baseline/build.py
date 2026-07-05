@@ -23,8 +23,11 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "src"))
 
 from agent_native_setup.generators import agents, ai_context, ci, docs, quality  # noqa: E402
+from agent_native_setup.languages import REGISTRY  # noqa: E402
 
-TEMPLATES = Path(__file__).resolve().parent / "templates"
+PROFILE_ROOT = Path(__file__).resolve().parent
+TEMPLATES = PROFILE_ROOT / "templates"
+BUILT_MANIFEST = PROFILE_ROOT / ".built-manifest.json"  # meta — outside templates/, never ships
 
 # Gate shorthands — the flagship's prompt names (answers.*) + sensed facts (env.*).
 _DOCS = "answers.include_docs"
@@ -32,11 +35,16 @@ _CLAUDE = 'answers.include_agents and "claude" in answers.tools'
 _QUALITY = "answers.include_quality"
 _GHA = "answers.include_ci and answers.github_actions"
 _PY_DOCS = f'{_DOCS} and "python" in answers.languages'
-# docs.py ships the RFC dependency gate for languages that declare a Dependabot ecosystem
-# (python/node/go/rust today — baked, like pins; html has none).
+# docs.py ships the RFC dependency gate for languages that declare a Dependabot ecosystem —
+# derived from the registry at build time, so adding a language can't silently diverge.
 _DEP_LANGS = (
-    '("python" in answers.languages or "node" in answers.languages '
-    'or "go" in answers.languages or "rust" in answers.languages)'
+    "("
+    + " or ".join(
+        f'"{key}" in answers.languages'
+        for key, lang in REGISTRY.items()
+        if lang.dependabot_ecosystem
+    )
+    + ")"
 )
 
 # (output path, gate expression or None, constant) — grows as files port over.
@@ -72,19 +80,39 @@ PORTS: list[tuple[str, str | None, str]] = [
 ]
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
+    import argparse
+    import json
+
+    ap = argparse.ArgumentParser(description=__doc__)
+    ap.add_argument(
+        "--out", default=str(TEMPLATES), help="output dir (tests build into a scratch dir)"
+    )
+    args = ap.parse_args(argv)
+    out_root = Path(args.out)
+    in_place = out_root == TEMPLATES
+
+    if in_place and BUILT_MANIFEST.is_file():  # remove renamed/dropped outputs — no orphans
+        for rel in json.loads(BUILT_MANIFEST.read_text(encoding="utf-8")):
+            (TEMPLATES / rel).unlink(missing_ok=True)
+
+    built: list[str] = []
     for out_rel, cond, content in PORTS:
         if "{% endraw %}" in content:  # would terminate our wrapper early — needs hand-porting
             raise SystemExit(f"{out_rel}: content contains endraw; port by hand")
         if cond is None:
-            path = TEMPLATES / out_rel
+            rel = out_rel
             body = content
         else:
-            path = TEMPLATES / (out_rel + ".j2")
+            rel = out_rel + ".j2"
             body = "{% if " + cond + " %}{% raw %}" + content + "{% endraw %}{% endif %}"
+        path = out_root / rel
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(body, encoding="utf-8")
-        print(f"built {path.relative_to(TEMPLATES.parent)}")
+        built.append(rel)
+        print(f"built {rel}")
+    if in_place:
+        BUILT_MANIFEST.write_text(json.dumps(sorted(built), indent=2) + "\n", encoding="utf-8")
     return 0
 
 
