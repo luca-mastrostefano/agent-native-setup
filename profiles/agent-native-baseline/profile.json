@@ -6,6 +6,12 @@
   "tags": ["general", "baseline", "multi-language"],
   "seed": ["docs/architecture/overview.md", "docs/improvements.md", "README.md"],
   "transient": [".claude/commands/onboard.md", "ONBOARDING.md"],
+  "empty_files": {
+    "docs/rfc/proposed/.gitkeep": "answers.include_docs",
+    "docs/rfc/active/.gitkeep": "answers.include_docs",
+    "docs/rfc/superseded/.gitkeep": "answers.include_docs",
+    "docs/rfc/retired/.gitkeep": "answers.include_docs"
+  },
   "links": {
     "CLAUDE.md": {"target": "AGENTS.md", "when": "\"claude\" in answers.tools"},
     "GEMINI.md": {"target": "AGENTS.md", "when": "\"gemini\" in answers.tools"}

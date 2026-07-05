@@ -1840,3 +1840,72 @@ def test_is_git_senses_a_preexisting_repo_without_init(tmp_path: Path) -> None:
     assert (target / "docs/g.md").read_text(encoding="utf-8") == "git=True"
     m = json.loads((target / MANIFEST_PATH).read_text(encoding="utf-8"))
     assert m["config"]["is_git"] is True
+
+
+def test_empty_files_ship_conditionally_and_are_owned(tmp_path: Path) -> None:
+    prof = _make_profile(
+        tmp_path,
+        "team",
+        {},
+        prompts=[{"name": "docs", "type": "confirm", "message": "?", "default": True}],
+    )
+    data = json.loads((prof.root / "profile.json").read_text(encoding="utf-8"))
+    data["empty_files"] = {"docs/rfc/.gitkeep": "answers.docs", "notes/.gitkeep": None}
+    (prof.root / "profile.json").write_text(json.dumps(data), encoding="utf-8")
+    prof = profiles.load(prof.root, source="team")
+
+    on, off = tmp_path / "on", tmp_path / "off"
+    on.mkdir(), off.mkdir()
+    # A non-empty USER file already at an empty_files path: never clobbered, never owned —
+    # a regression here would make the manifest claim the user's file as profile-owned.
+    (on / "notes").mkdir()
+    (on / "notes" / ".gitkeep").write_text("the user's notes marker\n", encoding="utf-8")
+    owned_on = profiles.apply(prof, _config(on), Scaffolder(on), {"docs": True})
+    owned_off = profiles.apply(prof, _config(off), Scaffolder(off), {"docs": False})
+    assert (on / "notes/.gitkeep").read_text(encoding="utf-8") == "the user's notes marker\n"
+    assert "notes/.gitkeep" not in owned_on
+    assert (on / "docs/rfc/.gitkeep").read_text(encoding="utf-8") == ""
+    assert "docs/rfc/.gitkeep" in owned_on
+    assert not (off / "docs/rfc/.gitkeep").exists()  # condition false -> skipped
+    assert (off / "notes/.gitkeep").read_text(encoding="utf-8") == ""  # fresh here -> ships
+    assert "notes/.gitkeep" in owned_off
+    assert "docs/rfc/.gitkeep" not in owned_off
+
+
+def test_empty_files_validation_and_confinement(tmp_path: Path) -> None:
+    d = tmp_path / "p"
+    (d / "templates").mkdir(parents=True)
+
+    def manifest(entries: object) -> None:
+        (d / "profile.json").write_text(
+            json.dumps(
+                {"name": "p", "version": "1.0.0", "extends": "default", "empty_files": entries}
+            ),
+            encoding="utf-8",
+        )
+
+    for bad, match in [
+        (["x"], "must be an object"),
+        ({"": None}, "keys must be paths"),
+        ({"a": 1}, "null or a string"),
+        ({"a": "{% bad"}, "not a valid expression"),
+        ({"../out": None}, "inside the project"),
+        ({"/abs": None}, "inside the project"),
+    ]:
+        manifest(bad)
+        with pytest.raises(profiles.ProfileError, match=match):
+            profiles.load(d)
+    manifest({"docs/.gitkeep": None})
+    assert profiles.load(d).empty_files == (("docs/.gitkeep", None),)
+
+
+def test_gitkeep_is_inert_but_other_empty_paths_fail_closed(tmp_path: Path) -> None:
+    prof = _make_profile(tmp_path, "team", {})
+    data = json.loads((prof.root / "profile.json").read_text(encoding="utf-8"))
+    data["empty_files"] = {"docs/rfc/.gitkeep": None}
+    (prof.root / "profile.json").write_text(json.dumps(data), encoding="utf-8")
+    assert profiles.classify_safety(profiles.load(prof.root))[0] == "safe"
+    data["empty_files"] = {"conftest.py": None}  # an empty sink path is still a sink path
+    (prof.root / "profile.json").write_text(json.dumps(data), encoding="utf-8")
+    tier, reasons = profiles.classify_safety(profiles.load(prof.root))
+    assert tier == "unsafe" and any("conftest.py" in r for r in reasons)
