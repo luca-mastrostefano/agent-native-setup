@@ -361,6 +361,19 @@ def _rendered_ports() -> list[tuple[str, str | None, str, list[str]]]:
     ]
 
 
+def _check_flagship_invariants() -> None:
+    """ONBOARDING.md ships as a ported template with no profile-steps slot — if the flagship
+    ever declares its own `onboarding` steps, they would be silently superseded (review of
+    #49). Fail the build instead."""
+    import json
+
+    manifest = json.loads((PROFILE_ROOT / "profile.json").read_text(encoding="utf-8"))
+    assert not manifest.get("onboarding"), (
+        "flagship onboarding steps would be dropped by the ported ONBOARDING.md template — "
+        "give the template a profile-steps slot before declaring any"
+    )
+
+
 def main(argv: list[str] | None = None) -> int:
     import argparse
     import json
@@ -370,6 +383,7 @@ def main(argv: list[str] | None = None) -> int:
         "--out", default=str(TEMPLATES), help="output dir (tests build into a scratch dir)"
     )
     args = ap.parse_args(argv)
+    _check_flagship_invariants()
     out_root = Path(args.out)
     in_place = out_root == TEMPLATES
 
