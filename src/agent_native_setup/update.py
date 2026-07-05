@@ -290,6 +290,7 @@ def _regenerate(
     session_start: tuple[str, ...] | None = None,
     answers: dict[str, object] | None = None,
     standalone: bool | None = None,
+    profile_date: str | None = None,
 ) -> tuple[Scaffolder, dict | None]:
     """Render the current version's full scaffold (plus ``profile``'s overlay, if any) into
     ``into``. Returns ``(scaffolder, profile_block)`` — the block reflects what the profile
@@ -301,7 +302,13 @@ def _regenerate(
 
     sc = Scaffolder(into)
     block = cli.build(
-        config, sc, profile, session_start=session_start, answers=answers, standalone=standalone
+        config,
+        sc,
+        profile,
+        session_start=session_start,
+        answers=answers,
+        standalone=standalone,
+        profile_date=profile_date,
     )
     return sc, block
 
@@ -474,6 +481,7 @@ def run(target: Path, *, dry_run: bool, console: Any, assume_yes: bool = False) 
         degraded_hooks = tuple(degraded_block.get("session_start", []))
         degraded_standalone = degraded_block.get("extends") is None
     with tempfile.TemporaryDirectory() as tmp:
+        old_profile_block = old.get("profile") or {}
         sc, built_block = _regenerate(
             _config_from_manifest(old, Path(tmp)),
             Path(tmp),
@@ -481,6 +489,8 @@ def run(target: Path, *, dry_run: bool, console: Any, assume_yes: bool = False) 
             session_start=degraded_hooks,
             answers=update_answers,
             standalone=degraded_standalone,
+            # Replay the recorded @DATE@ stamp so a dated path never drifts on refresh.
+            profile_date=old_profile_block.get("date"),
         )
         # build() writes the manifest *last* via sc.write, which adds it to `recorded`.
         # The updater owns the manifest itself (rewritten below), so drop it from the set

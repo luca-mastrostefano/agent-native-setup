@@ -26,6 +26,14 @@ are skipped and the profile provides everything. Templates ending in `.j2` are r
 else ships verbatim, so literal `${{ … }}` is safe. Each shipped file is **managed**
 (refreshed by `update`) unless listed in `seed` (written once, then the user's).
 
+Two path-level affordances (RFC 2026-07-05 §6): **`links`** — an object of
+`"link": "target"` pairs (both project-relative, traversal-free, re-confined at apply) the
+engine creates as symlinks, recorded as `symlink:<target>` provenance like the base's own
+links, shown by `show`, and classified fail-closed (any link ⇒ not `safe`); and **`@DATE@`**
+in a template *path*, substituted with the scaffold date — recorded in the manifest
+(`profile.date`) and **replayed on update**, so a dated path never drifts or duplicates under
+a refresh.
+
 ## Resolution (`resolve`)
 
 `--profile` / `profile add` / `profile show` accept, in this order of precedence:

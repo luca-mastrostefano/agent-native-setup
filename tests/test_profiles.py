@@ -1494,3 +1494,170 @@ def test_scaffold_with_unknown_profile_exits_2(tmp_path: Path) -> None:
     rc = cli.main(["demo", "-o", str(tmp_path / "out"), "-y", "--no-git", "--profile", "nope"])
     assert rc == 2
     assert not (tmp_path / "out" / "AGENTS.md").exists()  # nothing scaffolded on a bad profile
+
+
+# --- links + @DATE@ (RFC 2026-07-05 §6) --------------------------------------------------------
+
+
+def test_load_validates_links(tmp_path: Path) -> None:
+    d = tmp_path / "p"
+    (d / "templates").mkdir(parents=True)
+
+    def manifest(links: object) -> None:
+        (d / "profile.json").write_text(
+            json.dumps({"name": "p", "version": "1.0.0", "extends": "default", "links": links}),
+            encoding="utf-8",
+        )
+
+    for bad in (["a"], {"a": 1}, {"": "x"}, {"a": ""}):
+        manifest(bad)
+        with pytest.raises(profiles.ProfileError, match="links"):
+            profiles.load(d)
+    for escaping in ({"../out": "AGENTS.md"}, {"CLAUDE.md": "../../etc"}, {"/abs": "x"}):
+        manifest(escaping)
+        with pytest.raises(profiles.ProfileError, match="inside the project"):
+            profiles.load(d)
+    manifest({"CLAUDE.md": "AGENTS.md", "GEMINI.md": "AGENTS.md"})
+    prof = profiles.load(d)
+    assert prof.links == (("CLAUDE.md", "AGENTS.md"), ("GEMINI.md", "AGENTS.md"))
+
+
+def test_links_are_created_owned_and_classified(tmp_path: Path) -> None:
+    prof = _make_profile(tmp_path, "team", {"NOTES.md": "hi\n"})
+    data = json.loads((prof.root / "profile.json").read_text(encoding="utf-8"))
+    data["links"] = {"NOTES-LINK.md": "NOTES.md"}
+    (prof.root / "profile.json").write_text(json.dumps(data), encoding="utf-8")
+    prof = profiles.load(prof.root, source="team")
+
+    tier, reasons = profiles.classify_safety(prof)
+    assert tier == "unsafe" and any("symlink" in r for r in reasons)  # fail-closed
+
+    target = tmp_path / "proj"
+    target.mkdir()
+    cli.build(_config(target), Scaffolder(target), prof)
+    link = target / "NOTES-LINK.md"
+    assert link.is_symlink() and link.resolve() == (target / "NOTES.md").resolve()
+    m = json.loads((target / MANIFEST_PATH).read_text(encoding="utf-8"))
+    assert "NOTES-LINK.md" in m["profile"]["files"]  # the link is an owned output
+    assert m["files"]["NOTES-LINK.md"].startswith("symlink:")  # same provenance as base links
+
+    import argparse
+
+    shown = _Console()
+    assert profiles._show(argparse.Namespace(ref=str(prof.root)), shown) == 0
+    assert "NOTES-LINK.md -> NOTES.md" in shown.text
+
+
+def test_link_through_symlinked_parent_is_refused(tmp_path: Path) -> None:
+    # Confinement: a symlink dir already in the target must not let a link land outside.
+    prof = _make_profile(tmp_path, "team", {})
+    data = json.loads((prof.root / "profile.json").read_text(encoding="utf-8"))
+    data["links"] = {"sub/evil.md": "sub/x.md"}
+    (prof.root / "profile.json").write_text(json.dumps(data), encoding="utf-8")
+    prof = profiles.load(prof.root, source="team")
+    target = tmp_path / "proj"
+    target.mkdir()
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (target / "sub").symlink_to(outside)
+    with pytest.raises(profiles.ProfileError, match="escapes the project"):
+        profiles.apply(prof, _config(target), Scaffolder(target), {})
+
+
+def test_date_token_substitutes_and_replays_on_update(tmp_path: Path) -> None:
+    from datetime import date
+
+    prof = _make_profile(
+        tmp_path, "team", {"docs/@DATE@-note.md": "v1\n"}, version="0.1.0", by_path=True
+    )
+    target = tmp_path / "proj"
+    target.mkdir()
+    cli.build(_config(target), Scaffolder(target), prof)
+    today = f"{date.today():%Y-%m-%d}"
+    dated = target / "docs" / f"{today}-note.md"
+    assert dated.read_text(encoding="utf-8") == "v1\n"
+    m = json.loads((target / MANIFEST_PATH).read_text(encoding="utf-8"))
+    assert m["profile"]["date"] == today
+    _commit(target)
+
+    # Simulate the recorded date being older than "today" at update time: rewrite it and move
+    # the file — update must replay the RECORDED stamp, not restamp with its own today.
+    old_day = "2020-01-01"
+    m["profile"]["date"] = old_day
+    m["profile"]["files"] = [f"docs/{old_day}-note.md"]
+    m["files"][f"docs/{old_day}-note.md"] = m["files"].pop(f"docs/{today}-note.md")
+    (target / MANIFEST_PATH).write_text(json.dumps(m, indent=2), encoding="utf-8")
+    dated.rename(target / "docs" / f"{old_day}-note.md")
+    _commit(target)
+
+    _bump_profile(prof.root, version="0.1.2", files={"docs/@DATE@-note.md": "v2\n"})
+    assert update.run(target, dry_run=False, console=_Console()) == 0
+    assert (target / "docs" / f"{old_day}-note.md").read_text(encoding="utf-8") == "v2\n"
+    assert not (target / "docs" / f"{today}-note.md").exists()  # no drift, no duplicate
+    m2 = json.loads((target / MANIFEST_PATH).read_text(encoding="utf-8"))
+    assert m2["profile"]["date"] == old_day  # the stamp survives the refresh
+
+
+def test_no_date_key_recorded_when_token_unused(tmp_path: Path) -> None:
+    prof = _make_profile(tmp_path, "team", {"docs/plain.md": "x\n"})
+    target = tmp_path / "proj"
+    target.mkdir()
+    cli.build(_config(target), Scaffolder(target), prof)
+    m = json.loads((target / MANIFEST_PATH).read_text(encoding="utf-8"))
+    assert "date" not in m["profile"]
+
+
+def test_link_target_resolving_outside_is_refused(tmp_path: Path) -> None:
+    # Dest-side confinement: a link TARGET that chains through a user's outward symlink would
+    # alias project reads/writes to outside — refused before creation.
+    prof = _make_profile(tmp_path, "team", {})
+    data = json.loads((prof.root / "profile.json").read_text(encoding="utf-8"))
+    data["links"] = {"CLAUDE.md": "AGENTS.md"}
+    (prof.root / "profile.json").write_text(json.dumps(data), encoding="utf-8")
+    prof = profiles.load(prof.root, source="team")
+    target = tmp_path / "proj"
+    target.mkdir()
+    outside = tmp_path / "outside.md"
+    outside.write_text("secrets\n", encoding="utf-8")
+    (target / "AGENTS.md").symlink_to(outside)  # user's own outward link at the dest
+    with pytest.raises(profiles.ProfileError, match="escapes the project"):
+        profiles.apply(prof, _config(target), Scaffolder(target), {})
+
+
+def test_link_never_clobbers_a_preexisting_user_file(tmp_path: Path) -> None:
+    prof = _make_profile(tmp_path, "team", {"AGENTS.md": "contract\n"})
+    data = json.loads((prof.root / "profile.json").read_text(encoding="utf-8"))
+    data["links"] = {"CLAUDE.md": "AGENTS.md"}
+    (prof.root / "profile.json").write_text(json.dumps(data), encoding="utf-8")
+    prof = profiles.load(prof.root, source="team")
+    target = tmp_path / "proj"
+    target.mkdir()
+    (target / "CLAUDE.md").write_text("the user's own file\n", encoding="utf-8")
+    owned = profiles.apply(prof, _config(target), Scaffolder(target), {})
+    assert (target / "CLAUDE.md").read_text(encoding="utf-8") == "the user's own file\n"
+    assert not (target / "CLAUDE.md").is_symlink()  # skipped, byte-identical
+    assert "CLAUDE.md" not in owned  # and never claimed
+
+
+def test_dated_seed_entry_stays_write_once(tmp_path: Path) -> None:
+    # seed entries substitute @DATE@ too — a regression flips the dated file to managed and a
+    # later update would refresh the write-once file it exists to protect.
+    prof = _make_profile(
+        tmp_path,
+        "team",
+        {"docs/@DATE@-charter.md": "v1\n"},
+        version="0.1.0",
+        seed=("docs/@DATE@-charter.md",),
+        by_path=True,
+    )
+    target = tmp_path / "proj"
+    target.mkdir()
+    cli.build(_config(target), Scaffolder(target), prof)
+    from datetime import date
+
+    dated = target / "docs" / f"{date.today():%Y-%m-%d}-charter.md"
+    assert dated.read_text(encoding="utf-8") == "v1\n"
+    _commit(target)
+    _bump_profile(prof.root, version="0.1.1", files={"docs/@DATE@-charter.md": "v2\n"})
+    assert update.run(target, dry_run=False, console=_Console()) == 0
+    assert dated.read_text(encoding="utf-8") == "v1\n"  # seed: shipped once, never refreshed

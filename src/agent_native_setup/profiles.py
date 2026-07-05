@@ -107,6 +107,10 @@ class Profile:
     # Freeform discovery tags — who/what it targets (e.g. "backend", "frontend", "design",
     # "python", "general"). Advisory metadata; carried into the community index by `publish`.
     tags: tuple[str, ...] = ()
+    # Declarative symlinks (RFC 2026-07-05 §6): (link, target) pairs, both project-relative and
+    # confined — templates can't carry symlinks, and a link redirects reads/writes, so links are
+    # declared data the engine executes (and the classifier counts as code-adjacent).
+    links: tuple[tuple[str, str], ...] = ()
 
     @property
     def standalone(self) -> bool:
@@ -230,6 +234,16 @@ def load(path: Path, *, source: str | None = None) -> Profile:
             raise ProfileError(f"{manifest_path}: {key!r} must be a list of strings")
         return value
 
+    raw_links = data.get("links", {})
+    if not isinstance(raw_links, dict) or not all(
+        isinstance(k, str) and isinstance(v, str) and k and v for k, v in raw_links.items()
+    ):
+        raise ProfileError(f"{manifest_path}: 'links' must be an object of link -> target strings")
+    for rel in [*raw_links.keys(), *raw_links.values()]:
+        # Both ends must be project-relative and traversal-free; apply() re-checks resolved paths.
+        if rel.startswith(("/", "\\")) or ".." in Path(rel).parts or Path(rel).is_absolute():
+            raise ProfileError(f"{manifest_path}: links entry {rel!r} must stay inside the project")
+
     return Profile(
         name=str(name),
         version=str(version),
@@ -242,6 +256,7 @@ def load(path: Path, *, source: str | None = None) -> Profile:
         session_start=tuple(_str_list("session_start")),
         prompts=_parse_prompts(data, manifest_path),
         tags=tuple(_str_list("tags")),
+        links=tuple(sorted(raw_links.items())),
     )
 
 
@@ -473,7 +488,12 @@ def gather_answers(
 
 
 def apply(
-    profile: Profile, config: WizardConfig, sc: Scaffolder, answers: dict[str, Any]
+    profile: Profile,
+    config: WizardConfig,
+    sc: Scaffolder,
+    answers: dict[str, Any],
+    *,
+    applied_on: str | None = None,
 ) -> list[str]:
     """Overlay ``profile``'s templates onto an already-generated scaffold. Files are **managed**
     (refreshed on update when the profile ships a new version) unless listed in the profile's
@@ -481,13 +501,25 @@ def apply(
     plus ``answers`` (and a ``.j2`` that renders empty is skipped — conditional inclusion);
     others ship verbatim. A file at the same path as a base file supersedes it.
 
+    ``@DATE@`` in an output path substitutes to ``applied_on`` (default: today, RFC 2026-07-05
+    §6) — recorded in the manifest and replayed on update so the path never drifts. The
+    profile's ``links`` are created after its files, through the same ``Scaffolder.symlink``
+    the base uses (so provenance records ``symlink:<target>`` identically). Unlike a template
+    file, a link never supersedes anything already at its path — pre-existing or written this
+    run, the existing entry wins and the link is skipped.
+
     Returns the sorted list of paths the profile actually owns (those it wrote — a path where a
     user's own file pre-existed, or a ``.j2`` that rendered empty, is not claimed), so the
     project manifest records exactly them and ``update`` re-applies the profile to refresh them."""
+    from datetime import date
+
     ctx = _context(config, answers)
     target_root = sc.target.resolve()
+    stamp = applied_on or f"{date.today():%Y-%m-%d}"
+    seed_set = {s.replace("@DATE@", stamp) for s in profile.seed}
     owned: list[str] = []
     for out_rel, src in profile.template_files():
+        out_rel = out_rel.replace("@DATE@", stamp)
         # Path confinement (RFC 2026-07-03-profile-safety §2): refuse an output that escapes the
         # project before writing. `out_rel` comes from `relative_to(templates/)` so it can't itself
         # be absolute or contain `..`; the real vector this catches is a **symlink parent already in
@@ -503,8 +535,19 @@ def apply(
                 continue  # conditional include: a .j2 that renders empty is not shipped
         else:
             content = raw
-        if sc.overlay(out_rel, content, seed=out_rel in profile.seed):
+        if sc.overlay(out_rel, content, seed=out_rel in seed_set):
             owned.append(out_rel)
+    for link_rel, dest_rel in profile.links:
+        # Confine both ends before creating (same symlinked-parent vector as file outputs).
+        for rel in (link_rel, dest_rel):
+            p = (sc.target / rel).resolve()
+            if p != target_root and target_root not in p.parents:
+                raise ProfileError(f"profile link escapes the project: {rel!r}")
+        link = sc.target / link_rel
+        existed = link.exists() or link.is_symlink()
+        sc.symlink(link_rel, dest_rel)
+        if not existed:
+            owned.append(link_rel)
     return sorted(owned)
 
 
@@ -526,7 +569,9 @@ agent-native-setup my-app -o ./my-app --profile {source_hint}
 - `profile.json` — name, version (your own semver), `extends` (`"default"` to compose on the
   base setup, or `null` to be standalone / from scratch), description, optional `tags` (freeform
   discovery keywords — who/what it targets, e.g. `backend` / `frontend` / `design` / `general`),
-  an optional `seed` list, and optional `onboarding` / `session_start` lists (below).
+  an optional `seed` list, optional `onboarding` / `session_start` lists (below), and an
+  optional `links` object (`{{"CLAUDE.md": "AGENTS.md"}}` — project-confined symlinks the
+  engine creates; `@DATE@` in a template path becomes the scaffold date, stable across updates).
 - `templates/` — the files this profile ships. Paths are relative to the project root, so
   `templates/.claude/agents/foo.md` lands at `.claude/agents/foo.md`. A file ending in
   `.j2` is rendered (Jinja) with `project_name`, `slug`, `description`, `languages`, the
@@ -738,6 +783,8 @@ def classify_safety(profile: Profile) -> tuple[str, list[str]]:
         reasons.append(f"{len(profile.session_start)} session_start hook(s) run every session")
     if profile.onboarding:
         reasons.append(f"{len(profile.onboarding)} onboarding step(s) are agent-executed")
+    if profile.links:  # a symlink redirects reads/writes — fail-closed (RFC 2026-07-05 open Q)
+        reasons.append(f"declares {len(profile.links)} symlink(s)")
     for out_rel, _ in profile.template_files():
         if _is_sink(out_rel):
             reasons.append(f"writes an execution sink: {out_rel}")
@@ -1237,6 +1284,8 @@ def _show(args: argparse.Namespace, console: Any) -> int:
         console.print("  session_start (runs every session):")
         for cmd in prof.session_start:
             console.print(f"    [yellow]$[/] {escape(cmd)}")
+    if prof.links:
+        console.print("  links: " + escape(", ".join(f"{a} -> {b}" for a, b in prof.links)))
     return 0
 
 
