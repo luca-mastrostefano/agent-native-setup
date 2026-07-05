@@ -81,9 +81,10 @@ their own prompt (choice); `example-team` is updated in the same change.
 **3. The default becomes the flagship profile: named, described, tagged, listed.** A real
 tier-2 profile (working name **`agent-native-baseline`** — final name open) with a
 description and tags (`general`, `baseline`, `multi-language`), living under
-`profiles/agent-native-baseline/` in this repo initially (fetchable via `#subdir=`, movable
-to its own repo later without a format change) and **listed in the community index like any
-other entry**. Its part toggles (`--no-docs`, `--no-ci`, `--no-agents`, …) were never engine
+`profiles/agent-native-baseline/` in this repo **only during extraction (stage A)** and
+moving to **its own repo at stage B** — from the moment it is live and forkable, it is a
+normal profile repo, and the index entry points there — and **listed in the community index
+like any other entry**. Its part toggles (`--no-docs`, `--no-ci`, `--no-agents`, …) were never engine
 concepts — they become the profile's **`prompts`** (its templates branch on its *own*
 `answers.include_docs`, not on env echoes) — and so do the other choice flags:
 `--languages`, `--tools`, `--runner`, `--adopt`. **All of them survive as deprecated engine
@@ -127,7 +128,10 @@ here rather than inherited:
 **vendored inside the wheel** (package data), so `agent-native-setup -o .` stays offline and
 zero-config: the vendored copy has local provenance — installing the tool *is* consenting to
 its content, which re-grounds ecosystem-core's decision #6 on something that survives the
-inversion (the artifact ships with the release, rather than being trusted for its name). The
+inversion (the artifact ships with the release, rather than being trusted for its name).
+Once the flagship lives in its own repo (stage B), vendoring becomes a **release-time step**:
+the engine's release pins `agent-native-baseline@<tag>`, embeds that artifact in the wheel,
+and records its content hash — same trust grounding, now with an explicit, verifiable pin. The
 index lists the same artifact by URL for discovery, pinning, and out-of-band updates; fetched
 copies flow through the normal classifier + consent gate like any community profile. The
 engine **preselects** the flagship for UX (`agent-native-setup -o .` behaves as today) —
@@ -163,8 +167,12 @@ and refreshes through `cli.build`'s generators. Sequencing:
   the compose path and the `extends` field go in the same release (`profile validate`
   rejects the field with a message pointing at the fork recipe) — which forces `profile
   save`'s snapshot rework into **this same release**, since today's `save` emits
-  `extends: "default"` and must never produce output its own validator rejects. The
-  generators become dead weight but stay shipped.
+  `extends: "default"` and must never produce output its own validator rejects. **The
+  flagship also moves to its own repo in this release** (the engine embeds it hash-pinned at
+  release time — Decision 5), so it is cleanly forkable from the moment anyone scaffolds
+  from it; parity CI switches from same-repo to pinned-tag comparison, cheap now that the
+  flagship is parity-stable rather than under extraction. The generators become dead weight
+  but stay shipped.
 - **C. Migrate update — the first externally-visible commitment.** A manifest migration
   rewrites old provenance ("engine version X") to flagship-profile provenance
   (`agent-native-baseline@Y, vendored`) — whose real substance is a **config→answers
@@ -255,14 +263,16 @@ and refreshes through `cli.build`'s generators. Sequencing:
 - **Partial extraction** (static files into a profile, dynamic parts stay generators).
   Rejected: one setup split across two mechanisms with two update paths — worse cohesion
   than either endpoint.
-- **Flagship in its own repo from day one.** Deferred — but now *bound to a stage*, because
-  the active profile-extends RFC itself calls `#subdir=` profiles "awkward to fork," and
-  Decision 4 makes forking the flagship the day-one extension norm: the in-repo start keeps
-  the parity harness in one CI through A–C, and the flagship **moves to its own repo at D**
-  (when the generators die and the engine repo stops being the flagship's source of truth).
-  Until then the interim recipe is honestly "clone the engine monorepo, work under
-  `profiles/agent-native-baseline/`" — acceptable for a window in which the known extender
-  population is zero.
+- **Flagship in its own repo from day one (stage A).** Rejected for the extraction window
+  only: during A the flagship is being *derived from* the generators, and every parity fix
+  touches a generator and a template together — cross-repo, that is two PRs and a pin bump
+  per iteration. The split lands at **B** instead (§7-B), the first moment the flagship is
+  live, adoptable, and therefore worth forking; the monorepo-fork awkwardness the
+  profile-extends RFC warned about is confined to A, when the extender population is zero.
+- **Flagship in this repo until D** (the pre-amendment plan). Rejected once the constraint
+  was challenged: it kept the day-one extension norm pointed at a monorepo `#subdir=` for
+  two whole stages after adoption began, for no gain beyond deferring the release-time
+  pin-and-embed step.
 - **Onboarding-step symlinks instead of `links`.** Rejected by the parity gate itself: it
   bakes a permanent parity exception *and* a UX regression into the migration's
   load-bearing safety argument.
