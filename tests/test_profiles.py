@@ -1728,3 +1728,60 @@ def test_update_removes_a_link_whose_when_flipped_false(tmp_path: Path) -> None:
     assert not (target / "CLAUDE.md").exists() and not (target / "CLAUDE.md").is_symlink()
     m2 = json.loads((target / MANIFEST_PATH).read_text(encoding="utf-8"))
     assert "CLAUDE.md" not in m2["profile"]["files"]  # excluded from the owned set
+
+
+# --- transient outputs (RFC 2026-07-05 §6) -----------------------------------------------------
+
+
+def test_transient_output_is_written_but_never_recorded(tmp_path: Path) -> None:
+    prof = _make_profile(tmp_path, "team", {"ONBOARD.md": "run once\n", "docs/x.md": "keep\n"})
+    data = json.loads((prof.root / "profile.json").read_text(encoding="utf-8"))
+    data["transient"] = ["ONBOARD.md"]
+    (prof.root / "profile.json").write_text(json.dumps(data), encoding="utf-8")
+    prof = profiles.load(prof.root, source="team")
+
+    target = tmp_path / "proj"
+    target.mkdir()
+    cli.build(_config(target), Scaffolder(target), prof)
+    assert (target / "ONBOARD.md").read_text(encoding="utf-8") == "run once\n"  # written
+    m = json.loads((target / MANIFEST_PATH).read_text(encoding="utf-8"))
+    assert "ONBOARD.md" not in m["files"]  # never fingerprinted
+    assert "ONBOARD.md" not in m["profile"]["files"]  # never owned
+    assert "docs/x.md" in m["profile"]["files"]  # the managed sibling still is
+
+
+def test_update_never_resurrects_a_deleted_transient(tmp_path: Path) -> None:
+    prof = _make_profile(
+        tmp_path,
+        "team",
+        {"ONBOARD.md": "run once\n", "docs/x.md": "v1\n"},
+        version="0.1.0",
+        by_path=True,
+    )
+    data = json.loads((prof.root / "profile.json").read_text(encoding="utf-8"))
+    data["transient"] = ["ONBOARD.md"]
+    (prof.root / "profile.json").write_text(json.dumps(data), encoding="utf-8")
+    prof = profiles.load(prof.root, source=str(prof.root))
+
+    target = tmp_path / "proj"
+    target.mkdir()
+    cli.build(_config(target), Scaffolder(target), prof)
+    (target / "ONBOARD.md").unlink()  # onboarding done — the file self-deleted
+    _commit(target)
+
+    _bump_profile(prof.root, version="0.1.1", files={"docs/x.md": "v2\n"})
+    assert update.run(target, dry_run=False, console=_Console()) == 0
+    assert not (target / "ONBOARD.md").exists()  # not resurrected
+    assert (target / "docs/x.md").read_text(encoding="utf-8") == "v2\n"  # siblings refresh
+
+
+def test_validate_rejects_a_transient_entry_without_a_template(tmp_path: Path) -> None:
+    import argparse
+
+    prof = _make_profile(tmp_path, "team", {"docs/x.md": "x\n"})
+    data = json.loads((prof.root / "profile.json").read_text(encoding="utf-8"))
+    data["transient"] = ["missing.md"]
+    (prof.root / "profile.json").write_text(json.dumps(data), encoding="utf-8")
+    c = _Console()
+    assert profiles._validate(argparse.Namespace(path=str(prof.root)), c) == 1
+    assert "transient entry 'missing.md'" in c.text

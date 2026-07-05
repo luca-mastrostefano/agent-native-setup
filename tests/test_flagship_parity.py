@@ -45,6 +45,8 @@ PORTED = {
     "CONTRIBUTING.md",
     "INSTRUCTION.md",
     ".claude/agents/code-reviewer.md",
+    ".claude/commands/onboard.md",
+    "README.md",
     "docs/architecture/overview.md",
     "docs/README.md",
     "docs/rfc/TEMPLATE.md",
@@ -123,6 +125,15 @@ def _matrix() -> list[tuple[str, dict]]:
         (
             "open-ci",  # gha on with security off -> the plain CI tooling bullet
             dict(languages=["node"], include_security=False),
+        ),
+        (
+            "no-surface-tools",  # quality on, docs off, non-python -> quickstart with no
+            # python surface tools (README's empty surface_tools branch)
+            dict(languages=["node"], include_docs=False),
+        ),
+        (
+            "deferred-runner",  # an existing runner -> no quickstart despite quality on
+            dict(languages=["python"], existing_runner=True),
         ),
     ]
 

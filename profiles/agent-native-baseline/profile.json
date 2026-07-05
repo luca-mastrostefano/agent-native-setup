@@ -4,7 +4,8 @@
   "extends": null,
   "description": "The agent-native setup this project scaffolds by default: contract + guardrails + feedback loops (WORK IN PROGRESS - stage A extraction, RFC 2026-07-05).",
   "tags": ["general", "baseline", "multi-language"],
-  "seed": ["docs/architecture/overview.md"],
+  "seed": ["docs/architecture/overview.md", "README.md"],
+  "transient": [".claude/commands/onboard.md"],
   "links": {
     "CLAUDE.md": {"target": "AGENTS.md", "when": "\"claude\" in answers.tools"},
     "GEMINI.md": {"target": "AGENTS.md", "when": "\"gemini\" in answers.tools"}

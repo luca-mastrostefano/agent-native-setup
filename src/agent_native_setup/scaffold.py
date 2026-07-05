@@ -142,10 +142,14 @@ class Scaffolder:
         self.track_new(link, existed=existed)
         self.recorded[link_rel] = f"symlink:{rel_dest}"
 
-    def overlay(self, rel: str, content: str, *, seed: bool = True) -> bool:
+    def overlay(
+        self, rel: str, content: str, *, seed: bool = True, transient: bool = False
+    ) -> bool:
         """Write a profile-composition file at ``rel``. ``seed=True`` marks it write-once
         (never refreshed on update); ``seed=False`` makes it managed (refreshed when the
-        profile ships a new version). Unlike ``write`` (first-writer-wins), this *supersedes*
+        profile ships a new version); ``transient=True`` writes without recording at all
+        (self-deleting first-run files — a manifest must never list one, or a later update
+        would resurrect it). Unlike ``write`` (first-writer-wins), this *supersedes*
         a file the base layer wrote in this same run — a later layer is meant to win. A file
         that **pre-existed** this scaffold is the user's: left untouched unless ``--force``,
         keeping the non-destructive contract. Returns ``True`` if it wrote, ``False`` if it
@@ -169,6 +173,8 @@ class Scaffolder:
             self.created.append(rel)
         if not created_this_run and not preexisting:
             self.new_paths.append(path)  # a brand-new path this overlay created
+        if transient:
+            return True  # written, never recorded — invisible to the manifest and update
         self.record(rel, content)
         # The overlay is authoritative for this path: a managed overlay must *clear* a seed
         # mark the base layer set (e.g. README.md), or it would never refresh on update.
