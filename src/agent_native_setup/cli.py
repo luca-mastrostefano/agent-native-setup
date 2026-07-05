@@ -283,6 +283,7 @@ def build(
     session_start: tuple[str, ...] | None = None,
     answers: dict[str, object] | None = None,
     standalone: bool | None = None,
+    profile_date: str | None = None,
 ) -> dict[str, object] | None:
     """Scaffold ``config`` (plus ``profile``'s overlay) into ``sc``'s target and write the
     manifest. Returns the recorded ``profile`` block (or ``None``) — its `files`/`answers`
@@ -327,11 +328,18 @@ def build(
     # against, so `update` re-applies them deterministically without re-prompting.
     profile_block = None
     if profile is not None:
+        from datetime import date
+
         resolved = answers if answers is not None else profiles.default_answers(profile)
+        # @DATE@ paths substitute once at scaffold and replay on update (RFC 2026-07-05 §6):
+        # the stamp is recorded (only when used) so the path never drifts under a refresh.
+        stamp = profile_date or f"{date.today():%Y-%m-%d}"
         profile_block = {
             **profile.manifest_block(),
-            "files": profiles.apply(profile, config, sc, resolved),
+            "files": profiles.apply(profile, config, sc, resolved, applied_on=stamp),
         }
+        if any("@DATE@" in rel for rel, _ in profile.template_files()):
+            profile_block["date"] = stamp
         if resolved:
             profile_block["answers"] = resolved
     git_dir = config.target / ".git"
