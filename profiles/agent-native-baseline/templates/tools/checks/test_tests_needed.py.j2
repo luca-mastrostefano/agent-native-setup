@@ -1,0 +1,57 @@
+{% if answers.include_docs and "python" in answers.languages %}{% raw %}"""Tests for the tests-needed commit-msg gate (stdlib unittest)."""
+
+import importlib.util
+import unittest
+from pathlib import Path
+
+_HELPER = Path(__file__).resolve().parent / "tests_needed.py"
+_spec = importlib.util.spec_from_file_location("tests_needed", _HELPER)
+assert _spec and _spec.loader
+tests_needed = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(tests_needed)
+
+
+class IsTestPath(unittest.TestCase):
+    def test_tests_dir_and_test_file_names_match(self) -> None:
+        self.assertTrue(tests_needed.is_test_path("tests/test_app.py"))
+        self.assertTrue(tests_needed.is_test_path("src/pkg/test_inline.py"))
+        self.assertTrue(tests_needed.is_test_path("src/pkg/app_test.py"))
+
+    def test_plain_source_does_not_match(self) -> None:
+        self.assertFalse(tests_needed.is_test_path("src/pkg/app.py"))
+
+
+class FindTriggers(unittest.TestCase):
+    def test_src_change_without_test_fires(self) -> None:
+        changes = [("M", "src/pkg/app.py")]
+        self.assertEqual(
+            tests_needed.find_triggers(changes),
+            ["source change without a staged test (src/pkg/app.py)"],
+        )
+
+    def test_deletion_does_not_fire(self) -> None:
+        changes = [("D", "src/pkg/app.py")]
+        self.assertEqual(tests_needed.find_triggers(changes), [])
+
+    def test_non_python_and_non_src_do_not_fire(self) -> None:
+        changes = [("M", "src/pkg/data.json"), ("M", "README.md")]
+        self.assertEqual(tests_needed.find_triggers(changes), [])
+
+
+class IsSatisfied(unittest.TestCase):
+    def test_staged_test_satisfies(self) -> None:
+        changes = [("M", "src/pkg/app.py"), ("A", "tests/test_app.py")]
+        self.assertTrue(tests_needed.is_satisfied(changes, "feat: x"))
+
+    def test_waiver_satisfies(self) -> None:
+        message = "chore: rename\n\nTests-Not-Needed: mechanical rename"
+        self.assertTrue(tests_needed.is_satisfied([], message))
+
+    def test_unsatisfied_without_test_or_waiver(self) -> None:
+        changes = [("M", "src/pkg/app.py")]
+        self.assertFalse(tests_needed.is_satisfied(changes, "feat: x"))
+
+
+if __name__ == "__main__":
+    unittest.main()
+{% endraw %}{% endif %}

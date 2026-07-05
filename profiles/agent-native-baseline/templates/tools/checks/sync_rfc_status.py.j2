@@ -1,0 +1,92 @@
+{% if answers.include_docs %}{% raw %}"""Keep each RFC in the folder that matches its Status (mechanical enforcement).
+
+Lifecycle (docs/README.md): proposed -> active -> (superseded | retired). The
+`Status:` line in an RFC drives where it belongs:
+
+    Proposed   -> proposed/
+    Active      -> active/
+    Superseded  -> superseded/
+    Retired     -> retired/
+
+When a status changes, this moves the file to the right folder (via `git mv`
+when possible) and exits non-zero so the move can be re-staged — mirroring how
+formatters behave in pre-commit. Run by the `rfc-status` pre-commit hook.
+"""
+
+from __future__ import annotations
+
+import re
+import shutil
+import subprocess
+import sys
+from pathlib import Path
+
+RFC_ROOT = Path(__file__).resolve().parents[2] / "docs" / "rfc"
+LIFECYCLE_FOLDERS = ("proposed", "active", "superseded", "retired")
+STATUS_FOLDER = {
+    "proposed": "proposed",
+    "active": "active",
+    "superseded": "superseded",
+    "retired": "retired",
+}
+_STATUS_RE = re.compile(r"\*\*Status:\*\*\s*([A-Za-z]+)")
+
+
+def parse_status(text: str) -> str | None:
+    """Return the lower-cased Status keyword from an RFC body, if present."""
+    match = _STATUS_RE.search(text)
+    return match.group(1).lower() if match else None
+
+
+def target_folder(status: str) -> str | None:
+    """Map a Status keyword to its lifecycle folder (None if unrecognised)."""
+    return STATUS_FOLDER.get(status.lower())
+
+
+def find_moves(rfc_root: Path) -> list[tuple[Path, Path]]:
+    """Return (source, destination) pairs for RFCs sitting in the wrong folder."""
+    moves: list[tuple[Path, Path]] = []
+    for folder in LIFECYCLE_FOLDERS:
+        directory = rfc_root / folder
+        if not directory.is_dir():
+            continue
+        for rfc in sorted(directory.glob("*.md")):
+            status = parse_status(rfc.read_text(encoding="utf-8"))
+            destination = target_folder(status) if status else None
+            if destination and destination != folder:
+                moves.append((rfc, rfc_root / destination / rfc.name))
+    return moves
+
+
+def _move(source: Path, destination: Path) -> None:
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        subprocess.run(
+            ["git", "mv", str(source), str(destination)],
+            check=True,
+            capture_output=True,
+        )
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        shutil.move(str(source), str(destination))
+
+
+def main() -> int:
+    moves = find_moves(RFC_ROOT)
+    for source, destination in moves:
+        _move(source, destination)
+        rel_from = source.relative_to(RFC_ROOT.parent)
+        rel_to = destination.relative_to(RFC_ROOT.parent)
+        print(f"moved {rel_from} -> {rel_to} (Status changed)", file=sys.stderr)
+
+    if moves:
+        print(
+            "RFC(s) moved to match Status — review and `git add` the moves.",
+            file=sys.stderr,
+        )
+        return 1
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
+{% endraw %}{% endif %}
