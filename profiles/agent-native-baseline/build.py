@@ -1,11 +1,12 @@
 """Author-time build step for the flagship profile (RFC 2026-07-05 §3).
 
-Stage A: the generators are still the source of truth, so ported *verbatim* files are
-derived FROM their constants — run this after changing one, and the parity harness
-(`tests/test_flagship_parity.py`) will catch any drift either way. Hand-written `.j2`
-templates (config-dependent content) live directly under `templates/` and are not
-touched here. Post-stage-D this script becomes the profile's own release tool
-(language matrix -> templates, pin baking).
+Stage A: the generators are still the source of truth, so every ported template is
+derived FROM them — verbatim constants raw-wrapped (PORTS), and rendering templates
+re-emitted with a {% set %} prelude mapping their variables onto answers/env, baking
+generator-computed values from the real functions' own output (_rendered_ports). Run
+this after changing a generator; the parity harness (tests/test_flagship_parity.py)
+catches drift in either direction. Post-stage-D this script becomes the profile's own
+release tool (language matrix -> templates, pin baking).
 
 Conditional inclusion pattern: a file only shipped for some answers is wrapped as
 `{% if <cond> %}{% raw %}...content...{% endraw %}{% endif %}` — rendering empty (and
@@ -91,9 +92,7 @@ def _j(value: str) -> str:
 
 
 def _cfg(**kw: object) -> WizardConfig:
-    from pathlib import Path as _P
-
-    return WizardConfig(project_name="x", output_dir=_P("."), languages=[], **kw)
+    return WizardConfig(project_name="x", output_dir=Path("."), languages=[], **kw)
 
 
 def _rendered_ports() -> list[tuple[str, str | None, str, list[str]]]:
@@ -115,6 +114,12 @@ def _rendered_ports() -> list[tuple[str, str | None, str, list[str]]]:
     q_only = _arch_tooling(_cfg(include_ci=False)).split("\n")[3]
     ci_sec = _arch_tooling(_cfg()).split("\n")[4]
     ci_plain = _arch_tooling(_cfg(include_security=False)).split("\n")[4]
+    # Slice sanity: every variant must still be a single bullet line at the expected index —
+    # a reordered or multi-line bullet would otherwise mis-slice silently for any variant the
+    # parity matrix doesn't exercise.
+    assert all(v.startswith("- **") for v in (q_gha, q_only, ci_sec, ci_plain)), (
+        "arch-tooling bullets moved — fix the slice indices in _rendered_ports"
+    )
     tooling = [
         "{% set _gha = answers.include_ci and answers.github_actions %}",
         "{% set tooling = " + _j(base3) + " %}",

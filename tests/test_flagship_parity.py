@@ -114,6 +114,14 @@ def _matrix() -> list[tuple[str, dict]]:
             "legacy-no-quality",  # existing repo but quality off -> no blame-ignore-revs
             dict(languages=["python"], existing_project=True, include_quality=False),
         ),
+        (
+            "gemini-only",  # the gemini-only nested-symlink-note variant
+            dict(languages=["python"], ai_tools=["gemini"]),
+        ),
+        (
+            "open-ci",  # gha on with security off -> the plain CI tooling bullet
+            dict(languages=["node"], include_security=False),
+        ),
     ]
 
 
