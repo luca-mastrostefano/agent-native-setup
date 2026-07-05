@@ -56,6 +56,18 @@ class WizardConfig:
     # removes the banner (and deletes ONBOARDING.md), so it never becomes stale.
     first_run_banner: bool = False
 
+    # --- sensed facts (RFC 2026-07-05 §2): observed once in `cli.main`, recorded in the
+    # manifest snapshot, replayed by `update` (never re-sensed) — exposed to profiles as
+    # `env.<name>`. Add-only: each key is public ecosystem API once shipped.
+    # The project is (or will be, this run) a git repo: `init_git` requested, or .git present.
+    is_git: bool = False
+    # platform.system(), lowercased: "darwin" | "linux" | "windows" ("" = unsensed).
+    os_name: str = ""
+    # Key files already present in the target before scaffolding.
+    has_readme: bool = False
+    has_agents_md: bool = False
+    has_ci_config: bool = False  # a .github/workflows/ directory
+
     @property
     def slug(self) -> str:
         return slugify(self.project_name)

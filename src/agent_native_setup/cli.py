@@ -549,6 +549,18 @@ def main(argv: list[str] | None = None) -> int:
     # Scaffolding over existing source for a selected language → grandfather it.
     config.detected_languages = sorted(in_target)
     config.existing_project = bool(set(config.languages) & in_target)
+    # Sensed facts (RFC 2026-07-05 §2): observed once here, recorded via the manifest's config
+    # snapshot, replayed by update — profiles read them as env.<name>.
+    import platform
+
+    config.is_git = config.init_git or (out / ".git").exists()
+    # Normalized to the documented closed set — a profile written against these three values
+    # must not silently misbehave on an exotic platform ("" = unsensed/other).
+    _os = platform.system().lower()
+    config.os_name = _os if _os in ("darwin", "linux", "windows") else ""
+    config.has_readme = (out / "README.md").is_file()
+    config.has_agents_md = (out / "AGENTS.md").is_file()
+    config.has_ci_config = (out / ".github" / "workflows").is_dir()
     if config.existing_project and config.include_quality:
         console.print(
             f"[yellow]Existing code detected[/] — adoption strategy: [bold]{config.adoption}[/]. "

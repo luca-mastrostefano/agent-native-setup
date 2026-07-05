@@ -971,7 +971,9 @@ def generate(config: WizardConfig, sc: Scaffolder) -> None:
     # Stamp entries with the commit they were noted at — or the date, when the scaffolded
     # project won't be a git repo (no init and no existing .git). Point at the runner's
     # `improvement` target when we generate a runner that carries it (quality.py).
-    is_git = config.init_git or (config.target / ".git").exists()
+    # Read the sensed fact (RFC 2026-07-05 §2) rather than re-sensing: on update the config
+    # replays the recorded observation, and a tmp-tree re-sense would degrade to False.
+    is_git = config.is_git or config.init_git
     owns_runner = config.include_quality and not config.existing_runner
     improvement_cmd = quality.IMPROVEMENT_USAGE[config.runner] if owns_runner else ""
     sc.render_write(

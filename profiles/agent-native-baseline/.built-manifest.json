@@ -20,6 +20,7 @@
   "SECURITY.md.j2",
   "docs/README.md.j2",
   "docs/architecture/overview.md.j2",
+  "docs/improvements.md.j2",
   "docs/rfc/TEMPLATE.md.j2",
   "tools/checks/docs_sync.py.j2",
   "tools/checks/rfc_needed.py.j2",

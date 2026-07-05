@@ -412,6 +412,11 @@ def _context(config: WizardConfig, answers: dict[str, Any]) -> dict[str, Any]:
         "answers": dict(answers),
         "env": {
             "existing_project": config.existing_project,  # brownfield repo with source?
+            "is_git": config.is_git,  # is (or will be, this run) a git repo
+            "os": config.os_name,  # "darwin" | "linux" | "windows" ("" = unsensed)
+            "has_readme": config.has_readme,  # key files present before scaffolding
+            "has_agents_md": config.has_agents_md,
+            "has_ci_config": config.has_ci_config,
             "languages": list(config.languages),  # the selected languages
             "detected_languages": list(config.detected_languages),  # what's actually in the repo
             "existing_runner": config.existing_runner,
@@ -617,7 +622,8 @@ agent-native-setup my-app -o ./my-app --profile {source_hint}
   `templates/.claude/agents/foo.md` lands at `.claude/agents/foo.md`. A file ending in
   `.j2` is rendered (Jinja) with `project_name`, `slug`, `description`, `languages`, the
   `answers.<name>` from your prompts, and an `env.<name>` namespace of detected facts
-  (`env.existing_project`, `env.detected_languages`, `env.runner`, `env.has_ci`, …) — and the
+  (`env.existing_project`, `env.detected_languages`, `env.is_git`, `env.os`,
+  `env.has_readme`/`has_agents_md`/`has_ci_config`, `env.runner`, `env.has_ci`, …) — and the
   `.j2` stripped; anything else is copied verbatim (so files containing `{{{{ ... }}}}`,
   like GitHub Actions `${{{{ ... }}}}`, are safe).
 

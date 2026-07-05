@@ -49,6 +49,7 @@ PORTED = {
     "ONBOARDING.md",
     "README.md",
     "docs/architecture/overview.md",
+    "docs/improvements.md",
     "docs/README.md",
     "docs/rfc/TEMPLATE.md",
     "tools/checks/docs_sync.py",
@@ -168,6 +169,10 @@ def _matrix() -> list[tuple[str, dict]]:
             dict(
                 languages=["node"], ai_tools=["claude"], first_run_banner=True, existing_runner=True
             ),
+        ),
+        (
+            "git-on",  # env.is_git true both sides (improvements.md's git-stamp variant)
+            dict(languages=["python"], init_git=True, is_git=True),
         ),
     ]
 

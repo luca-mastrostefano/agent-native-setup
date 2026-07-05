@@ -328,6 +328,21 @@ def _rendered_ports() -> list[tuple[str, str | None, str, list[str]]]:
         ),
         ("docs/architecture/overview.md", _DOCS, docs.ARCH_OVERVIEW, tooling),
         (
+            "docs/improvements.md",
+            _DOCS,
+            docs.IMPROVEMENTS,
+            [
+                "{% set git = env.is_git %}",
+                # Total over today's runner set {make, task} (cli --runner choices); a third
+                # runner would silently take the task branch — revisit with the runner set.
+                "{% set improvement_cmd = ("
+                + _j(quality.IMPROVEMENT_USAGE["make"])
+                + ' if answers.runner == "make" else '
+                + _j(quality.IMPROVEMENT_USAGE["task"])
+                + ') if (answers.include_quality and not env.existing_runner) else "" %}',
+            ],
+        ),
+        (
             ".claude/agents/code-reviewer.md",
             _CLAUDE,
             agents.CODE_REVIEWER,

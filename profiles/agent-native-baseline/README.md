@@ -19,8 +19,7 @@ Parity status lives in the harness: `PORTED` in `tests/test_flagship_parity.py` 
 the set of outputs asserted byte-identical across the config matrix; coverage is
 reported on every run. Known not-yet-expressible: conditional **empty** files
 (`docs/rfc/*/.gitkeep`) — a `.j2` that renders empty is skipped by design, so these
-need a format decision before they can port. Deferred pending an `env` decision:
-`docs/improvements.md` (its `git` flag senses "is/will be a git repo", which has no
-env key yet — RFC 2026-07-05 grows sensors deliberately). Behavioral gap on record
+need a format decision before they can port. (`docs/improvements.md`
+ported once `env.is_git` landed.) Behavioral gap on record
 (RFC §7-A): `seed` is not `preserve` — under `--force` over a pre-existing README the
 generator preserves, the profile overwrites; needs a format decision before stage B.

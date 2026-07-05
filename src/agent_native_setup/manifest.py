@@ -35,6 +35,13 @@ def _config_snapshot(config: WizardConfig) -> dict[str, object]:
         "existing_project": config.existing_project,
         "detected_languages": list(config.detected_languages),
         "existing_runner": config.existing_runner,
+        # Sensed facts (RFC 2026-07-05 §2) — frozen at scaffold, replayed by update, never
+        # re-sensed: a repo whose facts drifted must not re-render differently mid-update.
+        "is_git": config.is_git,
+        "os_name": config.os_name,
+        "has_readme": config.has_readme,
+        "has_agents_md": config.has_agents_md,
+        "has_ci_config": config.has_ci_config,
         "include_agents": config.include_agents,
         "include_docs": config.include_docs,
         "include_quality": config.include_quality,

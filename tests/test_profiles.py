@@ -1785,3 +1785,58 @@ def test_validate_rejects_a_transient_entry_without_a_template(tmp_path: Path) -
     c = _Console()
     assert profiles._validate(argparse.Namespace(path=str(prof.root)), c) == 1
     assert "transient entry 'missing.md'" in c.text
+
+
+def test_sensed_env_facts_flow_to_profiles_and_replay(tmp_path: Path) -> None:
+    # RFC 2026-07-05 §2: facts are observed once in cli.main, exposed as env.<name>, recorded
+    # in the manifest snapshot, and replayed by update (never re-sensed).
+    prof = _make_profile(
+        tmp_path,
+        "team",
+        {
+            "docs/facts.md.j2": (
+                "git={{ env.is_git }} os={{ env.os }} readme={{ env.has_readme }} "
+                "agents={{ env.has_agents_md }} ci={{ env.has_ci_config }}"
+            )
+        },
+        by_path=True,
+    )
+    target = tmp_path / "proj"
+    (target / ".github" / "workflows").mkdir(parents=True)
+    (target / "README.md").write_text("hi\n", encoding="utf-8")
+    (target / "AGENTS.md").write_text("rules\n", encoding="utf-8")
+    rc = cli.main(["demo", "-o", str(target), "-y", "--no-git", "--profile", str(prof.root)])
+    assert rc == 0
+    facts = (target / "docs" / "facts.md").read_text(encoding="utf-8")
+    assert "git=False" in facts  # --no-git and no .git dir
+    assert "readme=True" in facts and "agents=True" in facts and "ci=True" in facts
+    import platform
+
+    assert f"os={platform.system().lower()}" in facts
+    m = json.loads((target / MANIFEST_PATH).read_text(encoding="utf-8"))
+    snap = m["config"]
+    assert snap["has_readme"] is True and snap["has_agents_md"] is True
+    assert snap["has_ci_config"] is True and snap["is_git"] is False
+    assert snap["os_name"] == platform.system().lower()
+
+    # Replay: make the fact drift on disk (delete README), bump, update — the recorded
+    # observation wins, so the managed file re-renders identically instead of flipping.
+    (target / "README.md").unlink()
+    _commit(target)
+    # bump with an unrelated new file so the version changes but facts.md re-renders
+    _bump_profile(prof.root, version="1.0.1", files={"docs/other.md": "y\n"})
+    assert update.run(target, dry_run=False, console=_Console()) == 0
+    assert "readme=True" in (target / "docs" / "facts.md").read_text(encoding="utf-8")
+
+
+def test_is_git_senses_a_preexisting_repo_without_init(tmp_path: Path) -> None:
+    # The sensing disjunct itself: --no-git into a target that already IS a git repo must
+    # still observe is_git=True (kills the `and`/dropped-`.exists()` mutants).
+    prof = _make_profile(tmp_path, "team", {"docs/g.md.j2": "git={{ env.is_git }}"}, by_path=True)
+    target = tmp_path / "proj"
+    (target / ".git").mkdir(parents=True)  # a pre-existing repo marker
+    rc = cli.main(["demo", "-o", str(target), "-y", "--no-git", "--profile", str(prof.root)])
+    assert rc == 0
+    assert (target / "docs/g.md").read_text(encoding="utf-8") == "git=True"
+    m = json.loads((target / MANIFEST_PATH).read_text(encoding="utf-8"))
+    assert m["config"]["is_git"] is True

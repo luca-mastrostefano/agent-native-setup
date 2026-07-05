@@ -278,6 +278,12 @@ def _config_from_manifest(old: dict, output_dir: Path) -> WizardConfig:
         existing_project=get("existing_project", False),
         detected_languages=list(get("detected_languages", [])),
         existing_runner=get("existing_runner", False),
+        # Sensed facts replay from the snapshot (RFC 2026-07-05 §2) — never re-sensed here.
+        is_git=get("is_git", False),
+        os_name=get("os_name", ""),
+        has_readme=get("has_readme", False),
+        has_agents_md=get("has_agents_md", False),
+        has_ci_config=get("has_ci_config", False),
         init_git=False,  # never touch git in the throwaway regeneration tree
     )
 
