@@ -250,7 +250,7 @@ def load(path: Path, *, source: str | None = None) -> Profile:
                 raise ProfileError(f"{manifest_path}: links[{key!r}].when must be a string")
             if when is not None:
                 try:
-                    compile_expr(when)  # fail at load, not mid-apply
+                    compile_expr(when)  # syntax fails at load (runtime errors mirror prompts')
                 except Exception as exc:
                     raise ProfileError(
                         f"{manifest_path}: links[{key!r}].when is not a valid expression: {exc}"
@@ -598,8 +598,10 @@ agent-native-setup my-app -o ./my-app --profile {source_hint}
   base setup, or `null` to be standalone / from scratch), description, optional `tags` (freeform
   discovery keywords — who/what it targets, e.g. `backend` / `frontend` / `design` / `general`),
   an optional `seed` list, optional `onboarding` / `session_start` lists (below), and an
-  optional `links` object (`{{"CLAUDE.md": "AGENTS.md"}}` — project-confined symlinks the
-  engine creates; `@DATE@` in a template path becomes the scaffold date, stable across updates).
+  optional `links` object (`{{"CLAUDE.md": "AGENTS.md"}}`, or
+  `{{"CLAUDE.md": {{"target": "AGENTS.md", "when": "..."}}}}` to ship a link conditionally —
+  project-confined symlinks the engine creates; `@DATE@` in a template path becomes the
+  scaffold date, stable across updates).
 - `templates/` — the files this profile ships. Paths are relative to the project root, so
   `templates/.claude/agents/foo.md` lands at `.claude/agents/foo.md`. A file ending in
   `.j2` is rendered (Jinja) with `project_name`, `slug`, `description`, `languages`, the

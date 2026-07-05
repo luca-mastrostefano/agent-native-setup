@@ -1691,3 +1691,40 @@ def test_conditional_link_ships_only_when_true(tmp_path: Path) -> None:
     owned_off = profiles.apply(prof, _config(off), Scaffolder(off), {"use_claude": False})
     assert (on / "CLAUDE.md").is_symlink() and "CLAUDE.md" in owned_on
     assert not (off / "CLAUDE.md").exists() and "CLAUDE.md" not in owned_off
+
+
+def test_update_removes_a_link_whose_when_flipped_false(tmp_path: Path) -> None:
+    # The conditional-link mirror of the renders-empty orphan case: a bump changes the link's
+    # `when` to false -> the pristine symlink is orphan-removed and leaves the owned set.
+    # The base must not create CLAUDE.md itself, or the profile link is skipped as pre-existing
+    # (first-writer-wins) — so target a claude-free tool set.
+    prof = _make_profile(
+        tmp_path, "team", {"AGENTS.md": "contract\n"}, version="0.1.0", by_path=True
+    )
+    data = json.loads((prof.root / "profile.json").read_text(encoding="utf-8"))
+    data["links"] = {"CLAUDE.md": {"target": "AGENTS.md", "when": "true"}}
+    (prof.root / "profile.json").write_text(json.dumps(data), encoding="utf-8")
+    prof = profiles.load(prof.root, source=str(prof.root))
+
+    target = tmp_path / "proj"
+    target.mkdir()
+    config = WizardConfig(
+        project_name="demo",
+        output_dir=target,
+        languages=["python"],
+        init_git=False,
+        ai_tools=["cursor"],
+    )
+    cli.build(config, Scaffolder(target), prof)
+    assert (target / "CLAUDE.md").is_symlink()
+    m = json.loads((target / MANIFEST_PATH).read_text(encoding="utf-8"))
+    assert "CLAUDE.md" in m["profile"]["files"]  # profile-owned, not the base's
+    _commit(target)
+
+    data["version"] = "0.1.1"
+    data["links"] = {"CLAUDE.md": {"target": "AGENTS.md", "when": "false"}}
+    (prof.root / "profile.json").write_text(json.dumps(data), encoding="utf-8")
+    assert update.run(target, dry_run=False, console=_Console()) == 0
+    assert not (target / "CLAUDE.md").exists() and not (target / "CLAUDE.md").is_symlink()
+    m2 = json.loads((target / MANIFEST_PATH).read_text(encoding="utf-8"))
+    assert "CLAUDE.md" not in m2["profile"]["files"]  # excluded from the owned set
