@@ -27,7 +27,9 @@ else ships verbatim, so literal `${{ … }}` is safe. Each shipped file is **man
 (refreshed by `update`) unless listed in `seed` (written once, then the user's).
 
 Two path-level affordances (RFC 2026-07-05 §6): **`links`** — an object of
-`"link": "target"` pairs (both project-relative, traversal-free, re-confined at apply) the
+`"link": "target"` pairs (or `{"target": …, "when": …}` — the `when` mirrors a prompt's, so a
+per-tool link ships only when relevant; both ends project-relative, traversal-free,
+re-confined at apply) the
 engine creates as symlinks, recorded as `symlink:<target>` provenance like the base's own
 links, shown by `show`, and classified fail-closed (any link ⇒ not `safe`); and **`@DATE@`**
 in a template *path*, substituted with the scaffold date — recorded in the manifest

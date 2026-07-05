@@ -40,6 +40,8 @@ PORTED = {
     ".github/PULL_REQUEST_TEMPLATE.md",
     ".github/copilot-instructions.md",
     "SECURITY.md",
+    "CLAUDE.md",
+    "GEMINI.md",
     "CONTRIBUTING.md",
     "INSTRUCTION.md",
     ".claude/agents/code-reviewer.md",

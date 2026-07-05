@@ -5,6 +5,10 @@
   "description": "The agent-native setup this project scaffolds by default: contract + guardrails + feedback loops (WORK IN PROGRESS - stage A extraction, RFC 2026-07-05).",
   "tags": ["general", "baseline", "multi-language"],
   "seed": ["docs/architecture/overview.md"],
+  "links": {
+    "CLAUDE.md": {"target": "AGENTS.md", "when": "\"claude\" in answers.tools"},
+    "GEMINI.md": {"target": "AGENTS.md", "when": "\"gemini\" in answers.tools"}
+  },
   "prompts": [
     {"name": "languages", "type": "checkbox", "message": "Languages (linters scaffolded only for these):", "choices": ["python", "node", "go", "rust", "html"]},
     {"name": "tools", "type": "checkbox", "message": "AI assistants to target:", "choices": ["claude", "cursor", "copilot", "gemini"], "default": ["claude", "cursor", "copilot", "gemini"]},

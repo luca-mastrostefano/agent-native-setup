@@ -1519,7 +1519,17 @@ def test_load_validates_links(tmp_path: Path) -> None:
             profiles.load(d)
     manifest({"CLAUDE.md": "AGENTS.md", "GEMINI.md": "AGENTS.md"})
     prof = profiles.load(d)
-    assert prof.links == (("CLAUDE.md", "AGENTS.md"), ("GEMINI.md", "AGENTS.md"))
+    assert prof.links == (("CLAUDE.md", "AGENTS.md", None), ("GEMINI.md", "AGENTS.md", None))
+    # Object form carries a `when`; a bad expression fails at load, not mid-apply.
+    manifest({"CLAUDE.md": {"target": "AGENTS.md", "when": '"claude" in answers.tools'}})
+    prof = profiles.load(d)
+    assert prof.links == (("CLAUDE.md", "AGENTS.md", '"claude" in answers.tools'),)
+    manifest({"CLAUDE.md": {"target": "AGENTS.md", "when": "{% bad"}})
+    with pytest.raises(profiles.ProfileError, match="not a valid expression"):
+        profiles.load(d)
+    manifest({"CLAUDE.md": {"when": "x"}})  # object form still requires a target
+    with pytest.raises(profiles.ProfileError, match="links"):
+        profiles.load(d)
 
 
 def test_links_are_created_owned_and_classified(tmp_path: Path) -> None:
@@ -1661,3 +1671,23 @@ def test_dated_seed_entry_stays_write_once(tmp_path: Path) -> None:
     _bump_profile(prof.root, version="0.1.1", files={"docs/@DATE@-charter.md": "v2\n"})
     assert update.run(target, dry_run=False, console=_Console()) == 0
     assert dated.read_text(encoding="utf-8") == "v1\n"  # seed: shipped once, never refreshed
+
+
+def test_conditional_link_ships_only_when_true(tmp_path: Path) -> None:
+    prof = _make_profile(
+        tmp_path,
+        "team",
+        {"AGENTS.md": "contract\n"},
+        prompts=[{"name": "use_claude", "type": "confirm", "message": "?", "default": False}],
+    )
+    data = json.loads((prof.root / "profile.json").read_text(encoding="utf-8"))
+    data["links"] = {"CLAUDE.md": {"target": "AGENTS.md", "when": "answers.use_claude"}}
+    (prof.root / "profile.json").write_text(json.dumps(data), encoding="utf-8")
+    prof = profiles.load(prof.root, source="team")
+
+    on, off = tmp_path / "on", tmp_path / "off"
+    on.mkdir(), off.mkdir()
+    owned_on = profiles.apply(prof, _config(on), Scaffolder(on), {"use_claude": True})
+    owned_off = profiles.apply(prof, _config(off), Scaffolder(off), {"use_claude": False})
+    assert (on / "CLAUDE.md").is_symlink() and "CLAUDE.md" in owned_on
+    assert not (off / "CLAUDE.md").exists() and "CLAUDE.md" not in owned_off

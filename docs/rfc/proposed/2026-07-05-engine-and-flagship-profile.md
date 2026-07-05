@@ -143,7 +143,8 @@ both load-bearing for parity (§7):
 
 - **`links`** — a declarative symlink list (`{"CLAUDE.md": "AGENTS.md"}`), executed by the
   engine: both ends path-confined to the project, in-project relative targets only,
-  surfaced by `profile show`. This replaces the "recreate the symlink via onboarding step"
+  surfaced by `profile show`. A link may carry a `when` (a Jinja expression, mirroring a
+  prompt's) — discovered necessary immediately: the tool symlinks ship per selected tool. This replaces the "recreate the symlink via onboarding step"
   workaround, which would otherwise be both a UX regression (the wizard creates the link
   today; an agent would have to) and a permanent parity exception.
 - **`@DATE@` in template *paths*** — engine-substituted scaffold date, for the dated
