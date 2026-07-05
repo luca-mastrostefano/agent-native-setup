@@ -62,11 +62,13 @@ re-fetches) the same way later.
 `languages`, the prompt answers under **`answers.<name>`**, and detected/resolved facts under
 **`env.<name>`** (`existing_project`, `languages`, `detected_languages`, `existing_runner`,
 `runner`, `adoption`, `ai_tools`, the `has_quality`/`has_ci`/… toggles, and the sensed facts
-`is_git` (is/will be a git repo), `os` (`darwin`/`linux`/`windows`), `has_readme` /
-`has_agents_md` / `has_ci_config` (key files present before scaffolding) — sensed once at
+`is_git` (is/will be a git repo), `os` (`darwin`/`linux`/`windows`, `""` = other/unsensed),
+`has_readme` / `has_agents_md` / `has_ci_config` (a `README.md` / `AGENTS.md` /
+`.github/workflows/` directory present before scaffolding) — sensed once at
 scaffold, recorded in the manifest snapshot, and **replayed by `update`, never re-sensed**,
 per RFC 2026-07-05 §2) — both
-namespaced so they can never shadow a base key. All rendering goes through Jinja's
+namespaced so they can never shadow a base key. The env contract is **add-only**: renaming or
+removing a key is a breaking engine change, gated like a breaking scaffold update. All rendering goes through Jinja's
 `SandboxedEnvironment` (`scaffold.py`): profile templates are untrusted input.
 
 ## Prompts

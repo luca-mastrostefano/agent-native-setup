@@ -1827,3 +1827,16 @@ def test_sensed_env_facts_flow_to_profiles_and_replay(tmp_path: Path) -> None:
     _bump_profile(prof.root, version="1.0.1", files={"docs/other.md": "y\n"})
     assert update.run(target, dry_run=False, console=_Console()) == 0
     assert "readme=True" in (target / "docs" / "facts.md").read_text(encoding="utf-8")
+
+
+def test_is_git_senses_a_preexisting_repo_without_init(tmp_path: Path) -> None:
+    # The sensing disjunct itself: --no-git into a target that already IS a git repo must
+    # still observe is_git=True (kills the `and`/dropped-`.exists()` mutants).
+    prof = _make_profile(tmp_path, "team", {"docs/g.md.j2": "git={{ env.is_git }}"}, by_path=True)
+    target = tmp_path / "proj"
+    (target / ".git").mkdir(parents=True)  # a pre-existing repo marker
+    rc = cli.main(["demo", "-o", str(target), "-y", "--no-git", "--profile", str(prof.root)])
+    assert rc == 0
+    assert (target / "docs/g.md").read_text(encoding="utf-8") == "git=True"
+    m = json.loads((target / MANIFEST_PATH).read_text(encoding="utf-8"))
+    assert m["config"]["is_git"] is True

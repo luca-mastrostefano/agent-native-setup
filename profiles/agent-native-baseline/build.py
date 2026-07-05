@@ -333,6 +333,8 @@ def _rendered_ports() -> list[tuple[str, str | None, str, list[str]]]:
             docs.IMPROVEMENTS,
             [
                 "{% set git = env.is_git %}",
+                # Total over today's runner set {make, task} (cli --runner choices); a third
+                # runner would silently take the task branch — revisit with the runner set.
                 "{% set improvement_cmd = ("
                 + _j(quality.IMPROVEMENT_USAGE["make"])
                 + ' if answers.runner == "make" else '
