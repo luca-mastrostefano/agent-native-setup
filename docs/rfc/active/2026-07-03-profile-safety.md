@@ -9,8 +9,8 @@
 > allowlist + fail-closed), **sandboxed rendering** (`SandboxedEnvironment` — the base scaffold
 > renders clean under it), **path confinement** in `apply` (refuses an output escaping the target),
 > the recorded manifest `safety` tier, the **safe → unsafe update re-gate**, and the `validate`/
-> `save` wiring. Deferred to the fetch RFC (§5): the scaffold-time consent gate + its trust model.
-> Kept `Proposed` under the parent profiles RFC's umbrella.
+> `save` wiring. The consent gate + trust model deferred to the fetch RFC (§5) landed there
+> (RFC 2026-07-04-profile-fetch, Active) — this slice is complete.
 
 ## Context
 

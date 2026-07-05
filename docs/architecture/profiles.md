@@ -48,7 +48,7 @@ re-fetches) the same way later.
 
 `.j2` templates and prompt `when` expressions see `project_name` / `slug` / `description` /
 `languages`, the prompt answers under **`answers.<name>`**, and detected/resolved facts under
-**`env.<name>`** (`existing_project`, `detected_languages`, `existing_runner`, `runner`,
+**`env.<name>`** (`existing_project`, `languages`, `detected_languages`, `existing_runner`, `runner`,
 `adoption`, `ai_tools`, `has_quality`/`has_ci`/`has_docs`/`has_agents`/`has_security`) — both
 namespaced so they can never shadow a base key. All rendering goes through Jinja's
 `SandboxedEnvironment` (`scaffold.py`): profile templates are untrusted input.
@@ -103,7 +103,8 @@ tags}` entries — a phone book, not a registry: profiles live in their own repo
 grants no trust (RFC 2026-07-04-community-index). `profile search <query>` and
 `list --community` read it via a bounded, daily-cached, silent-on-failure HTTP GET
 (`AGENT_NATIVE_SETUP_INDEX_URL` points a team at a private index). `profile publish` prints a
-profile's shareable pinned URL + ready-to-PR entry. Freeform `tags` on the profile are the
+profile's shareable URL (pinned `@<tag>` when the commit is tagged — else it nudges you to
+tag) + ready-to-PR entry. Freeform `tags` on the profile are the
 single source of truth, carried into the entry by `publish`. The `index-check` workflow
 (weekly, on `contributions/` PRs, on demand; `task check-index` locally) fetches and validates
 every listing so rot fails CI instead of the next adopter.

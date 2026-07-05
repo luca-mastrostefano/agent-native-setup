@@ -9,8 +9,8 @@
 > extracts the delta, parameterizes name/slug (word-boundary), preserves seed status, turns
 > symlinks into onboarding steps, excludes the non-deterministic bootstrap RFC, and discloses the
 > safety tier. Deferred (Open questions): the `slug` vs `project_name` token choice when equal,
-> a per-file `seed` override, and description parameterization. Kept `Proposed` under the parent
-> profiles RFC's umbrella (still `Proposed` until the whole surface is complete).
+> a per-file `seed` override, and description parameterization. This slice is complete; the parent
+> scaffolding-profiles umbrella stays `Proposed` for its remaining surface.
 
 ## Context
 
