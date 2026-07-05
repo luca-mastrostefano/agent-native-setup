@@ -24,7 +24,14 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "src"))
 
 from agent_native_setup.config import WizardConfig  # noqa: E402
-from agent_native_setup.generators import agents, ai_context, ci, docs, quality  # noqa: E402
+from agent_native_setup.generators import (  # noqa: E402
+    agents,
+    ai_context,
+    ci,
+    docs,
+    onboarding,
+    quality,
+)
 from agent_native_setup.generators.ai_context import _nested_symlink_note  # noqa: E402
 from agent_native_setup.generators.docs import _arch_tooling  # noqa: E402
 from agent_native_setup.languages import REGISTRY  # noqa: E402
@@ -101,6 +108,166 @@ def _cfg(**kw: object) -> WizardConfig:
     return WizardConfig(project_name="x", output_dir=Path("."), languages=[], **kw)
 
 
+def _jexpr(const: str, **slots: str) -> str:
+    """A Jinja concatenation expression rendering `const` with each {slot} replaced by the
+    given Jinja variable/expression — so step texts stay THE generator's constants."""
+    import re
+
+    parts = re.split(r"(\{\w+\})", const)
+    out = []
+    for part in parts:
+        m = re.fullmatch(r"\{(\w+)\}", part)
+        if m:
+            out.append(slots[m.group(1)])
+        elif part:
+            out.append(_j(part))
+    return "(" + " ~ ".join(out) + ")"
+
+
+def _onboarding_prelude() -> list[str]:
+    """The ONBOARDING.md runbook re-expressed over answers/env: texts are onboarding.py's own
+    constants; the conditions mirror `_steps` (checked by the parity matrix, cell by cell)."""
+    ob = onboarding
+    setup_langs = [k for k, lang in REGISTRY.items() if lang.setup_command]
+    has_setup = "(" + " or ".join(f'"{k}" in answers.languages' for k in setup_langs) + ")"
+    banner_both = ob.SYMLINK_NOTE.format(
+        joined="`CLAUDE.md` and `GEMINI.md`", verb="symlink", both="all"
+    )
+    banner_cl = ob.SYMLINK_NOTE.format(joined="`CLAUDE.md`", verb="symlinks", both="both")
+    banner_gm = ob.SYMLINK_NOTE.format(joined="`GEMINI.md`", verb="symlinks", both="both")
+    L = []
+    A = L.append
+    A(
+        '{% set gate = "your full check gate" if env.existing_runner else '
+        '("`task quality`" if answers.runner == "task" else "`make quality`") %}'
+    )
+    A(
+        '{% set fmt = "your formatter" if env.existing_runner else '
+        '("`task format`" if answers.runner == "task" else "`make format`") %}'
+    )
+    A("{% set has_setup = " + has_setup + " %}")
+    A("{% set has_ci = answers.include_ci and answers.github_actions %}")
+    A("{% set pre = " + _j(ob.PRE_HOOKS) + ' if answers.hooks else "" %}')
+    A(
+        "{% set py_clause = "
+        + _j(ob.PY_CLAUSE)
+        + ' if (answers.hooks and answers.include_docs) else "" %}'
+    )
+    A(
+        "{% set lychee_clause = "
+        + _j(ob.LYCHEE_CLAUSE)
+        + ' if (answers.hooks and "html" in answers.languages) else "" %}'
+    )
+    A(
+        "{% set does = [("
+        + _j(ob.DOES_HOOKS)
+        + ' if answers.hooks else ""), ('
+        + _j(ob.DOES_SETUP)
+        + ' if has_setup else "")] | select | join(" and ") %}'
+    )
+    A(
+        '{% set run_phrase = ([("`pre-commit install`" if answers.hooks else ""), '
+        '("`npm install`" if has_setup else "")] | select | join(" and ")) '
+        "if env.existing_runner else "
+        '("`" ~ answers.runner ~ " " ~ ("bootstrap" if has_setup else "install") ~ "`") %}'
+    )
+    A(
+        "{% set s_toolchain = "
+        + _jexpr(
+            ob.S_TOOLCHAIN,
+            pre="pre",
+            run_phrase="run_phrase",
+            does="does",
+            py_clause="py_clause",
+            lychee_clause="lychee_clause",
+        )
+        + ' if (answers.hooks or has_setup) else "" %}'
+    )
+    A("{% set tail = " + _j(ob.BASELINE_TAIL) + ' if env.existing_project else "" %}')
+    A("{% set surface = " + _j(ob.BASELINE_SURFACE) + ' if env.existing_runner else "" %}')
+    A('{% set _ships = answers.include_docs and "python" not in answers.languages %}')
+    A(
+        '{% set listed = "`ruff`, `mypy`, and `pytest`" if "python" in answers.languages '
+        'else ("`ruff`" if _ships else "") %}'
+    )
+    A('{% set it = "it" if ("python" not in answers.languages and _ships) else "them" %}')
+    A(
+        "{% set tools_note = "
+        + _jexpr(ob.TOOLS_NOTE, gate="gate", listed="listed", it="it")
+        + ' if listed else "" %}'
+    )
+    A(
+        "{% set s_baseline = "
+        + _jexpr(
+            ob.S_BASELINE, gate="gate", tail="tail", surface="surface", tools_note="tools_note"
+        )
+        + ' if answers.include_quality else "" %}'
+    )
+    A(
+        "{% set s_adopt = ("
+        + _jexpr(ob.ADOPT_FULL, gate="gate", fmt="fmt")
+        + ' if answers.adopt == "full" else ('
+        + _j(ob.ADOPT_PROGRESSIVE)
+        + ' if answers.adopt == "progressive" else '
+        + _jexpr(ob.ADOPT_NONE, gate="gate")
+        + ')) if (answers.include_quality and env.existing_project) else "" %}'
+    )
+    A("{% set s_docs = " + _j(ob.S_DOCS) + ' if answers.include_docs else "" %}')
+    A("{% set ci_clause = " + _j(ob.CI_CLAUSE) + ' if has_ci else "" %}')
+    A("{% set s_uncovered = " + _jexpr(ob.S_UNCOVERED, ci_clause="ci_clause") + " %}")
+    A("{% set push_clause = " + _j(ob.PUSH_CLAUSE) + ' if has_ci else "" %}')
+    A("{% set harness_note = " + _j(ob.HARNESS_NOTE) + ' if has_ci else "" %}')
+    A(
+        "{% set s_commit = "
+        + _jexpr(ob.S_COMMIT, push_clause="push_clause", harness_note="harness_note")
+        + " %}"
+    )
+    A("{% set s_ci = " + _j(ob.S_CI_GREEN) + ' if has_ci else "" %}')
+    A("{% set s_dep = " + _j(ob.S_DEPENDABOT.format()) + ' if has_ci else "" %}')
+    A(
+        "{% set _note = "
+        + _j(banner_both)
+        + ' if ("claude" in answers.tools and "gemini" in answers.tools) else ('
+        + _j(banner_cl)
+        + ' if "claude" in answers.tools else ('
+        + _j(banner_gm)
+        + ' if "gemini" in answers.tools else "")) %}'
+    )
+    A(
+        "{% set r_banner = "
+        + _jexpr(ob.R_BANNER, symlink_note="_note")
+        + ' if (answers.first_run_banner and answers.tools) else "" %}'
+    )
+    A(
+        "{% set r_onboard = "
+        + _j(ob.R_ONBOARD)
+        + ' if (answers.include_agents and "claude" in answers.tools) else "" %}'
+    )
+    A("{% set _r = [" + _j(ob.R_DELETE) + ", r_banner, r_onboard] | select | list %}")
+    A(
+        "{% set cleanup = _r[0] if _r | length == 1 else "
+        '((_r[0] ~ " and " ~ _r[1]) if _r | length == 2 else '
+        '((_r[:-1] | join(", ")) ~ ", and " ~ _r[-1])) %}'
+    )
+    A(
+        '{% set cleanup_tail = "" if not has_ci else ('
+        + _j(ob.CLEANUP_TAIL_HTML)
+        + ' if "html" in answers.languages else '
+        + _j(ob.CLEANUP_TAIL_PLAIN)
+        + ") %}"
+    )
+    A(
+        "{% set s_cleanup = "
+        + _jexpr(ob.S_CLEANUP, cleanup="cleanup", cleanup_tail="cleanup_tail")
+        + " %}"
+    )
+    A(
+        "{% set _steps = [" + _j(ob.S_READ) + ", s_toolchain, s_baseline, s_adopt, s_docs, "
+        "s_uncovered, s_commit, s_ci, s_dep, s_cleanup] | select | list %}"
+    )
+    return L
+
+
 def _rendered_ports() -> list[tuple[str, str | None, str, list[str]]]:
     """(path, gate, constant, prelude-set-lines) for generator templates that RENDER: the
     prelude maps each template variable onto answers/env (and bakes generator-computed
@@ -167,6 +334,13 @@ def _rendered_ports() -> list[tuple[str, str | None, str, list[str]]]:
             ["{% set include_docs = answers.include_docs %}"],
         ),
         (
+            "ONBOARDING.md",
+            "answers.include_quality or answers.include_ci",
+            onboarding.HEADER.replace("{name}", "{{ project_name }}")
+            + "{% for step in _steps %}{{ loop.index }}. {{ step }}\n{% endfor %}",
+            _onboarding_prelude(),
+        ),
+        (
             "README.md",
             None,
             ai_context.README_MD,
@@ -187,6 +361,19 @@ def _rendered_ports() -> list[tuple[str, str | None, str, list[str]]]:
     ]
 
 
+def _check_flagship_invariants() -> None:
+    """ONBOARDING.md ships as a ported template with no profile-steps slot — if the flagship
+    ever declares its own `onboarding` steps, they would be silently superseded (review of
+    #49). Fail the build instead."""
+    import json
+
+    manifest = json.loads((PROFILE_ROOT / "profile.json").read_text(encoding="utf-8"))
+    assert not manifest.get("onboarding"), (
+        "flagship onboarding steps would be dropped by the ported ONBOARDING.md template — "
+        "give the template a profile-steps slot before declaring any"
+    )
+
+
 def main(argv: list[str] | None = None) -> int:
     import argparse
     import json
@@ -196,6 +383,7 @@ def main(argv: list[str] | None = None) -> int:
         "--out", default=str(TEMPLATES), help="output dir (tests build into a scratch dir)"
     )
     args = ap.parse_args(argv)
+    _check_flagship_invariants()
     out_root = Path(args.out)
     in_place = out_root == TEMPLATES
 

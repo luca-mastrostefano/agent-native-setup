@@ -46,6 +46,7 @@ PORTED = {
     "INSTRUCTION.md",
     ".claude/agents/code-reviewer.md",
     ".claude/commands/onboard.md",
+    "ONBOARDING.md",
     "README.md",
     "docs/architecture/overview.md",
     "docs/README.md",
@@ -135,6 +136,39 @@ def _matrix() -> list[tuple[str, dict]]:
             "deferred-runner",  # an existing runner -> no quickstart despite quality on
             dict(languages=["python"], existing_runner=True),
         ),
+        (
+            "none-adopt",  # adoption=none + hooks off (runbook variants)
+            dict(
+                languages=["node"],
+                existing_project=True,
+                adoption="none",
+                git_hooks=False,
+            ),
+        ),
+        (
+            "html-hooks",  # lychee clause + the html cleanup tail
+            dict(languages=["html", "python"], ai_tools=["claude"]),
+        ),
+        # The real-world default path: the CLI defaults first_run_banner=True but the
+        # dataclass defaults False, so without these cells the banner-removal step, all
+        # three symlink-note variants, the 3-way cleanup join, and ADOPT_FULL's rendered
+        # slots would be unfalsified (review of #49).
+        (
+            "banner-full-adopt",  # banner on + adoption=full actually rendered
+            dict(
+                languages=["python"],
+                ai_tools=["claude", "gemini"],
+                first_run_banner=True,
+                existing_project=True,
+                adoption="full",
+            ),
+        ),
+        (
+            "banner-runner",  # banner on + existing runner -> two-command run_phrase join
+            dict(
+                languages=["node"], ai_tools=["claude"], first_run_banner=True, existing_runner=True
+            ),
+        ),
     ]
 
 
@@ -166,6 +200,7 @@ def config_to_answers(config: WizardConfig) -> dict[str, object]:
         "hooks": config.git_hooks,
         "runner": config.runner,
         "adopt": config.adoption,
+        "first_run_banner": config.first_run_banner,
     }
 
 

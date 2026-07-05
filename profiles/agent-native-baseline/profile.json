@@ -5,7 +5,7 @@
   "description": "The agent-native setup this project scaffolds by default: contract + guardrails + feedback loops (WORK IN PROGRESS - stage A extraction, RFC 2026-07-05).",
   "tags": ["general", "baseline", "multi-language"],
   "seed": ["docs/architecture/overview.md", "README.md"],
-  "transient": [".claude/commands/onboard.md"],
+  "transient": [".claude/commands/onboard.md", "ONBOARDING.md"],
   "links": {
     "CLAUDE.md": {"target": "AGENTS.md", "when": "\"claude\" in answers.tools"},
     "GEMINI.md": {"target": "AGENTS.md", "when": "\"gemini\" in answers.tools"}
@@ -21,7 +21,8 @@
     {"name": "github_actions", "type": "confirm", "message": "GitHub Actions workflows?", "default": true},
     {"name": "hooks", "type": "confirm", "message": "Pre-commit hooks?", "default": true},
     {"name": "runner", "type": "select", "message": "Task runner:", "choices": ["make", "task"], "default": "make"},
-    {"name": "adopt", "type": "select", "message": "Gate for an existing repo's code:", "choices": ["progressive", "full", "none"], "default": "progressive"}
+    {"name": "adopt", "type": "select", "message": "Gate for an existing repo's code:", "choices": ["progressive", "full", "none"], "default": "progressive"},
+    {"name": "first_run_banner", "type": "confirm", "message": "Inject the self-removing first-run banner?", "default": true, "when": "(answers.include_quality or answers.include_ci) and answers.tools"}
   ],
   "onboarding": [],
   "session_start": []
