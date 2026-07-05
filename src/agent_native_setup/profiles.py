@@ -101,6 +101,11 @@ class Profile:
     # Output paths written but never recorded (RFC 2026-07-05 §6): self-deleting first-run
     # files (an ONBOARDING runbook) — a manifest must never list one, or update resurrects it.
     transient: frozenset[str] = frozenset()
+    # Empty files the profile ships (RFC 2026-07-05 §6): (path, when) pairs — a .gitkeep that
+    # holds a folder in git. Declared, not templated: a template rendering empty means
+    # "skip" (conditional inclusion), so an intentionally-empty output needs its own field.
+    # ``when`` (None = always) mirrors links'/prompts' — a Jinja expression over answers/env.
+    empty_files: tuple[tuple[str, str | None], ...] = ()
     # One-time setup steps folded into ONBOARDING.md (the agent runs them once, on first
     # session) and shell commands appended to the .claude SessionStart hooks (run every session).
     onboarding: tuple[str, ...] = ()
@@ -239,6 +244,32 @@ def load(path: Path, *, source: str | None = None) -> Profile:
             raise ProfileError(f"{manifest_path}: {key!r} must be a list of strings")
         return value
 
+    raw_empty = data.get("empty_files", {})
+    if not isinstance(raw_empty, dict):
+        raise ProfileError(
+            f"{manifest_path}: 'empty_files' must be an object of path -> when (or null)"
+        )
+    empty_files: list[tuple[str, str | None]] = []
+    for key, when in raw_empty.items():
+        if not isinstance(key, str) or not key:
+            raise ProfileError(f"{manifest_path}: 'empty_files' keys must be paths")
+        if when is not None:
+            if not isinstance(when, str):
+                raise ProfileError(
+                    f"{manifest_path}: empty_files[{key!r}] must be null or a string"
+                )
+            try:
+                compile_expr(when)  # syntax fails at load (runtime mirrors prompts')
+            except Exception as exc:
+                raise ProfileError(
+                    f"{manifest_path}: empty_files[{key!r}] is not a valid expression: {exc}"
+                ) from None
+        if key.startswith(("/", "\\")) or ".." in Path(key).parts or Path(key).is_absolute():
+            raise ProfileError(
+                f"{manifest_path}: empty_files entry {key!r} must stay inside the project"
+            )
+        empty_files.append((key, when))
+
     raw_links = data.get("links", {})
     if not isinstance(raw_links, dict):
         raise ProfileError(f"{manifest_path}: 'links' must be an object of link -> target entries")
@@ -287,6 +318,7 @@ def load(path: Path, *, source: str | None = None) -> Profile:
         prompts=_parse_prompts(data, manifest_path),
         tags=tuple(_str_list("tags")),
         links=tuple(sorted(links)),
+        empty_files=tuple(sorted(empty_files)),
     )
 
 
@@ -577,6 +609,15 @@ def apply(
             sc.overlay(out_rel, content, transient=True)
         elif sc.overlay(out_rel, content, seed=out_rel in seed_set):
             owned.append(out_rel)
+    for out_rel, when in profile.empty_files:
+        if when is not None and not eval_expr(when, **ctx):
+            continue  # conditional — not shipped for these answers/env
+        out_rel = out_rel.replace("@DATE@", stamp)
+        dest = (sc.target / out_rel).resolve()
+        if dest != target_root and target_root not in dest.parents:
+            raise ProfileError(f"profile output path escapes the project: {out_rel!r}")
+        if sc.overlay(out_rel, "", seed=out_rel in seed_set):
+            owned.append(out_rel)
     for link_rel, dest_rel, when in profile.links:
         if when is not None and not eval_expr(when, **ctx):
             continue  # conditional link — not shipped for these answers/env
@@ -612,7 +653,9 @@ agent-native-setup my-app -o ./my-app --profile {source_hint}
   base setup, or `null` to be standalone / from scratch), description, optional `tags` (freeform
   discovery keywords — who/what it targets, e.g. `backend` / `frontend` / `design` / `general`),
   an optional `seed` list, an optional `transient` list (paths written once and never
-  recorded — self-deleting first-run files an update must not resurrect), optional
+  recorded — self-deleting first-run files an update must not resurrect), an optional
+  `empty_files` object (`{{"docs/rfc/active/.gitkeep": "answers.include_docs"}}` — declared
+  empty outputs, since a template that renders empty is skipped), optional
   `onboarding` / `session_start` lists (below), and an
   optional `links` object (`{{"CLAUDE.md": "AGENTS.md"}}`, or
   `{{"CLAUDE.md": {{"target": "AGENTS.md", "when": "..."}}}}` to ship a link conditionally —
@@ -811,7 +854,7 @@ _SINK_NAMES = (
 # Provably-inert output paths — the only ones that let a profile earn a `safe` verdict. Kept
 # minimal; the set grows to earn more profiles `safe` (RFC 2026-07-03-profile-safety §1, Open Qs).
 _INERT_SUFFIXES = (".md", ".txt", ".rst")
-_INERT_NAMES = (".gitignore", ".editorconfig", "LICENSE", "LICENSE.md", "NOTICE")
+_INERT_NAMES = (".gitignore", ".gitkeep", ".editorconfig", "LICENSE", "LICENSE.md", "NOTICE")
 
 
 def _is_sink(out_rel: str) -> bool:
@@ -835,7 +878,9 @@ def classify_safety(profile: Profile) -> tuple[str, list[str]]:
         reasons.append(f"{len(profile.onboarding)} onboarding step(s) are agent-executed")
     if profile.links:  # a symlink redirects reads/writes — fail-closed (RFC 2026-07-05 open Q)
         reasons.append(f"declares {len(profile.links)} symlink(s)")
-    for out_rel, _ in profile.template_files():
+    outputs = [rel for rel, _ in profile.template_files()]
+    outputs += [rel for rel, _ in profile.empty_files]  # an empty file still lands at a path
+    for out_rel in outputs:
         if _is_sink(out_rel):
             reasons.append(f"writes an execution sink: {out_rel}")
         elif not _is_inert(out_rel):
@@ -1336,6 +1381,11 @@ def _show(args: argparse.Namespace, console: Any) -> int:
         console.print("  session_start (runs every session):")
         for cmd in prof.session_start:
             console.print(f"    [yellow]$[/] {escape(cmd)}")
+    if prof.empty_files:
+        console.print(
+            "  empty files: "
+            + escape(", ".join(p + (f" (when {w})" if w else "") for p, w in prof.empty_files))
+        )
     if prof.links:
         shown = ", ".join(f"{a} -> {b}" + (f" (when {w})" if w else "") for a, b, w in prof.links)
         console.print("  links: " + escape(shown))

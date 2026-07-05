@@ -33,7 +33,11 @@ re-confined at apply) the
 engine creates as symlinks, recorded as `symlink:<target>` provenance like the base's own
 links, shown by `show`, and classified fail-closed (any link ⇒ not `safe`); **`transient`** —
 output paths written but never recorded (self-deleting first-run files: a manifest that
-listed one would let `update` resurrect it after onboarding removed it); and **`@DATE@`**
+listed one would let `update` resurrect it after onboarding removed it); **`empty_files`**
+— declared conditionally-shipped empty files (`{"docs/rfc/active/.gitkeep":
+"answers.include_docs"}`; a template rendering empty means *skip*, so intentional
+emptiness is declared — paths confined, classified like any output, `when` like links');
+and **`@DATE@`**
 in a template *path*, substituted with the scaffold date — recorded in the manifest
 (`profile.date`) and **replayed on update**, so a dated path never drifts or duplicates under
 a refresh.

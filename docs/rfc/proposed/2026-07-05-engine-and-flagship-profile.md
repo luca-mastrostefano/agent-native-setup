@@ -152,6 +152,13 @@ both load-bearing for parity (§7):
   self-deleting first-run files (`ONBOARDING.md`, the `/onboard` command): a recorded
   entry would make `update` resurrect them after onboarding removed them. Discovered by
   the port of the onboarding pair — the generators' `transient=` write flag, as format.
+- **`empty_files`** — declared conditionally-shipped *empty* files (`.gitkeep`), with a
+  `when` like links'. A template rendering empty means "skip", so intentional emptiness
+  needs its own field (decided with the maintainer, 2026-07-06).
+- **The AGENTS.md brownfield fold stays an engine mechanic** (decided, 2026-07-06): folding
+  a pre-existing `AGENTS.md`/`CLAUDE.md`'s content beneath the new contract is
+  generation-time I/O no template can express, and the behavior is kept rather than
+  dropped — implemented with the AGENTS.md port.
 - **`@DATE@` in template *paths*** — engine-substituted scaffold date, for the dated
   bootstrap RFC (`docs/rfc/active/<date>-adopt-agent-native-setup.md`) the default writes
   today. Dated artifact names are this ecosystem's own convention; one general token beats
@@ -166,11 +173,11 @@ and refreshes through `cli.build`'s generators. Sequencing:
   full matrix (languages × tools × part toggles × existing-repo modes) — and asserts
   **byte-identical trees, symlinks included** (via §6 `links`). Any exception must be
   enumerated *in the harness with a reason*, not discovered later. One **behavioral**
-  (non-tree) difference is on record: the generators write `README.md`/`.gitignore` with
-  `preserve=True` (never clobbered, even under `--force`), while a profile `seed` file is
-  overwritable under `--force` — the format has a refresh-time affordance but no
-  scaffold-time "preserve". Resolve before B: either a `preserve` marking or an accepted,
-  documented semantic change. The tree-parity exception list itself is **empty**. The generators remain the source of truth until
+  (non-tree) difference was on record and is now **decided (maintainer, 2026-07-06): force
+  means force** — a profile `seed` file is overwritable under `--force`, unlike the
+  generators' `preserve=True`; the divergence is an accepted, documented semantic change
+  (no scaffold-time "preserve" marking is added), landing when the flagship becomes the
+  scaffold at B. The tree-parity exception list itself is **empty**. The generators remain the source of truth until
   this gate is green and stays green in CI.
 - **B. Flip scaffold; remove `extends`; rework `save`.** New scaffolds resolve the vendored
   flagship through the one profile pipeline (`resolve → consent → gather_answers → apply`);
@@ -289,8 +296,7 @@ and refreshes through `cli.build`'s generators. Sequencing:
 
 ## Open questions
 
-- **The flagship's name** — `agent-native-baseline` is the working proposal; needs a decision
-  before B (it appears in manifests, the index, and docs).
+- **The flagship's name — decided: `agent-native-baseline`** (maintainer, 2026-07-06).
 - **`env` versioning shape** — a single `env.contract_version` key vs. documenting sensor
   availability per engine version. Decide during A.
 - **Flag-alias sunset** — how long the deprecated `--no-*` aliases live after D, and what a

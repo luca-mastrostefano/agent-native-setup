@@ -17,9 +17,8 @@ byte-parity against the generators.
 
 Parity status lives in the harness: `PORTED` in `tests/test_flagship_parity.py` is
 the set of outputs asserted byte-identical across the config matrix; coverage is
-reported on every run. Known not-yet-expressible: conditional **empty** files
-(`docs/rfc/*/.gitkeep`) — a `.j2` that renders empty is skipped by design, so these
-need a format decision before they can port. (`docs/improvements.md`
-ported once `env.is_git` landed.) Behavioral gap on record
-(RFC §7-A): `seed` is not `preserve` — under `--force` over a pre-existing README the
-generator preserves, the profile overwrites; needs a format decision before stage B.
+reported on every run. The `.gitkeep`s ship via the `empty_files` field (a template
+rendering empty means "skip", so intentional emptiness is declared, not templated). (`docs/improvements.md`
+ported once `env.is_git` landed.) Decided (RFC §7-A):
+force means force — under `--force` a profile seed file overwrites; the generators'
+`preserve` semantics are not carried over, an accepted change landing at stage B.
