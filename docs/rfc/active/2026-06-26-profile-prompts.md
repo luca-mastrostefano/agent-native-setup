@@ -1,9 +1,9 @@
 # Profile prompts: a declarative wizard for profiles
 
-- **Status:** Proposed
+- **Status:** Active
 - **Date:** 2026-06-26
 - **Author:** Luca Mastrostefano
-- [ ] Implemented
+- [x] Implemented
 
 ## Context
 

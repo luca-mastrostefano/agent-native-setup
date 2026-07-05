@@ -82,10 +82,17 @@ phases so the high-value, low-risk core lands first. Seven coupled decisions.
 > *new* `session_start` shell commands lists them and requires confirmation (even on a
 > non-breaking bump) before they run. **`profile save`** also landed (RFC 2026-07-03-profile-save):
 > it extracts a composing profile from a scaffolded project's *delta* from the default (reusing
-> the regenerate/classify machinery). **Not yet:** `profile show`, the `url`/fetch +
-> `contributions/` resolution, and per-profile *migrations* (renames/removes are handled by
-> classify, but structural moves of user content aren't). `- [ ] Implemented` stays unchecked
-> until that surface is complete; the RFC remains `Proposed`.
+> the regenerate/classify machinery). The distribution/discovery surface also landed and its
+> RFCs are **Active**: `profile show` (inspect-before-adopt), **git-URL fetch** on content-hash
+> consent (RFC 2026-07-04-profile-fetch — realizing §6/§7's trust model), the **community
+> index** + `search`/`publish`/adopt-by-name (RFC 2026-07-04-community-index, superseding the
+> `contributions/`-directory idea below with a URL phone book), headless `--answer` prompt
+> overrides, and discovery `tags`. Extension is **git-native** (RFC 2026-07-04-profile-extends)
+> — the deferred N-layer item below is retired. **Not yet:** per-profile *migrations*
+> (renames/removes are handled by classify, but structural moves of user content aren't) and
+> the Phase-C/D code-plugin surface (tracked in RFC 2026-07-03-ecosystem-core).
+> `- [ ] Implemented` stays unchecked until that surface is complete; this umbrella RFC
+> remains `Proposed`.
 
 ### 1. A profile is a versioned, resolvable generator
 

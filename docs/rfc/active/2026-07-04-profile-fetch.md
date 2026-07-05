@@ -1,17 +1,17 @@
 # Profile fetch: consume a profile from a git URL, on per-artifact content-hash trust
 
-- **Status:** Proposed
+- **Status:** Active
 - **Date:** 2026-07-04
 - **Author:** Luca Mastrostefano
-- [ ] Implemented
+- [x] Implemented
 
 > **Status note:** the core **landed** — `git+https://`/`git+ssh://` fetch (enforced transport
 > allowlist, `--no-recurse-submodules`, cached, pinned-ref reuse, offline fallback), `content_hash`
 > over exactly `profile.json` + `templates/`, the `trusted.json` store, the provenance-aware
 > `consent` gate (fetched + unsafe + untrusted → `--allow-code`; safe/local pass freely; recorded
 > per artifact), `profile add`/`untrust`/`trust --list`, the `--allow-code` scaffold flag, and the
-> update re-fetch/re-gate. Deferred (Open questions): a registry/index, `@sha` verification. Kept
-> `Proposed` under the parent profiles RFC's umbrella.
+> update re-fetch/re-gate. The deferred registry/index landed as RFC 2026-07-04-community-index
+> (Active); `@sha` verification remains open. This slice is complete.
 
 ## Context
 
