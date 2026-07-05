@@ -107,10 +107,12 @@ class Profile:
     # Freeform discovery tags — who/what it targets (e.g. "backend", "frontend", "design",
     # "python", "general"). Advisory metadata; carried into the community index by `publish`.
     tags: tuple[str, ...] = ()
-    # Declarative symlinks (RFC 2026-07-05 §6): (link, target) pairs, both project-relative and
-    # confined — templates can't carry symlinks, and a link redirects reads/writes, so links are
-    # declared data the engine executes (and the classifier counts as code-adjacent).
-    links: tuple[tuple[str, str], ...] = ()
+    # Declarative symlinks (RFC 2026-07-05 §6): (link, target, when) triples, both path ends
+    # project-relative and confined — templates can't carry symlinks, and a link redirects
+    # reads/writes, so links are declared data the engine executes (and the classifier counts
+    # as code-adjacent). ``when`` (None = always) is a Jinja expression over answers/env,
+    # mirroring prompts' — so a per-tool link ships only when its tool is targeted.
+    links: tuple[tuple[str, str, str | None], ...] = ()
 
     @property
     def standalone(self) -> bool:
@@ -235,14 +237,38 @@ def load(path: Path, *, source: str | None = None) -> Profile:
         return value
 
     raw_links = data.get("links", {})
-    if not isinstance(raw_links, dict) or not all(
-        isinstance(k, str) and isinstance(v, str) and k and v for k, v in raw_links.items()
-    ):
-        raise ProfileError(f"{manifest_path}: 'links' must be an object of link -> target strings")
-    for rel in [*raw_links.keys(), *raw_links.values()]:
-        # Both ends must be project-relative and traversal-free; apply() re-checks resolved paths.
-        if rel.startswith(("/", "\\")) or ".." in Path(rel).parts or Path(rel).is_absolute():
-            raise ProfileError(f"{manifest_path}: links entry {rel!r} must stay inside the project")
+    if not isinstance(raw_links, dict):
+        raise ProfileError(f"{manifest_path}: 'links' must be an object of link -> target entries")
+    links: list[tuple[str, str, str | None]] = []
+    for key, value in raw_links.items():
+        # Short form: "link": "target". Object form adds a `when` (a Jinja expression over
+        # answers/env, like a prompt's) so a per-tool link ships only when relevant.
+        when: str | None = None
+        if isinstance(value, dict):
+            target, when = value.get("target"), value.get("when")
+            if when is not None and not isinstance(when, str):
+                raise ProfileError(f"{manifest_path}: links[{key!r}].when must be a string")
+            if when is not None:
+                try:
+                    compile_expr(when)  # syntax fails at load (runtime errors mirror prompts')
+                except Exception as exc:
+                    raise ProfileError(
+                        f"{manifest_path}: links[{key!r}].when is not a valid expression: {exc}"
+                    ) from None
+        else:
+            target = value
+        if not isinstance(key, str) or not isinstance(target, str) or not key or not target:
+            raise ProfileError(
+                f"{manifest_path}: 'links' entries must map a link to a target "
+                '(a string, or {"target": ..., "when": ...})'
+            )
+        for rel in (key, target):
+            # Both ends project-relative and traversal-free; apply() re-checks resolved paths.
+            if rel.startswith(("/", "\\")) or ".." in Path(rel).parts or Path(rel).is_absolute():
+                raise ProfileError(
+                    f"{manifest_path}: links entry {rel!r} must stay inside the project"
+                )
+        links.append((key, target, when))
 
     return Profile(
         name=str(name),
@@ -256,7 +282,7 @@ def load(path: Path, *, source: str | None = None) -> Profile:
         session_start=tuple(_str_list("session_start")),
         prompts=_parse_prompts(data, manifest_path),
         tags=tuple(_str_list("tags")),
-        links=tuple(sorted(raw_links.items())),
+        links=tuple(sorted(links)),
     )
 
 
@@ -537,7 +563,9 @@ def apply(
             content = raw
         if sc.overlay(out_rel, content, seed=out_rel in seed_set):
             owned.append(out_rel)
-    for link_rel, dest_rel in profile.links:
+    for link_rel, dest_rel, when in profile.links:
+        if when is not None and not eval_expr(when, **ctx):
+            continue  # conditional link — not shipped for these answers/env
         # Confine both ends before creating (same symlinked-parent vector as file outputs).
         for rel in (link_rel, dest_rel):
             p = (sc.target / rel).resolve()
@@ -570,8 +598,10 @@ agent-native-setup my-app -o ./my-app --profile {source_hint}
   base setup, or `null` to be standalone / from scratch), description, optional `tags` (freeform
   discovery keywords — who/what it targets, e.g. `backend` / `frontend` / `design` / `general`),
   an optional `seed` list, optional `onboarding` / `session_start` lists (below), and an
-  optional `links` object (`{{"CLAUDE.md": "AGENTS.md"}}` — project-confined symlinks the
-  engine creates; `@DATE@` in a template path becomes the scaffold date, stable across updates).
+  optional `links` object (`{{"CLAUDE.md": "AGENTS.md"}}`, or
+  `{{"CLAUDE.md": {{"target": "AGENTS.md", "when": "..."}}}}` to ship a link conditionally —
+  project-confined symlinks the engine creates; `@DATE@` in a template path becomes the
+  scaffold date, stable across updates).
 - `templates/` — the files this profile ships. Paths are relative to the project root, so
   `templates/.claude/agents/foo.md` lands at `.claude/agents/foo.md`. A file ending in
   `.j2` is rendered (Jinja) with `project_name`, `slug`, `description`, `languages`, the
@@ -1285,7 +1315,8 @@ def _show(args: argparse.Namespace, console: Any) -> int:
         for cmd in prof.session_start:
             console.print(f"    [yellow]$[/] {escape(cmd)}")
     if prof.links:
-        console.print("  links: " + escape(", ".join(f"{a} -> {b}" for a, b in prof.links)))
+        shown = ", ".join(f"{a} -> {b}" + (f" (when {w})" if w else "") for a, b, w in prof.links)
+        console.print("  links: " + escape(shown))
     return 0
 
 
