@@ -148,6 +148,10 @@ both load-bearing for parity (§7):
   tool. This replaces the "recreate the symlink via onboarding step"
   workaround, which would otherwise be both a UX regression (the wizard creates the link
   today; an agent would have to) and a permanent parity exception.
+- **`transient`** — output paths written but never recorded in the manifest, for the
+  self-deleting first-run files (`ONBOARDING.md`, the `/onboard` command): a recorded
+  entry would make `update` resurrect them after onboarding removed them. Discovered by
+  the port of the onboarding pair — the generators' `transient=` write flag, as format.
 - **`@DATE@` in template *paths*** — engine-substituted scaffold date, for the dated
   bootstrap RFC (`docs/rfc/active/<date>-adopt-agent-native-setup.md`) the default writes
   today. Dated artifact names are this ecosystem's own convention; one general token beats

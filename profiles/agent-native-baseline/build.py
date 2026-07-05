@@ -74,6 +74,12 @@ PORTS: list[tuple[str, str | None, str]] = [
     # ai_context (always runs; per-tool pointer files)
     (".cursor/rules/agent-contract.mdc", '"cursor" in answers.tools', ai_context.CURSOR_RULE),
     (".github/copilot-instructions.md", '"copilot" in answers.tools', ai_context.COPILOT_MD),
+    # agents.generate: the transient /onboard command (matches onboarding.generate's gate)
+    (
+        ".claude/commands/onboard.md",
+        f"{_CLAUDE} and (answers.include_quality or answers.include_ci)",
+        agents.ONBOARD_COMMAND,
+    ),
     # ci.generate (include_ci and use_github_actions)
     (".github/PULL_REQUEST_TEMPLATE.md", _GHA, ci.PULL_REQUEST_TEMPLATE),
     # quality.generate (include_quality)
@@ -159,6 +165,24 @@ def _rendered_ports() -> list[tuple[str, str | None, str, list[str]]]:
             _CLAUDE,
             agents.CODE_REVIEWER,
             ["{% set include_docs = answers.include_docs %}"],
+        ),
+        (
+            "README.md",
+            None,
+            ai_context.README_MD,
+            [
+                "{% set name = project_name %}",
+                "{% set show_quickstart = answers.include_quality and not env.existing_runner %}",
+                "{% set runner = answers.runner %}",
+                '{% set needs_lychee = answers.hooks and "html" in answers.languages %}',
+                # config.python_surface_tools, baked: python -> ruff/mypy/pytest;
+                # ships_tools_python (docs without python) -> ruff alone; else none.
+                '{% set _ships = answers.include_docs and "python" not in answers.languages %}',
+                '{% set surface_tools = "`ruff`, `mypy`, and `pytest`" '
+                'if "python" in answers.languages else ("`ruff`" if _ships else "") %}',
+                '{% set surface_pron = "it" '
+                'if ("python" not in answers.languages and _ships) else "them" %}',
+            ],
         ),
     ]
 

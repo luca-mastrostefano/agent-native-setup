@@ -98,6 +98,9 @@ class Profile:
     # Output paths the profile ships as **seed** (write-once, never refreshed). Everything else
     # under templates/ is **managed** — refreshed on update when the profile ships a new version.
     seed: frozenset[str] = frozenset()
+    # Output paths written but never recorded (RFC 2026-07-05 §6): self-deleting first-run
+    # files (an ONBOARDING runbook) — a manifest must never list one, or update resurrects it.
+    transient: frozenset[str] = frozenset()
     # One-time setup steps folded into ONBOARDING.md (the agent runs them once, on first
     # session) and shell commands appended to the .claude SessionStart hooks (run every session).
     onboarding: tuple[str, ...] = ()
@@ -278,6 +281,7 @@ def load(path: Path, *, source: str | None = None) -> Profile:
         root=path,
         source=source if source is not None else str(path),
         seed=frozenset(_str_list("seed")),
+        transient=frozenset(_str_list("transient")),
         onboarding=tuple(_str_list("onboarding")),
         session_start=tuple(_str_list("session_start")),
         prompts=_parse_prompts(data, manifest_path),
@@ -543,6 +547,7 @@ def apply(
     target_root = sc.target.resolve()
     stamp = applied_on or f"{date.today():%Y-%m-%d}"
     seed_set = {s.replace("@DATE@", stamp) for s in profile.seed}
+    transient_set = {t.replace("@DATE@", stamp) for t in profile.transient}
     owned: list[str] = []
     for out_rel, src in profile.template_files():
         out_rel = out_rel.replace("@DATE@", stamp)
@@ -561,7 +566,11 @@ def apply(
                 continue  # conditional include: a .j2 that renders empty is not shipped
         else:
             content = raw
-        if sc.overlay(out_rel, content, seed=out_rel in seed_set):
+        if out_rel in transient_set:
+            # Written but never recorded/owned — invisible to the manifest, so an update
+            # can't resurrect the self-deleting file after onboarding removed it.
+            sc.overlay(out_rel, content, transient=True)
+        elif sc.overlay(out_rel, content, seed=out_rel in seed_set):
             owned.append(out_rel)
     for link_rel, dest_rel, when in profile.links:
         if when is not None and not eval_expr(when, **ctx):
@@ -597,7 +606,9 @@ agent-native-setup my-app -o ./my-app --profile {source_hint}
 - `profile.json` — name, version (your own semver), `extends` (`"default"` to compose on the
   base setup, or `null` to be standalone / from scratch), description, optional `tags` (freeform
   discovery keywords — who/what it targets, e.g. `backend` / `frontend` / `design` / `general`),
-  an optional `seed` list, optional `onboarding` / `session_start` lists (below), and an
+  an optional `seed` list, an optional `transient` list (paths written once and never
+  recorded — self-deleting first-run files an update must not resurrect), optional
+  `onboarding` / `session_start` lists (below), and an
   optional `links` object (`{{"CLAUDE.md": "AGENTS.md"}}`, or
   `{{"CLAUDE.md": {{"target": "AGENTS.md", "when": "..."}}}}` to ship a link conditionally —
   project-confined symlinks the engine creates; `@DATE@` in a template path becomes the
@@ -747,6 +758,9 @@ def _validate(args: argparse.Namespace, console: Any) -> int:
     for s in sorted(prof.seed):
         if s not in outputs:
             errors.append(f"seed entry {s!r} doesn't match any file under templates/")
+    for t in sorted(prof.transient):
+        if t not in outputs:
+            errors.append(f"transient entry {t!r} doesn't match any file under templates/")
     if errors:
         for e in errors:
             console.print(f"[red]✗[/] {e}")

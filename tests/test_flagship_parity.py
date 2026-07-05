@@ -45,6 +45,8 @@ PORTED = {
     "CONTRIBUTING.md",
     "INSTRUCTION.md",
     ".claude/agents/code-reviewer.md",
+    ".claude/commands/onboard.md",
+    "README.md",
     "docs/architecture/overview.md",
     "docs/README.md",
     "docs/rfc/TEMPLATE.md",
