@@ -1856,12 +1856,19 @@ def test_empty_files_ship_conditionally_and_are_owned(tmp_path: Path) -> None:
 
     on, off = tmp_path / "on", tmp_path / "off"
     on.mkdir(), off.mkdir()
+    # A non-empty USER file already at an empty_files path: never clobbered, never owned —
+    # a regression here would make the manifest claim the user's file as profile-owned.
+    (on / "notes").mkdir()
+    (on / "notes" / ".gitkeep").write_text("the user's notes marker\n", encoding="utf-8")
     owned_on = profiles.apply(prof, _config(on), Scaffolder(on), {"docs": True})
     owned_off = profiles.apply(prof, _config(off), Scaffolder(off), {"docs": False})
+    assert (on / "notes/.gitkeep").read_text(encoding="utf-8") == "the user's notes marker\n"
+    assert "notes/.gitkeep" not in owned_on
     assert (on / "docs/rfc/.gitkeep").read_text(encoding="utf-8") == ""
-    assert "docs/rfc/.gitkeep" in owned_on and "notes/.gitkeep" in owned_on
+    assert "docs/rfc/.gitkeep" in owned_on
     assert not (off / "docs/rfc/.gitkeep").exists()  # condition false -> skipped
-    assert (off / "notes/.gitkeep").exists()  # unconditional entry still ships
+    assert (off / "notes/.gitkeep").read_text(encoding="utf-8") == ""  # fresh here -> ships
+    assert "notes/.gitkeep" in owned_off
     assert "docs/rfc/.gitkeep" not in owned_off
 
 
