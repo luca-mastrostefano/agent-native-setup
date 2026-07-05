@@ -1,0 +1,43 @@
+{% if answers.include_docs and "python" in answers.languages %}{% raw %}"""Tests for the docs-sync commit-msg gate (stdlib unittest)."""
+
+import importlib.util
+import unittest
+from pathlib import Path
+
+_HELPER = Path(__file__).resolve().parent / "docs_sync.py"
+_spec = importlib.util.spec_from_file_location("docs_sync", _HELPER)
+assert _spec and _spec.loader
+docs_sync = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(docs_sync)
+
+
+class FindTriggers(unittest.TestCase):
+    def test_new_top_level_src_package_fires(self) -> None:
+        changes = [("A", "src/widget/__init__.py")]
+        self.assertEqual(
+            docs_sync.find_triggers(changes),
+            ["new top-level src package (widget)"],
+        )
+
+    def test_subpackage_does_not_fire(self) -> None:
+        changes = [("A", "src/widget/sub/__init__.py")]
+        self.assertEqual(docs_sync.find_triggers(changes), [])
+
+
+class IsSatisfied(unittest.TestCase):
+    def test_arch_change_satisfies(self) -> None:
+        changes = [("M", "docs/architecture/overview.md")]
+        self.assertTrue(docs_sync.is_satisfied(changes, "feat: x"))
+
+    def test_waiver_satisfies(self) -> None:
+        message = "feat: x\n\nDocs-Not-Needed: n/a"
+        self.assertTrue(docs_sync.is_satisfied([], message))
+
+    def test_unsatisfied_without_doc_or_waiver(self) -> None:
+        changes = [("A", "src/widget/__init__.py")]
+        self.assertFalse(docs_sync.is_satisfied(changes, "feat: x"))
+
+
+if __name__ == "__main__":
+    unittest.main()
+{% endraw %}{% endif %}

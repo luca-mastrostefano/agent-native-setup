@@ -1,0 +1,101 @@
+{% if answers.include_docs and ("python" in answers.languages or "node" in answers.languages or "go" in answers.languages or "rust" in answers.languages) %}{% raw %}"""Tests for the rfc-needed commit-msg gate (stdlib unittest)."""
+
+import importlib.util
+import unittest
+from pathlib import Path
+
+_HELPER = Path(__file__).resolve().parent / "rfc_needed.py"
+_spec = importlib.util.spec_from_file_location("rfc_needed", _HELPER)
+assert _spec and _spec.loader
+rfc_needed = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(rfc_needed)
+
+
+class DepNames(unittest.TestCase):
+    def test_normalizes_and_strips_specifiers(self) -> None:
+        text = '[project]\ndependencies = ["Foo_Bar>=1.0", "baz[extra]~=2"]\n'
+        self.assertEqual(rfc_needed.dep_names(text), {"foo-bar", "baz"})
+
+
+class DepNamesPackageJson(unittest.TestCase):
+    def test_reads_deps_and_dev_deps(self) -> None:
+        text = '{"dependencies": {"react": "^19"}, "devDependencies": {"eslint": "^10"}}'
+        expected = {"react", "eslint"}
+        self.assertEqual(rfc_needed.dep_names_package_json(text), expected)
+
+    def test_invalid_json_is_empty(self) -> None:
+        self.assertEqual(rfc_needed.dep_names_package_json("{nope"), set())
+
+
+class DepNamesGoMod(unittest.TestCase):
+    def test_reads_block_and_skips_indirect(self) -> None:
+        text = (
+            "module example.com/m\n\nrequire (\n"
+            "\tgithub.com/pkg/errors v0.9.1\n"
+            "\tgolang.org/x/sys v0.1.0 // indirect\n)\n"
+        )
+        expected = {"github.com/pkg/errors"}
+        self.assertEqual(rfc_needed.dep_names_go_mod(text), expected)
+
+    def test_reads_single_line_require(self) -> None:
+        text = "require github.com/spf13/cobra v1.8.0\n"
+        expected = {"github.com/spf13/cobra"}
+        self.assertEqual(rfc_needed.dep_names_go_mod(text), expected)
+
+    def test_block_comment_is_not_a_dependency(self) -> None:
+        text = "require (\n\t// vendored deliberately\n\tgithub.com/a v1.0.0\n)\n"
+        self.assertEqual(rfc_needed.dep_names_go_mod(text), {"github.com/a"})
+
+
+class DepNamesCargo(unittest.TestCase):
+    def test_reads_dependency_tables(self) -> None:
+        text = '[dependencies]\nserde = "1"\n\n[dev-dependencies]\nrstest = "0.18"\n'
+        expected = {"serde", "rstest"}
+        self.assertEqual(rfc_needed.dep_names_cargo(text), expected)
+
+    def test_py310_fallback_matches_incl_dotted_tables(self) -> None:
+        text = (
+            '[dependencies.serde]\nversion = "1"\n\n'
+            '[dev-dependencies]\nrstest = "0.18"\n'
+        )
+        expected = {"serde", "rstest"}
+        self.assertEqual(rfc_needed._cargo_names_fallback(text), expected)
+        self.assertEqual(rfc_needed.dep_names_cargo(text), expected)
+
+
+class FindTriggers(unittest.TestCase):
+    def test_new_top_level_src_package_fires(self) -> None:
+        changes = [("A", "src/widget/__init__.py")]
+        self.assertEqual(
+            rfc_needed.find_triggers(changes),
+            ["new top-level src package (widget)"],
+        )
+
+    def test_subpackage_does_not_fire(self) -> None:
+        changes = [("A", "src/widget/sub/__init__.py")]
+        self.assertEqual(rfc_needed.find_triggers(changes), [])
+
+    def test_architecture_change_fires(self) -> None:
+        changes = [("M", "docs/architecture/overview.md")]
+        self.assertIn(
+            "change under docs/architecture/",
+            rfc_needed.find_triggers(changes),
+        )
+
+
+class IsSatisfied(unittest.TestCase):
+    def test_staged_rfc_satisfies(self) -> None:
+        changes = [("A", "docs/rfc/proposed/x.md")]
+        self.assertTrue(rfc_needed.is_satisfied(changes, "feat: x"))
+
+    def test_waiver_satisfies(self) -> None:
+        message = "feat: x\n\nRFC-Not-Needed: tooling-only"
+        self.assertTrue(rfc_needed.is_satisfied([], message))
+
+    def test_unsatisfied_without_rfc_or_waiver(self) -> None:
+        self.assertFalse(rfc_needed.is_satisfied([], "feat: x"))
+
+
+if __name__ == "__main__":
+    unittest.main()
+{% endraw %}{% endif %}

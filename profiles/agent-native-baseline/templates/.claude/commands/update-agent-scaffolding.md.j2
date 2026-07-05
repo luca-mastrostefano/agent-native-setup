@@ -1,0 +1,25 @@
+{% if answers.include_agents and "claude" in answers.tools %}{% raw %}---
+description: Update this project's agent-native setup to the latest release
+---
+
+Refresh the scaffolding this project was generated from, then reconcile anything
+that needs judgment. The engine is non-destructive — it never overwrites files
+you've edited; it reports them for you to fold in.
+
+1. Make sure the tree is clean (`git status`); commit or stash first — `update`
+   refuses a dirty tree so its diff is unambiguously its own (and `git restore .`
+   is the undo).
+2. Upgrade the tool so it has the new templates:
+   `uv tool upgrade agent-native-setup` (or `pipx upgrade agent-native-setup`).
+3. Preview: `agent-native-setup update --dry-run`. It prints what it would
+   refresh/add/remove, any conflicts, and — for a **breaking (major) update** —
+   the migration steps.
+4. If it's a breaking update, summarize the changes and migration steps for me and
+   **get my confirmation** before proceeding. Apply with
+   `agent-native-setup update --yes`; otherwise just `agent-native-setup update`.
+5. If it wrote `UPDATING.md`, work through it: do the **migration steps in order**
+   (they transform files you own — e.g. splitting the contract — and must preserve
+   my edits), then reconcile each conflict (fold the new version into my edited
+   file). Delete `UPDATING.md` when everything's done.
+6. Show me `git diff` for review. Don't commit or push without me.
+{% endraw %}{% endif %}

@@ -1,0 +1,8 @@
+{% if answers.include_quality and env.existing_project %}{% raw %}# Commits git blame (and GitHub's blame view) should skip — for bulk, no-logic
+# changes like a one-time formatter sweep across pre-existing code:
+#
+#   1. run your formatter across the repo (see the command surface)
+#   2. git commit -am "style: apply formatters across the codebase"
+#   3. add the resulting commit SHA on its own line below
+#   4. git config blame.ignoreRevsFile .git-blame-ignore-revs   (once, locally)
+{% endraw %}{% endif %}
