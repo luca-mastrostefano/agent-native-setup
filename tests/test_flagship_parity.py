@@ -46,6 +46,7 @@ PORTED = {
     "INSTRUCTION.md",
     ".claude/agents/code-reviewer.md",
     ".claude/commands/onboard.md",
+    "ONBOARDING.md",
     "README.md",
     "docs/architecture/overview.md",
     "docs/README.md",
@@ -135,6 +136,20 @@ def _matrix() -> list[tuple[str, dict]]:
             "deferred-runner",  # an existing runner -> no quickstart despite quality on
             dict(languages=["python"], existing_runner=True),
         ),
+        (
+            "none-adopt",  # adoption=none + hooks off + banner off (runbook variants)
+            dict(
+                languages=["node"],
+                existing_project=True,
+                adoption="none",
+                git_hooks=False,
+                first_run_banner=False,
+            ),
+        ),
+        (
+            "html-hooks",  # lychee clause + the html cleanup tail
+            dict(languages=["html", "python"], ai_tools=["claude"]),
+        ),
     ]
 
 
@@ -166,6 +181,7 @@ def config_to_answers(config: WizardConfig) -> dict[str, object]:
         "hooks": config.git_hooks,
         "runner": config.runner,
         "adopt": config.adoption,
+        "first_run_banner": config.first_run_banner,
     }
 
 
