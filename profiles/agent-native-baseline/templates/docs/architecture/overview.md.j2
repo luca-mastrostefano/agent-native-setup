@@ -1,0 +1,26 @@
+{% if answers.include_docs %}
+{% set _gha = answers.include_ci and answers.github_actions %}
+{% set tooling = "- **`AGENTS.md`** \u2014 the contract every contributor (human or AI) works from: the navigation map, the command surface, and the four execution principles.\n- **`docs/`** \u2014 `architecture/` (this map, reflecting the active RFCs) and `rfc/` (the decision lifecycle `proposed/` \u2192 `active/` \u2192 `superseded/`/`retired/`).\n- **`tools/checks/`** \u2014 scripts that enforce the RFC/docs conventions mechanically (e.g. keeping each RFC in the folder its Status names)." %}
+{% if answers.include_quality %}{% set tooling = tooling + "\n" + ("- **Quality gate** \u2014 linters/formatters wired at the pre-commit, command-surface, and CI layers so violations are caught mechanically." if _gha else "- **Quality gate** \u2014 linters/formatters wired at the pre-commit and command-surface layers so violations are caught mechanically.") %}{% endif %}
+{% if _gha %}{% set tooling = tooling + "\n" + ("- **CI** (`.github/workflows/`) \u2014 the quality gate plus a secrets + dependency scan on every push/PR." if answers.include_security else "- **CI** (`.github/workflows/`) \u2014 the quality gate on every push/PR.") %}{% endif %}
+# Architecture overview
+
+> Brand-new project — only the agent-native scaffolding exists so far. The tooling
+> components below are pre-filled (the wizard built them); add the product
+> components and dependency rules as real code lands.
+
+## Components
+
+### Tooling & process
+
+{{ tooling }}
+
+### Product
+
+_TODO: list the application's own components and their responsibilities as they land._
+
+## Dependency rules
+
+_TODO: state which parts may depend on which. Enforce mechanically (e.g. with an
+architecture test) once the boundaries stabilize._
+{% endif %}

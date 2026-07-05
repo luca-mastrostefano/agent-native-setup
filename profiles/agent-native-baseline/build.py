@@ -22,7 +22,10 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "src"))
 
+from agent_native_setup.config import WizardConfig  # noqa: E402
 from agent_native_setup.generators import agents, ai_context, ci, docs, quality  # noqa: E402
+from agent_native_setup.generators.ai_context import _nested_symlink_note  # noqa: E402
+from agent_native_setup.generators.docs import _arch_tooling  # noqa: E402
 from agent_native_setup.languages import REGISTRY  # noqa: E402
 
 PROFILE_ROOT = Path(__file__).resolve().parent
@@ -80,6 +83,81 @@ PORTS: list[tuple[str, str | None, str]] = [
 ]
 
 
+def _j(value: str) -> str:
+    """A Jinja string literal for `value` (json escaping is compatible for our content)."""
+    import json
+
+    return json.dumps(value)
+
+
+def _cfg(**kw: object) -> WizardConfig:
+    from pathlib import Path as _P
+
+    return WizardConfig(project_name="x", output_dir=_P("."), languages=[], **kw)
+
+
+def _rendered_ports() -> list[tuple[str, str | None, str, list[str]]]:
+    """(path, gate, constant, prelude-set-lines) for generator templates that RENDER: the
+    prelude maps each template variable onto answers/env (and bakes generator-computed
+    values as Jinja conditionals over the same facts the Python computed them from)."""
+    note_both = _nested_symlink_note(["CLAUDE.md", "GEMINI.md"])
+    note_cl = _nested_symlink_note(["CLAUDE.md"])
+    note_gm = _nested_symlink_note(["GEMINI.md"])
+    nested = (
+        "{% set nested_symlink_note = "
+        + f'{_j(note_both)} if ("claude" in answers.tools and "gemini" in answers.tools) '
+        + f'else ({_j(note_cl)} if "claude" in answers.tools '
+        + f'else ({_j(note_gm)} if "gemini" in answers.tools else "")) %}}'
+    )
+    # _arch_tooling's bullet variants, sliced from the real function's output per config.
+    base3 = _arch_tooling(_cfg(include_quality=False, include_ci=False))
+    q_gha = _arch_tooling(_cfg(include_security=False)).split("\n")[3]
+    q_only = _arch_tooling(_cfg(include_ci=False)).split("\n")[3]
+    ci_sec = _arch_tooling(_cfg()).split("\n")[4]
+    ci_plain = _arch_tooling(_cfg(include_security=False)).split("\n")[4]
+    tooling = [
+        "{% set _gha = answers.include_ci and answers.github_actions %}",
+        "{% set tooling = " + _j(base3) + " %}",
+        '{% if answers.include_quality %}{% set tooling = tooling + "\\n" + ('
+        + _j(q_gha)
+        + " if _gha else "
+        + _j(q_only)
+        + ") %}{% endif %}",
+        '{% if _gha %}{% set tooling = tooling + "\\n" + ('
+        + _j(ci_sec)
+        + " if answers.include_security else "
+        + _j(ci_plain)
+        + ") %}{% endif %}",
+    ]
+    return [
+        (
+            "INSTRUCTION.md",
+            None,
+            ai_context.INSTRUCTION_MD,
+            [
+                "{% set docs = answers.include_docs %}",
+                "{% set agents = answers.include_agents %}",
+                '{% set claude = "claude" in answers.tools %}',
+                "{% set ci = answers.include_ci and answers.github_actions %}",
+                nested,
+            ],
+        ),
+        (
+            "CONTRIBUTING.md",
+            _DOCS,
+            docs.CONTRIBUTING,
+            ["{% set existing_project = env.existing_project %}"],
+        ),
+        ("docs/architecture/overview.md", _DOCS, docs.ARCH_OVERVIEW, tooling),
+        (
+            ".claude/agents/code-reviewer.md",
+            _CLAUDE,
+            agents.CODE_REVIEWER,
+            ["{% set include_docs = answers.include_docs %}"],
+        ),
+    ]
+
+
 def main(argv: list[str] | None = None) -> int:
     import argparse
     import json
@@ -111,6 +189,22 @@ def main(argv: list[str] | None = None) -> int:
         path.write_text(body, encoding="utf-8")
         built.append(rel)
         print(f"built {rel}")
+    for out_rel, cond, content, prelude in _rendered_ports():
+        # A rendering template: prelude {% set %} lines map its variables onto answers/env;
+        # trim_blocks consumes the newline after each block tag, so the body stays byte-exact.
+        parts = []
+        if cond is not None:
+            parts.append("{% if " + cond + " %}\n")
+        parts += [line + "\n" for line in prelude]
+        parts.append(content)
+        if cond is not None:
+            parts.append("{% endif %}")
+        rel = out_rel + ".j2"
+        path = out_root / rel
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("".join(parts), encoding="utf-8")
+        built.append(rel)
+        print(f"built {rel} (rendered)")
     if in_place:
         BUILT_MANIFEST.write_text(json.dumps(sorted(built), indent=2) + "\n", encoding="utf-8")
     return 0

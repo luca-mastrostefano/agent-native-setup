@@ -1,5 +1,6 @@
 [
   ".claude/README.md.j2",
+  ".claude/agents/code-reviewer.md.j2",
   ".claude/agents/planner.md.j2",
   ".claude/agents/rfc-reviewer.md.j2",
   ".claude/commands/review.md.j2",
@@ -11,8 +12,11 @@
   ".gitattributes.j2",
   ".github/PULL_REQUEST_TEMPLATE.md.j2",
   ".github/copilot-instructions.md.j2",
+  "CONTRIBUTING.md.j2",
+  "INSTRUCTION.md.j2",
   "SECURITY.md.j2",
   "docs/README.md.j2",
+  "docs/architecture/overview.md.j2",
   "docs/rfc/TEMPLATE.md.j2",
   "tools/checks/docs_sync.py.j2",
   "tools/checks/rfc_needed.py.j2",

@@ -1,0 +1,35 @@
+{% if answers.include_docs %}
+{% set existing_project = env.existing_project %}
+# Contributing
+
+## Dev loop
+
+1. Read `AGENTS.md` — the contract and the four execution principles.
+2. For anything architectural or hard to reverse, write an RFC first
+   (`docs/rfc/proposed/`, from `docs/rfc/TEMPLATE.md`).
+3. Make the change. Keep it surgical.
+4. Run the quality gate before committing (see the command surface in `AGENTS.md`).
+
+## Definition of done
+
+- The change traces directly to the task — no drive-by edits.
+- It's verified by a test or an explicit check.
+- Linters and hooks pass.
+{% if existing_project %}
+
+## Adopting on an existing codebase
+
+This repo already had code when the setup landed, so the gate is tuned not to
+rewrite it all at once:
+
+- Local commits only format the files you touch (pre-commit runs on staged files).
+- CI lints only the files changed in a pull request, so existing code is
+  grandfathered until you edit it.
+- To clean everything in one pass (optional): run your formatter across the repo
+  (see the command surface), commit it on its own, add that commit's SHA to
+  `.git-blame-ignore-revs`, and run
+  `git config blame.ignoreRevsFile .git-blame-ignore-revs` so `git blame` skips it.
+- Non-formatting lint findings in legacy code aren't auto-fixed — resolve them as
+  you touch the code, or scope rules in the linter config.
+{% endif %}
+{% endif %}

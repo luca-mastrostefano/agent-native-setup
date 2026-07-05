@@ -3,20 +3,107 @@
   "version": "0.0.1",
   "extends": null,
   "description": "The agent-native setup this project scaffolds by default: contract + guardrails + feedback loops (WORK IN PROGRESS - stage A extraction, RFC 2026-07-05).",
-  "tags": ["general", "baseline", "multi-language"],
-  "seed": [],
+  "tags": [
+    "general",
+    "baseline",
+    "multi-language"
+  ],
+  "seed": [
+    "docs/architecture/overview.md"
+  ],
   "prompts": [
-    {"name": "languages", "type": "checkbox", "message": "Languages (linters scaffolded only for these):", "choices": ["python", "node", "go", "rust", "html"]},
-    {"name": "tools", "type": "checkbox", "message": "AI assistants to target:", "choices": ["claude", "cursor", "copilot", "gemini"], "default": ["claude", "cursor", "copilot", "gemini"]},
-    {"name": "include_agents", "type": "confirm", "message": "Agents & commands?", "default": true},
-    {"name": "include_docs", "type": "confirm", "message": "Docs & RFCs?", "default": true},
-    {"name": "include_quality", "type": "confirm", "message": "Linters & quality?", "default": true},
-    {"name": "include_ci", "type": "confirm", "message": "CI (GitHub Actions)?", "default": true},
-    {"name": "include_security", "type": "confirm", "message": "Security scanning?", "default": true},
-    {"name": "github_actions", "type": "confirm", "message": "GitHub Actions workflows?", "default": true},
-    {"name": "hooks", "type": "confirm", "message": "Pre-commit hooks?", "default": true},
-    {"name": "runner", "type": "select", "message": "Task runner:", "choices": ["make", "task"], "default": "make"},
-    {"name": "adopt", "type": "select", "message": "Gate for an existing repo's code:", "choices": ["progressive", "full", "none"], "default": "progressive"}
+    {
+      "name": "languages",
+      "type": "checkbox",
+      "message": "Languages (linters scaffolded only for these):",
+      "choices": [
+        "python",
+        "node",
+        "go",
+        "rust",
+        "html"
+      ]
+    },
+    {
+      "name": "tools",
+      "type": "checkbox",
+      "message": "AI assistants to target:",
+      "choices": [
+        "claude",
+        "cursor",
+        "copilot",
+        "gemini"
+      ],
+      "default": [
+        "claude",
+        "cursor",
+        "copilot",
+        "gemini"
+      ]
+    },
+    {
+      "name": "include_agents",
+      "type": "confirm",
+      "message": "Agents & commands?",
+      "default": true
+    },
+    {
+      "name": "include_docs",
+      "type": "confirm",
+      "message": "Docs & RFCs?",
+      "default": true
+    },
+    {
+      "name": "include_quality",
+      "type": "confirm",
+      "message": "Linters & quality?",
+      "default": true
+    },
+    {
+      "name": "include_ci",
+      "type": "confirm",
+      "message": "CI (GitHub Actions)?",
+      "default": true
+    },
+    {
+      "name": "include_security",
+      "type": "confirm",
+      "message": "Security scanning?",
+      "default": true
+    },
+    {
+      "name": "github_actions",
+      "type": "confirm",
+      "message": "GitHub Actions workflows?",
+      "default": true
+    },
+    {
+      "name": "hooks",
+      "type": "confirm",
+      "message": "Pre-commit hooks?",
+      "default": true
+    },
+    {
+      "name": "runner",
+      "type": "select",
+      "message": "Task runner:",
+      "choices": [
+        "make",
+        "task"
+      ],
+      "default": "make"
+    },
+    {
+      "name": "adopt",
+      "type": "select",
+      "message": "Gate for an existing repo's code:",
+      "choices": [
+        "progressive",
+        "full",
+        "none"
+      ],
+      "default": "progressive"
+    }
   ],
   "onboarding": [],
   "session_start": []
