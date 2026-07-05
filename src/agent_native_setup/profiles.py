@@ -1183,6 +1183,8 @@ def _save(args: argparse.Namespace, console: Any) -> int:
             captured[rel] = (content, rel in seed_set)  # edited → the user's version
 
         # User-added files, only where the scaffold owns the directory (else it's their source).
+        # TODO(RFC 2026-07-05): once the flagship is the base, source this set from its
+        # profile.json `transient` list instead of hardcoding.
         transient = {"ONBOARDING.md", ".claude/commands/onboard.md"}  # one-time, self-deleting
         added_elsewhere: list[str] = []
         for pf in sorted(project.rglob("*")):

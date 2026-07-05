@@ -1752,8 +1752,11 @@ def test_transient_output_is_written_but_never_recorded(tmp_path: Path) -> None:
 
 def test_update_never_resurrects_a_deleted_transient(tmp_path: Path) -> None:
     prof = _make_profile(
-        tmp_path, "team", {"ONBOARD.md": "run once\n", "docs/x.md": "v1\n"},
-        version="0.1.0", by_path=True,
+        tmp_path,
+        "team",
+        {"ONBOARD.md": "run once\n", "docs/x.md": "v1\n"},
+        version="0.1.0",
+        by_path=True,
     )
     data = json.loads((prof.root / "profile.json").read_text(encoding="utf-8"))
     data["transient"] = ["ONBOARD.md"]

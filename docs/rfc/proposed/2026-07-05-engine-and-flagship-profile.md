@@ -165,8 +165,12 @@ and refreshes through `cli.build`'s generators. Sequencing:
   generators against the same configs — **clock pinned** (the dated RFC path), across the
   full matrix (languages × tools × part toggles × existing-repo modes) — and asserts
   **byte-identical trees, symlinks included** (via §6 `links`). Any exception must be
-  enumerated *in the harness with a reason*, not discovered later; as of this writing the
-  expected exception list is **empty**. The generators remain the source of truth until
+  enumerated *in the harness with a reason*, not discovered later. One **behavioral**
+  (non-tree) difference is on record: the generators write `README.md`/`.gitignore` with
+  `preserve=True` (never clobbered, even under `--force`), while a profile `seed` file is
+  overwritable under `--force` — the format has a refresh-time affordance but no
+  scaffold-time "preserve". Resolve before B: either a `preserve` marking or an accepted,
+  documented semantic change. The tree-parity exception list itself is **empty**. The generators remain the source of truth until
   this gate is green and stays green in CI.
 - **B. Flip scaffold; remove `extends`; rework `save`.** New scaffolds resolve the vendored
   flagship through the one profile pipeline (`resolve → consent → gather_answers → apply`);
