@@ -504,7 +504,9 @@ def apply(
     ``@DATE@`` in an output path substitutes to ``applied_on`` (default: today, RFC 2026-07-05
     §6) — recorded in the manifest and replayed on update so the path never drifts. The
     profile's ``links`` are created after its files, through the same ``Scaffolder.symlink``
-    the base uses (so provenance records ``symlink:<target>`` identically).
+    the base uses (so provenance records ``symlink:<target>`` identically). Unlike a template
+    file, a link never supersedes anything already at its path — pre-existing or written this
+    run, the existing entry wins and the link is skipped.
 
     Returns the sorted list of paths the profile actually owns (those it wrote — a path where a
     user's own file pre-existed, or a ``.j2`` that rendered empty, is not claimed), so the

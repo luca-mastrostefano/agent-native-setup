@@ -1605,3 +1605,59 @@ def test_no_date_key_recorded_when_token_unused(tmp_path: Path) -> None:
     cli.build(_config(target), Scaffolder(target), prof)
     m = json.loads((target / MANIFEST_PATH).read_text(encoding="utf-8"))
     assert "date" not in m["profile"]
+
+
+def test_link_target_resolving_outside_is_refused(tmp_path: Path) -> None:
+    # Dest-side confinement: a link TARGET that chains through a user's outward symlink would
+    # alias project reads/writes to outside — refused before creation.
+    prof = _make_profile(tmp_path, "team", {})
+    data = json.loads((prof.root / "profile.json").read_text(encoding="utf-8"))
+    data["links"] = {"CLAUDE.md": "AGENTS.md"}
+    (prof.root / "profile.json").write_text(json.dumps(data), encoding="utf-8")
+    prof = profiles.load(prof.root, source="team")
+    target = tmp_path / "proj"
+    target.mkdir()
+    outside = tmp_path / "outside.md"
+    outside.write_text("secrets\n", encoding="utf-8")
+    (target / "AGENTS.md").symlink_to(outside)  # user's own outward link at the dest
+    with pytest.raises(profiles.ProfileError, match="escapes the project"):
+        profiles.apply(prof, _config(target), Scaffolder(target), {})
+
+
+def test_link_never_clobbers_a_preexisting_user_file(tmp_path: Path) -> None:
+    prof = _make_profile(tmp_path, "team", {"AGENTS.md": "contract\n"})
+    data = json.loads((prof.root / "profile.json").read_text(encoding="utf-8"))
+    data["links"] = {"CLAUDE.md": "AGENTS.md"}
+    (prof.root / "profile.json").write_text(json.dumps(data), encoding="utf-8")
+    prof = profiles.load(prof.root, source="team")
+    target = tmp_path / "proj"
+    target.mkdir()
+    (target / "CLAUDE.md").write_text("the user's own file\n", encoding="utf-8")
+    owned = profiles.apply(prof, _config(target), Scaffolder(target), {})
+    assert (target / "CLAUDE.md").read_text(encoding="utf-8") == "the user's own file\n"
+    assert not (target / "CLAUDE.md").is_symlink()  # skipped, byte-identical
+    assert "CLAUDE.md" not in owned  # and never claimed
+
+
+def test_dated_seed_entry_stays_write_once(tmp_path: Path) -> None:
+    # seed entries substitute @DATE@ too — a regression flips the dated file to managed and a
+    # later update would refresh the write-once file it exists to protect.
+    prof = _make_profile(
+        tmp_path,
+        "team",
+        {"docs/@DATE@-charter.md": "v1\n"},
+        version="0.1.0",
+        seed=("docs/@DATE@-charter.md",),
+        by_path=True,
+    )
+    target = tmp_path / "proj"
+    target.mkdir()
+    cli.build(_config(target), Scaffolder(target), prof)
+    from datetime import date
+
+    dated = target / "docs" / f"{date.today():%Y-%m-%d}-charter.md"
+    assert dated.read_text(encoding="utf-8") == "v1\n"
+    _commit(target)
+    _bump_profile(prof.root, version="0.1.1", files={"docs/@DATE@-charter.md": "v2\n"})
+    assert update.run(target, dry_run=False, console=_Console()) == 0
+    assert dated.read_text(encoding="utf-8") == "v1\n"  # seed: shipped once, never refreshed
