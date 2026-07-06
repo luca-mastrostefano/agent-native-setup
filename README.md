@@ -4,17 +4,46 @@
 
 **One command to make any repo agent-native — new or existing.**
 
-Coding agents (Claude Code, Cursor, Copilot, Gemini, …) are only as effective as the repo they
-work in. This wizard lays down the setup that makes a codebase legible and safe for
-agents *and* humans: a single contract every agent follows, mechanical guardrails that
-catch mistakes automatically, and feedback loops — review subagents, tests, an RFC
-trail — so quality compounds instead of drifting. Enforced by tooling, not memory.
-
 ![Python](https://img.shields.io/badge/python-3.10%2B-blue)
+![License](https://img.shields.io/badge/license-MIT-green)
 
 </div>
 
 ---
+
+## Why
+
+Coding agents (Claude Code, Cursor, Copilot, Gemini, …) are only as effective as the repo
+they work in. A repo becomes **agent-native** when it carries three things: a single
+contract every agent follows, mechanical guardrails that catch mistakes automatically, and
+feedback loops — review subagents, tests, an RFC trail — so quality compounds instead of
+drifting. Enforced by tooling, not memory.
+
+**The hard part is that there is no one right setup.** A Python backend, a TypeScript
+monorepo, a design-heavy frontend, a legacy service being adopted progressively — each
+needs a different contract, different gates, different agents. Today every team
+re-discovers theirs from scratch: weeks of tuning hooks, prompts, and CI, none of it
+shared, all of it drifting the moment it lands, every lesson re-learned one repo over.
+
+This project turns that private, perishable effort into a **community asset**:
+
+- A setup is a **profile** — a versioned, inspectable, forkable package. The built-in
+  scaffold is itself just the flagship profile,
+  [`agent-native-baseline`](https://github.com/luca-mastrostefano/agent-native-baseline);
+  it has no special powers your profile can't have.
+- You **adopt** one in a command, **tune** it to your stack, **snapshot** what you built
+  (`profile save`), and **share** it through the community index — so the next team with
+  your use case starts where you finished, not from zero.
+- **Improvements compound instead of scattering.** Fork a profile and `git merge` takes
+  upstream fixes; `agent-native-setup update` flows each profile release into every
+  project scaffolded from it (refreshing pristine files, never clobbering your edits).
+  One good idea — a better reviewer prompt, a sharper gate — propagates to every
+  downstream repo, instead of dying in the one repo that had it.
+
+The goal: the community **converges** on great agentic scaffolding per use case — searched,
+adopted, extended — the way package registries let code converge, with the trust model
+(sandboxing, content-hash consent, safety classification) that sharing executable setup
+demands.
 
 ## Quick start
 
@@ -34,7 +63,9 @@ Then run `agent-native-setup` and answer the prompts — or go non-interactive (
 
 ## What you get
 
-Pointed at a target repo, the wizard generates:
+Pointed at a target repo, the wizard scaffolds the flagship
+[`agent-native-baseline`](https://github.com/luca-mastrostefano/agent-native-baseline)
+profile (or any [profile](#profiles--the-community-loop-experimental) you pick):
 
 - **The `AGENTS.md` + `INSTRUCTION.md` contract** — `INSTRUCTION.md` carries the four
   execution principles and when-to-write-an-RFC rules (managed, so an `update` keeps it
@@ -128,7 +159,7 @@ agent-native-setup -o ./existing-app --yes
 | --- | --- |
 | `-o, --output` | Target directory (default: current dir). |
 | `--description "..."` | One-line project description (used in `AGENTS.md`/`README.md`). |
-| `--profile <name\|path>` | Compose a [profile](#profiles-experimental) on top of the default setup. |
+| `--profile <name\|path>` | Scaffold from a [profile](#profiles--the-community-loop-experimental) instead of the flagship baseline. |
 | `--answer NAME=VALUE` | Answer a profile prompt headlessly (repeatable) — for agents/CI; others take defaults with `-y`. |
 | `--languages` | Comma-separated: `python,node,go,rust,html`. Linters only for these. |
 | `--tools` | Comma-separated: `claude,cursor,copilot,gemini` (default: all). |
@@ -163,12 +194,14 @@ confirmation and writes an `UPDATING.md` runbook. On an already-current project,
 `update --dry-run` doubles as a **conformance check** — it flags any managed file that has
 drifted from the scaffold.
 
-### Profiles (experimental)
+### Profiles — the community loop (experimental)
 
 A **profile** is a packaged, versioned, **complete** project setup — the built-in scaffold is
 itself just the vendored flagship profile (`agent-native-baseline`). A team or community ships
 their own — their `.claude/` agents, MCP config, house rules, extra gates — so new projects
-start from "exactly like ours," not just the generic baseline.
+start from "exactly like ours," not just the generic baseline. The loop is: **discover** a
+profile for your use case → **adopt** it → **tune** it → **snapshot or fork** what you built →
+**publish** it back — and every release you cut flows to your consumers through `update`.
 
 ```bash
 # Find & use a community profile
