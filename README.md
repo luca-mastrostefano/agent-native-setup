@@ -193,19 +193,6 @@ The format (`profile.json` + `templates/` with prompts, sensed `env` facts, `see
 [`docs/architecture/profiles.md`](docs/architecture/profiles.md) — and `profile init` writes
 a skeleton whose README documents every field.
 
-## Contributing
-
-```bash
-git clone https://github.com/luca-mastrostefano/agent-native-setup
-cd agent-native-setup
-pip install -e .
-task install   # set up pre-commit hooks (once)
-task quality   # lint + typecheck + tests
-```
-
-Then see [`CONTRIBUTING.md`](./CONTRIBUTING.md) — the dev loop, the definition of done, and
-how to contribute a profile.
-
 ## License
 
 [MIT](./LICENSE) — the engine, the flagship [`agent-native-baseline`](https://github.com/luca-mastrostefano/agent-native-baseline) profile, and everything they scaffold into your project are yours to use, fork, and redistribute.

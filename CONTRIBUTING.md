@@ -1,5 +1,15 @@
 # Contributing
 
+## Setup
+
+```bash
+git clone https://github.com/luca-mastrostefano/agent-native-setup
+cd agent-native-setup
+pip install -e .
+task install   # set up pre-commit hooks (once)
+task quality   # lint + typecheck + tests
+```
+
 ## Dev loop
 
 1. Read `AGENTS.md` (the project map) and the `INSTRUCTION.md` it points to — the
