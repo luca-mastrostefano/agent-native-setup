@@ -108,7 +108,7 @@ R_BANNER = (
     "remove the first-run banner from `AGENTS.md` (the `agent-native-setup:first-run` "
     "block at the top{symlink_note})"
 )
-R_ONBOARD = "remove the `/onboard` command (`.claude/commands/onboard.md`)"
+R_ONBOARD = "remove the `/onboard` trigger(s) ({paths})"
 CLEANUP_TAIL_HTML = " and push"
 CLEANUP_TAIL_PLAIN = (
     " and push — this last commit only removes setup scaffolding, so no CI watch is needed"
@@ -117,6 +117,67 @@ S_CLEANUP = (
     "{cleanup}, then commit{cleanup_tail} — setup is done and `AGENTS.md` carries "
     "the standing rules."
 )
+
+
+# One prompt, four containers (RFC 2026-07-07-cross-tool-onboarding-triggers): every
+# targeted tool gets a /onboard trigger for the same runbook, each in its tool's own
+# project-scoped command format. All transient — written, never recorded, deleted by the
+# runbook's own cleanup step, so no future agent of any brand re-runs onboarding.
+_ONBOARD_DESCRIPTION = "Walk through first-run setup (ONBOARDING.md), then delete it"
+_ONBOARD_BODY = """\
+Read `ONBOARDING.md` at the repo root and work through its steps. Per its note on
+working concurrently: kick the slow one-time installs off in the background up
+front, and fan out genuinely independent work to subagents (e.g. drafting the
+architecture doc while wiring an uncovered language) — but keep the
+baseline → commit → push → CI chain serial, and keep a single mutually-dependent
+change (like one language's lint/format/CI wiring) with one author so it can't
+drift. Stop to confirm with me on anything needing a human decision (adding
+secrets, repo-wide reformatting). When every step passes, delete `ONBOARDING.md`.
+"""
+ONBOARD_COMMAND_CURSOR = _ONBOARD_BODY  # Cursor: plain markdown, filename = command
+# Claude and Copilot both take frontmatter markdown — one container, two paths.
+ONBOARD_COMMAND_CLAUDE = f"""\
+---
+description: {_ONBOARD_DESCRIPTION}
+---
+
+{_ONBOARD_BODY}"""
+ONBOARD_COMMAND_COPILOT = f"""\
+---
+description: {_ONBOARD_DESCRIPTION}
+---
+
+{_ONBOARD_BODY}"""
+ONBOARD_COMMAND_GEMINI = f'''\
+description = "{_ONBOARD_DESCRIPTION}"
+prompt = """
+{_ONBOARD_BODY}"""
+'''
+# (tool, output path, content) — order fixes the cleanup enumeration order.
+ONBOARD_TRIGGERS = (
+    ("claude", ".claude/commands/onboard.md", ONBOARD_COMMAND_CLAUDE),
+    ("cursor", ".cursor/commands/onboard.md", ONBOARD_COMMAND_CURSOR),
+    ("copilot", ".github/prompts/onboard.prompt.md", ONBOARD_COMMAND_COPILOT),
+    ("gemini", ".gemini/commands/onboard.toml", ONBOARD_COMMAND_GEMINI),
+)
+
+
+def _write_triggers(
+    config: WizardConfig, sc: Scaffolder, profile_paths: frozenset[str]
+) -> list[str]:
+    """Write a /onboard trigger per targeted tool; return the paths **actually written** —
+    the cleanup step enumerates exactly these. A profile-owned path wins (the profile's
+    managed copy must not be shadowed by a transient the manifest can't see), and a
+    pre-existing user file is preserved, so neither is ever listed for deletion."""
+    written: list[str] = []
+    for tool, rel, content in ONBOARD_TRIGGERS:
+        if tool not in config.ai_tools or rel in profile_paths:
+            continue
+        if (sc.target / rel).exists() and not sc.force:
+            continue  # the user's own file — preserved, not ours to remove
+        sc.write(rel, content, transient=True)
+        written.append(rel)
+    return written
 
 
 def _gate_and_format(config: WizardConfig) -> tuple[str, str]:
@@ -141,7 +202,7 @@ def _adoption_step(config: WizardConfig, gate: str, fmt: str) -> str:
     return ADOPT_NONE.format(gate=gate)
 
 
-def _steps(config: WizardConfig, profile_steps: tuple[str, ...] = ()) -> list[str]:
+def _steps(config: WizardConfig, profile_steps: tuple[str, ...], triggers: list[str]) -> list[str]:
     r = config.runner
     has_ci = config.include_ci and config.use_github_actions
     has_setup = any(lang.setup_command for lang in get(config.languages))  # e.g. npm install
@@ -237,8 +298,8 @@ def _steps(config: WizardConfig, profile_steps: tuple[str, ...] = ()) -> list[st
         else:
             symlink_note = ""
         removals.append(R_BANNER.format(symlink_note=symlink_note))
-    if config.include_agents and "claude" in config.ai_tools:  # the /onboard command exists
-        removals.append(R_ONBOARD)
+    if triggers:  # every /onboard trigger actually written — all brands, one cleanup
+        removals.append(R_ONBOARD.format(paths=", ".join(f"`{p}`" for p in triggers)))
     if len(removals) == 1:
         cleanup = removals[0]
     elif len(removals) == 2:
@@ -265,6 +326,7 @@ def generate(
     profile_steps: tuple[str, ...] = (),
     *,
     base: bool | None = None,
+    profile_paths: frozenset[str] = frozenset(),
 ) -> None:
     # Meaningful when there's tooling to activate, or a profile contributed setup steps; a
     # bare contract with nothing to do needs no runbook. ``base`` overrides the default-flow
@@ -273,13 +335,20 @@ def generate(
     has_base = (config.include_quality or config.include_ci) if base is None else base
     if not has_base and not profile_steps:
         return
+    # Runbook ⇒ triggers, one per targeted tool (RFC 2026-07-07): written first, so the
+    # cleanup step can enumerate exactly what landed. ``profile_paths`` are the applied
+    # profile's own outputs — a profile-owned path wins and gets no engine trigger.
+    triggers = _write_triggers(config, sc, profile_paths)
     if has_base:
         # The profile's steps extend the default flow (slotted before the bootstrap commit).
-        steps = _steps(config, profile_steps)
+        steps = _steps(config, profile_steps, triggers)
     else:
         # No default tooling to activate (a `--no-quality --no-ci` base, or a standalone profile
         # that doesn't extend the default): the profile's steps *are* the onboarding, then self-delete.
-        steps = [*profile_steps, "**Delete this file** — onboarding is done."]
+        cleanup = "**Delete this file**"
+        if triggers:
+            cleanup += " and " + R_ONBOARD.format(paths=", ".join(f"`{p}`" for p in triggers))
+        steps = [*profile_steps, f"{cleanup} — onboarding is done."]
     body = HEADER.format(name=config.project_name)
     body += "\n".join(f"{i}. {step}" for i, step in enumerate(steps, 1)) + "\n"
     sc.write("ONBOARDING.md", body, transient=True)  # self-deletes during onboarding

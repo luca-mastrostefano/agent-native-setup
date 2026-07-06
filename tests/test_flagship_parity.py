@@ -7,7 +7,10 @@ Known out-of-scope behavior (RFC §7-A enumeration): the **AGENTS.md brownfield 
 both trees build into empty dirs, so the generators' merge of a pre-existing
 AGENTS.md/CLAUDE.md (ai_context.generate) has no counterpart here. Decided to stay an
 engine mechanic; it lands at stage B when the flagship becomes the scaffold, with its own
-tests there.
+tests there. Same empty-dir limitation, second instance (RFC 2026-07-07): the flagship's
+ONBOARDING cleanup enumeration is config-derived (`answers.tools`), while the generator
+derives it from actual write results — a pre-existing user file at a trigger path is
+preserved by both, but only the generator path omits it from the cleanup line.
 """
 
 from __future__ import annotations

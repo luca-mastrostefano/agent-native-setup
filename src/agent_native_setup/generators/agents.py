@@ -313,21 +313,6 @@ you've edited; it reports them for you to fold in.
 6. Show me `git diff` for review. Don't commit or push without me.
 """
 
-ONBOARD_COMMAND = """\
----
-description: Walk through first-run setup (ONBOARDING.md), then delete it
----
-
-Read `ONBOARDING.md` at the repo root and work through its steps. Per its note on
-working concurrently: kick the slow one-time installs off in the background up
-front, and fan out genuinely independent work to subagents (e.g. drafting the
-architecture doc while wiring an uncovered language) — but keep the
-baseline → commit → push → CI chain serial, and keep a single mutually-dependent
-change (like one language's lint/format/CI wiring) with one author so it can't
-drift. Stop to confirm with me on anything needing a human decision (adding
-secrets, repo-wide reformatting). When every step passes, delete `ONBOARDING.md`.
-"""
-
 
 def _file_formatters(config: WizardConfig) -> list[tuple[str, list[str]]]:
     """(extension, formatter argv) pairs for the selected languages, sorted."""
@@ -370,13 +355,6 @@ def generate(config: WizardConfig, sc: Scaffolder, session_start: tuple[str, ...
     if config.include_docs:
         sc.write(".claude/agents/rfc-reviewer.md", RFC_REVIEWER)
         sc.write(".claude/commands/rfc.md", RFC_COMMAND)
-    # Matches when generators/onboarding.py writes ONBOARDING.md, so the command
-    # never points at a file that wasn't scaffolded.
-    if config.include_quality or config.include_ci:
-        sc.write(
-            ".claude/commands/onboard.md", ONBOARD_COMMAND, transient=True
-        )  # removed post-onboarding
-
     # Format-on-edit needs a formatter-capable language, the quality tooling it feeds,
     # and docs — the docs machinery's guards (scoped ruff + the unittest runner) are
     # what keep the shipped helper linted and tested.

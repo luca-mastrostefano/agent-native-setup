@@ -104,11 +104,27 @@ PORTS: list[tuple[str, str | None, str]] = [
         _FMT_HOOK,
         agents.TEST_FORMAT_ON_EDIT,
     ),
-    # agents.generate: the transient /onboard command (matches onboarding.generate's gate)
+    # onboarding.generate: the transient /onboard triggers — one per targeted tool,
+    # uniform gate runbook ⇒ triggers (RFC 2026-07-07; include_agents no longer gates).
     (
         ".claude/commands/onboard.md",
-        f"{_CLAUDE} and (answers.include_quality or answers.include_ci)",
-        agents.ONBOARD_COMMAND,
+        '"claude" in answers.tools and (answers.include_quality or answers.include_ci)',
+        onboarding.ONBOARD_COMMAND_CLAUDE,
+    ),
+    (
+        ".cursor/commands/onboard.md",
+        '"cursor" in answers.tools and (answers.include_quality or answers.include_ci)',
+        onboarding.ONBOARD_COMMAND_CURSOR,
+    ),
+    (
+        ".github/prompts/onboard.prompt.md",
+        '"copilot" in answers.tools and (answers.include_quality or answers.include_ci)',
+        onboarding.ONBOARD_COMMAND_COPILOT,
+    ),
+    (
+        ".gemini/commands/onboard.toml",
+        '"gemini" in answers.tools and (answers.include_quality or answers.include_ci)',
+        onboarding.ONBOARD_COMMAND_GEMINI,
     ),
     # ci.generate (include_ci and use_github_actions)
     (".github/PULL_REQUEST_TEMPLATE.md", _GHA, ci.PULL_REQUEST_TEMPLATE),
@@ -268,10 +284,13 @@ def _onboarding_prelude() -> list[str]:
         + ' if (answers.first_run_banner and answers.tools) else "" %}'
     )
     A(
-        "{% set r_onboard = "
-        + _j(ob.R_ONBOARD)
-        + ' if (answers.include_agents and "claude" in answers.tools) else "" %}'
+        '{% set _trigs = ([".claude/commands/onboard.md"] if "claude" in answers.tools '
+        'else []) + ([".cursor/commands/onboard.md"] if "cursor" in answers.tools else []) '
+        '+ ([".github/prompts/onboard.prompt.md"] if "copilot" in answers.tools else []) '
+        '+ ([".gemini/commands/onboard.toml"] if "gemini" in answers.tools else []) %}'
     )
+    A('{% set _tpaths = "`" ~ (_trigs | join("`, `")) ~ "`" %}')
+    A("{% set r_onboard = " + _jexpr(ob.R_ONBOARD, paths="_tpaths") + ' if _trigs else "" %}')
     A("{% set _r = [" + _j(ob.R_DELETE) + ", r_banner, r_onboard] | select | list %}")
     A(
         "{% set cleanup = _r[0] if _r | length == 1 else "
