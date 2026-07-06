@@ -277,19 +277,6 @@ otherwise the base still updates and the profile's files are left as-is.
 > opened; `ecosystem-core`) and per-profile **migrations** (`scaffolding-profiles`), both under
 > [`docs/rfc/proposed/`](docs/rfc/proposed/).
 
-## Philosophy
-
-Three pillars, lifted from real production setups:
-
-1. **Context** — one canonical contract (`AGENTS.md` → `INSTRUCTION.md`, plus `docs/` and
-   RFCs) so intent is discoverable and never forks across tools.
-2. **Mechanical enforcement** — linters, hooks, and CI catch violations
-   automatically; error messages tell you how to fix them.
-3. **Feedback loops** — subagents, tests, and reviews compound quality.
-
-Every generated project ships the **four execution principles**: think before
-coding, simplicity first, surgical changes, goal-driven execution.
-
 ## Develop
 
 ```bash
