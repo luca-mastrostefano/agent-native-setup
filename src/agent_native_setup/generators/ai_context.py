@@ -236,6 +236,23 @@ def _nested_symlink_note(symlinks: list[str]) -> str:
     return f" (with a {joined} symlink beside it, like the root — {loads}, not `AGENTS.md`)"
 
 
+# Extracted so the flagship's build step emits AGENTS.md from the SAME strings
+# (RFC 2026-07-05 stage A); conditions live in generate() and, mirrored, in build.py.
+SURFACE_NOTE_EXISTING = (
+    "This repo already uses **{runner_name}** — its targets are the source of "
+    "truth. Run `{discover}` to see them; the commands above are the standard "
+    "checks this setup expects, so add any that aren't already targets."
+)
+SURFACE_NOTE_TASK = "Run `task --list` for the full, current set."
+SURFACE_NOTE_MAKE = "Run `make help` for the full, current set."
+CAPTURE_LINE = (
+    "**When you work out a repeatable process — a build, check, migration, or fix "
+    "sequence you'd otherwise rediscover — capture it as a {target_word} with a "
+    "one-line description, so the next contributor runs it deterministically instead "
+    "of leaving the knowledge in a chat or a throwaway script.**"
+)
+
+
 def generate(config: WizardConfig, sc: Scaffolder) -> None:
     # The Taskfile is the canonical command surface; point the contract at it.
     langs = get(config.languages)
@@ -262,11 +279,7 @@ def generate(config: WizardConfig, sc: Scaffolder) -> None:
             if config.runner == "task"
             else "grep -E '^[A-Za-z0-9_.-]+:.*## ' Makefile"
         )
-        surface_note = (
-            f"This repo already uses **{runner_name}** — its targets are the source of "
-            f"truth. Run `{discover}` to see them; the commands above are the standard "
-            f"checks this setup expects, so add any that aren't already targets."
-        )
+        surface_note = SURFACE_NOTE_EXISTING.format(runner_name=runner_name, discover=discover)
     elif config.include_quality:
         verb = config.runner  # "make" (default) or "task"
         if config.git_hooks:
@@ -283,19 +296,10 @@ def generate(config: WizardConfig, sc: Scaffolder) -> None:
             quality_commands.append(
                 ("log an idea in docs/improvements.md", quality.IMPROVEMENT_USAGE[verb])
             )
-        surface_note = (
-            "Run `task --list` for the full, current set."
-            if verb == "task"
-            else "Run `make help` for the full, current set."
-        )
+        surface_note = SURFACE_NOTE_TASK if verb == "task" else SURFACE_NOTE_MAKE
 
     target_word = "`task`" if config.runner == "task" else "`make` target"
-    capture_line = (
-        "**When you work out a repeatable process — a build, check, migration, or fix "
-        f"sequence you'd otherwise rediscover — capture it as a {target_word} with a "
-        "one-line description, so the next contributor runs it deterministically instead "
-        "of leaving the knowledge in a chat or a throwaway script.**"
-    )
+    capture_line = CAPTURE_LINE.format(target_word=target_word)
     # Tools whose context file is a symlink to AGENTS.md (CLAUDE.md, GEMINI.md), in
     # registry order — drives the nested-contract note and the fold/symlink below.
     symlinks = [name for tool, name in SYMLINK_CONTRACTS.items() if tool in config.ai_tools]

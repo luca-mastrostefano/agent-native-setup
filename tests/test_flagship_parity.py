@@ -27,6 +27,7 @@ FLAGSHIP = Path(__file__).resolve().parent.parent / "profiles" / "agent-native-b
 
 # Output paths already extracted — grow this set file by file; never shrink it.
 PORTED = {
+    "AGENTS.md",
     ".claude/README.md",
     ".claude/agents/planner.md",
     ".claude/agents/rfc-reviewer.md",
@@ -177,6 +178,11 @@ def _matrix() -> list[tuple[str, dict]]:
         (
             "git-on",  # env.is_git true both sides (improvements.md's git-stamp variant)
             dict(languages=["python"], init_git=True, is_git=True),
+        ),
+        (
+            "legacy-two-langs",  # existing runner + two languages in NON-registry order:
+            # AGENTS.md's raw-command surface, label-major with cross-language dedupe
+            dict(languages=["node", "python"], existing_runner=True, ai_tools=["claude"]),
         ),
     ]
 
