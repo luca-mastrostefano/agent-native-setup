@@ -283,6 +283,17 @@ def test_vendored_flagship_matches_its_pin() -> None:
     assert pin["url"].startswith("git+https://") and f"@{pin['tag']}" in pin["url"]
 
 
+def test_the_first_public_tag_gates_stage_b_scaffolds_once() -> None:
+    """Stated consequence of the 0.0.1 → 0.1.0 bump (review of B3): a project scaffolded in
+    the brief stage-B window recorded profile version 0.0.1, so its next update gates as
+    breaking (pre-1.0 minor) even though only the description changed. Intentional — the
+    first public tag is a fine moment for one explicit confirm — and pinned here so a future
+    bump policy change trips over this decision instead of rediscovering it."""
+    from agent_native_setup import versioning
+
+    assert versioning.decide("0.0.1", "0.1.0") == versioning.GATED
+
+
 def test_built_templates_are_current(tmp_path: Path) -> None:
     """`build.py` output is committed — a generator-constant change without a rebuild fails
     here with the exact command to run. Builds into a scratch dir: the working tree is never

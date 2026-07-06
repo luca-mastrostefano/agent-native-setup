@@ -51,17 +51,7 @@ def main(argv: list[str] | None = None) -> int:
         problems.append(f"vendored version {local.version} does not match pin tag {pin['tag']}")
 
     if not args.offline and not problems:
-        try:
-            remote = profiles.resolve(pin["url"])
-            assert remote is not None
-            remote_hash = profiles.content_hash(remote)
-            if remote_hash != pin["content_hash"]:
-                problems.append(
-                    f"pinned tag {pin['tag']} at {pin['repo']} hashes to {remote_hash[:12]}… "
-                    f"!= pinned {pin['content_hash'][:12]}… — the tag moved or the pin is stale"
-                )
-        except profiles.ProfileError as exc:
-            problems.append(f"pinned tag could not be fetched/loaded: {exc}")
+        problems += _check_remote(profiles, pin)
 
     if problems:
         for p in problems:
@@ -71,6 +61,31 @@ def main(argv: list[str] | None = None) -> int:
     scope = "offline checks" if args.offline else "vendored copy, pin, and tagged artifact"
     print(f"baseline pin OK ({scope}): {pin['tag']} = {pin['content_hash'][:12]}…")
     return 0
+
+
+def _check_remote(profiles, pin: dict) -> list[str]:
+    """Fetch the pinned tag and compare — through an **empty cache**, or a pinned (immutable)
+    ref would be served from `~/.cache` forever and "the tag moved" (this check's whole
+    purpose) could never be observed on a warm machine (review of B3)."""
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as tmp:
+        old_root = profiles.CACHE_ROOT
+        profiles.CACHE_ROOT = Path(tmp)
+        try:
+            remote = profiles.resolve(pin["url"])
+            assert remote is not None
+            remote_hash = profiles.content_hash(remote)
+        except profiles.ProfileError as exc:
+            return [f"pinned tag could not be fetched/loaded: {exc}"]
+        finally:
+            profiles.CACHE_ROOT = old_root
+    if remote_hash != pin["content_hash"]:
+        return [
+            f"pinned tag {pin['tag']} at {pin['repo']} hashes to {remote_hash[:12]}… "
+            f"!= pinned {pin['content_hash'][:12]}… — the tag moved or the pin is stale"
+        ]
+    return []
 
 
 if __name__ == "__main__":

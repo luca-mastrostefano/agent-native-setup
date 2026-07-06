@@ -193,7 +193,9 @@ and refreshes through `cli.build`'s generators. Sequencing:
   the flagship lives at github.com/luca-mastrostefano/agent-native-baseline (tagged
   v0.1.0, listed in the community index); the engine keeps a pin-verified vendored copy
   (`profiles/baseline-pin.json` — tag + content hash, enforced offline by the test suite
-  and against the live tag by the index-check workflow). Stage B is COMPLETE.* Original plan: New scaffolds resolve the vendored
+  and against the live tag by the index-check workflow). The 0.0.1 → 0.1.0 tag gates
+  stage-B-window scaffolds' next update once (pre-1.0 minor = breaking) — accepted, stated,
+  and pinned by a test. Stage B is COMPLETE.* Original plan: New scaffolds resolve the vendored
   flagship through the one profile pipeline (`resolve → consent → gather_answers → apply`);
   the compose path and the `extends` field go in the same release (`profile validate`
   rejects the field with a message pointing at the fork recipe) — which forces `profile
