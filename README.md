@@ -193,7 +193,7 @@ The format (`profile.json` + `templates/` with prompts, sensed `env` facts, `see
 [`docs/architecture/profiles.md`](docs/architecture/profiles.md) — and `profile init` writes
 a skeleton whose README documents every field.
 
-## Develop
+## Contributing
 
 ```bash
 git clone https://github.com/luca-mastrostefano/agent-native-setup
@@ -203,10 +203,8 @@ task install   # set up pre-commit hooks (once)
 task quality   # lint + typecheck + tests
 ```
 
-## Extending
-
-Add a language by appending one `Language` entry to `src/agent_native_setup/languages.py` —
-the generators stay generic.
+Then see [`CONTRIBUTING.md`](./CONTRIBUTING.md) — the dev loop, the definition of done, and
+how to contribute a profile.
 
 ## License
 

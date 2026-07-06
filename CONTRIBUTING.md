@@ -15,6 +15,13 @@
 - It's verified by a test or an explicit check.
 - Linters and hooks pass.
 
+## Adding a language
+
+Append one `Language` entry to `src/agent_native_setup/languages.py` (detection markers,
+linters, configs), then rebuild the flagship's templates:
+`python profiles/agent-native-baseline/build.py` — the parity gate
+(`tests/test_flagship_parity.py`) verifies the result.
+
 ## Contributing a profile
 
 Profiles let a team or the community ship their own agent-native setup. To author one — or
