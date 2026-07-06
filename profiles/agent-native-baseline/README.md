@@ -1,24 +1,32 @@
-# agent-native-baseline — the flagship profile (stage-A extraction)
+# agent-native-baseline — the vendored flagship copy
 
-This is the default scaffold, extracted into a normal profile
-(RFC 2026-07-05-engine-and-flagship-profile). **Stage A is complete**: the parity gate
-(`tests/test_flagship_parity.py`) asserts whole-tree, byte-for-byte equality with the
-generators across the full config matrix. The generators remain the source of truth until
-stage B — nothing resolves this profile in a real scaffold yet; `build.py` derives every
-template from them.
+**Canonical home: <https://github.com/luca-mastrostefano/agent-native-baseline>** (stage B3,
+RFC 2026-07-05 §5). This directory is the engine's **pin-verified vendored copy** of that
+repo's tagged release — the artifact the wheel embeds (`pyproject.toml` force-include) and
+`builtin:agent-native-baseline` resolves to, so scaffolding stays offline and the trust
+grounding is "installing the tool is consenting to exactly this reviewed artifact."
 
-- `profile.json` — the flagship's identity + the part toggles as prompts
-  (the `--no-*`/choice flags become `--answer` aliases at stage B).
-- `templates/` — ported output files. **Do not edit the built ones by hand**: files
-  emitted by `build.py` carry a header comment in the build table; re-run
-  `python profiles/agent-native-baseline/build.py` after changing a generator constant.
-- `build.py` — the author-time build step (RFC §3). During stage A it derives
-  templates from the generators' own constants, so ported files cannot drift from
-  the source of truth they mirror. Post-D it becomes the profile's own release tool.
+The pin lives in [`../baseline-pin.json`](../baseline-pin.json) (tag + content hash over
+`profile.json` + `templates/`). Three checks keep it honest:
 
-Parity is whole-tree: every path the generators produce, byte-identical, in every
-matrix cell (the `.gitkeep`s ship via `empty_files`; the dated adopt-RFC via `@DATE@`;
-the first-run pair via `transient`). (`docs/improvements.md`
-ported once `env.is_git` landed.) Decided (RFC §7-A):
-force means force — under `--force` a profile seed file overwrites; the generators'
-`preserve` semantics are not carried over, an accepted change landing at stage B.
+- `tests/test_flagship_parity.py::test_vendored_flagship_matches_its_pin` — offline, every
+  test run: this copy hashes to the pin.
+- `tools/checks/check_baseline_pin.py` (`task check-baseline`, run by the `index-check`
+  workflow) — network: the pinned tag still resolves to the same artifact.
+- `tests/test_flagship_parity.py` whole-tree parity — this copy is byte-identical to the
+  generators across the config matrix (until stage D deletes them).
+
+## Changing the flagship
+
+Until stage D the templates are **derived**: `build.py` (kept here — it imports the
+engine's generators, so it runs from this repo; it moves to the profile repo at D) emits
+them from the generators' own constants. The release loop is:
+
+1. change the generator constant → `python profiles/agent-native-baseline/build.py`;
+2. copy the result to the profile repo, bump `profile.json`'s `version`, tag `vX.Y.Z`;
+3. in the same engine PR: sync this vendored copy and update `../baseline-pin.json`
+   (`profiles.content_hash` of the loaded profile) — the offline pin test forces this.
+
+**Do not edit built templates by hand** — parity and the pin will both catch the drift.
+Decided history (RFC §7-A): force means force — under `--force` a profile seed file
+overwrites; the generators' `preserve` semantics were deliberately not carried over.

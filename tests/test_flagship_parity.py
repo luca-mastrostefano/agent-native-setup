@@ -266,6 +266,34 @@ def test_flagship_profile_loads_and_validates() -> None:
     assert profiles._validate(argparse.Namespace(path=str(FLAGSHIP)), _Console()) == 0
 
 
+def test_vendored_flagship_matches_its_pin() -> None:
+    """The offline half of the pin contract (RFC 2026-07-05 §5, stage B3): the vendored copy
+    the wheel embeds must hash to exactly what profiles/baseline-pin.json records, and carry
+    the pinned tag's version — so a template change can't ship without a coordinated re-tag
+    of the profile repo and pin bump. The network half (the tag itself still resolves to this
+    artifact) runs in the index-check workflow."""
+    import json
+
+    pin = json.loads((FLAGSHIP.parent / "baseline-pin.json").read_text(encoding="utf-8"))
+    prof = profiles.load(FLAGSHIP)
+    assert profiles.content_hash(prof) == pin["content_hash"], (
+        "vendored flagship != baseline-pin.json — re-tag the profile repo and update the pin"
+    )
+    assert f"v{prof.version}" == pin["tag"]
+    assert pin["url"].startswith("git+https://") and f"@{pin['tag']}" in pin["url"]
+
+
+def test_the_first_public_tag_gates_stage_b_scaffolds_once() -> None:
+    """Stated consequence of the 0.0.1 → 0.1.0 bump (review of B3): a project scaffolded in
+    the brief stage-B window recorded profile version 0.0.1, so its next update gates as
+    breaking (pre-1.0 minor) even though only the description changed. Intentional — the
+    first public tag is a fine moment for one explicit confirm — and pinned here so a future
+    bump policy change trips over this decision instead of rediscovering it."""
+    from agent_native_setup import versioning
+
+    assert versioning.decide("0.0.1", "0.1.0") == versioning.GATED
+
+
 def test_built_templates_are_current(tmp_path: Path) -> None:
     """`build.py` output is committed — a generator-constant change without a rebuild fails
     here with the exact command to run. Builds into a scratch dir: the working tree is never

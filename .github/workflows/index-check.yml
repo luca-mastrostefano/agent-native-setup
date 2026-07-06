@@ -7,7 +7,7 @@ on:
   schedule:
     - cron: "0 6 * * 1" # weekly: listings rot on their own schedule, not ours
   pull_request:
-    paths: ["contributions/**", "tools/checks/check_index.py"]
+    paths: ["contributions/**", "profiles/**", "tools/checks/check_index.py", "tools/checks/check_baseline_pin.py"]
   workflow_dispatch:
 
 permissions:
@@ -23,3 +23,6 @@ jobs:
           python-version: "3.12"
       - run: python -m pip install -e .
       - run: python tools/checks/check_index.py
+      # The vendored flagship must be exactly the pinned tag of its own repo (RFC 2026-07-05
+      # §5, stage B3) — same network-trust category as the index rot check above.
+      - run: python tools/checks/check_baseline_pin.py
