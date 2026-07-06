@@ -150,8 +150,11 @@ def test_save_warns_when_onboarding_is_incomplete(tmp_path: Path) -> None:
     assert profiles._save(args, console) == 0
     assert "onboarding incomplete" in console.text  # ONBOARDING.md still on disk
 
-    (proj / "ONBOARDING.md").unlink()  # onboarding done — the transients self-deleted
-    (proj / ".claude" / "commands" / "onboard.md").unlink()
+    # onboarding done — the whole transient apparatus self-deleted (runbook + every trigger)
+    from agent_native_setup import profiles as _p
+
+    for rel in _p.load(_p.builtin_baseline_root()).transient:
+        (proj / rel).unlink(missing_ok=True)
     console2 = _Console()
     args2 = argparse.Namespace(project=str(proj), name="late", output=str(tmp_path / "out2"))
     assert profiles._save(args2, console2) == 0

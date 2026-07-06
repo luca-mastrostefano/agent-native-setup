@@ -1,10 +1,10 @@
 {
   "name": "agent-native-baseline",
-  "version": "0.1.2",
+  "version": "0.2.0",
   "description": "The agent-native project setup: an AGENTS.md contract, docs + RFCs, linters + pre-commit + security scanning, CI, and a .claude agents/commands library — the setup agent-native-setup scaffolds by default.",
   "tags": ["general", "baseline", "multi-language"],
   "seed": ["AGENTS.md", ".gitignore", "docs/architecture/overview.md", "docs/improvements.md", "docs/rfc/active/@DATE@-adopt-agent-native-setup.md", "README.md"],
-  "transient": [".claude/commands/onboard.md", "ONBOARDING.md"],
+  "transient": [".claude/commands/onboard.md", ".cursor/commands/onboard.md", ".gemini/commands/onboard.toml", ".github/prompts/onboard.prompt.md", "ONBOARDING.md"],
   "empty_files": {
     "docs/rfc/proposed/.gitkeep": "answers.include_docs",
     "docs/rfc/active/.gitkeep": "answers.include_docs",

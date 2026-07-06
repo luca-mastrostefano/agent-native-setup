@@ -102,6 +102,11 @@ per-type) default; the repeatable **`--answer NAME=VALUE`** flag answers any pro
 
 - `onboarding` — markdown steps folded into the project's one-time, self-deleting
   `ONBOARDING.md` (use for what templates can't express, e.g. recreating a symlink).
+  Whenever the runbook ships, the engine also ships a transient `/onboard` trigger per
+  targeted tool (Claude `.claude/commands/`, Cursor `.cursor/commands/`, Copilot
+  `.github/prompts/`, Gemini `.gemini/commands/`) — the runbook's cleanup step deletes
+  every one that was written, and a profile-owned file at a trigger path wins (the engine
+  skips that tool; RFC 2026-07-07-cross-tool-onboarding-triggers).
 - `session_start` — shell commands appended to the `.claude` SessionStart hooks, run every
   session, each wrapped so a failure can't disrupt the session.
 

@@ -117,7 +117,9 @@ def test_next_steps_label_contract_optional_and_setup_important(
     # With both steps shown, they're a contrasting pair: reading the contract is Optional,
     # finishing the one-time setup is the IMPORTANT must-do — and in that order.
     config = WizardConfig(project_name="demo", output_dir=tmp_path, init_git=False)
-    cli._summary(config, Scaffolder(config.target))
+    sc = Scaffolder(config.target)
+    sc.created.append("ONBOARDING.md")  # the hint keys on the runbook actually shipping
+    cli._summary(config, sc)
     out = capsys.readouterr().out
     assert "⚠" in out  # the importance icon precedes IMPORTANT
     assert out.index("Optional:") < out.index("IMPORTANT:")  # contract first, setup second

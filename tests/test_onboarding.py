@@ -252,16 +252,81 @@ def test_header_frames_first_run_for_an_agent(tmp_path: Path) -> None:
     assert "AI assistant" in body  # speaks to the agent waking up here
 
 
-def test_cleanup_removes_onboard_command_for_claude(tmp_path: Path) -> None:
-    # The /onboard command is part of the self-deleting first-run apparatus, so cleanup
-    # must remove it too — otherwise it dangles, pointing at a now-deleted ONBOARDING.md.
+def test_cleanup_enumerates_every_written_trigger(tmp_path: Path) -> None:
+    # The /onboard triggers are part of the self-deleting first-run apparatus, so cleanup
+    # must list each one actually written — whichever brand finishes onboarding removes
+    # them all, and no future agent re-runs it (RFC 2026-07-07).
     for_claude = _onboarding(tmp_path / "c", ai_tools=["claude"])
-    assert ".claude/commands/onboard.md" in for_claude
-    # No command scaffolded -> nothing to remove (not Claude, or agents disabled).
-    assert "onboard.md" not in _onboarding(tmp_path / "x", ai_tools=["cursor"])
-    assert "onboard.md" not in _onboarding(
+    assert "`.claude/commands/onboard.md`" in for_claude
+    multi = _onboarding(tmp_path / "m", ai_tools=["cursor", "gemini"])
+    assert "`.cursor/commands/onboard.md`" in multi
+    assert "`.gemini/commands/onboard.toml`" in multi
+    assert "onboard.prompt.md" not in multi  # copilot not targeted
+    assert ".claude/commands/onboard.md" not in multi  # claude not targeted
+    # The gate is uniform (runbook => triggers): include_agents no longer gates Claude's.
+    assert ".claude/commands/onboard.md" in _onboarding(
         tmp_path / "na", ai_tools=["claude"], include_agents=False
     )
+    # No tools targeted -> a runbook with no triggers and no trigger-cleanup clause.
+    assert "/onboard" not in _onboarding(tmp_path / "none", ai_tools=[])
+
+
+def test_triggers_ship_per_tool_and_parse(tmp_path: Path) -> None:
+    import tomllib
+
+    root = _build(tmp_path, languages=["python"])  # default: all four tools
+    assert (root / ".claude/commands/onboard.md").is_file()
+    assert (root / ".cursor/commands/onboard.md").is_file()
+    prompt_md = (root / ".github/prompts/onboard.prompt.md").read_text(encoding="utf-8")
+    assert prompt_md.startswith("---\ndescription:")  # copilot frontmatter
+    toml_body = (root / ".gemini/commands/onboard.toml").read_text(encoding="utf-8")
+    data = tomllib.loads(toml_body)  # gemini: must be valid TOML
+    assert "ONBOARDING.md" in data["prompt"] and data["description"]
+    # All transient: never recorded, so update can't resurrect them post-onboarding.
+    import json
+
+    m = json.loads((root / ".agent-native-setup.json").read_text(encoding="utf-8"))
+    for rel in (
+        ".claude/commands/onboard.md",
+        ".cursor/commands/onboard.md",
+        ".github/prompts/onboard.prompt.md",
+        ".gemini/commands/onboard.toml",
+    ):
+        assert rel not in m["files"], rel
+
+
+def test_trigger_skips_profile_owned_and_preexisting_paths(tmp_path: Path) -> None:
+    from agent_native_setup.generators import onboarding
+
+    # Profile-owned path wins (RFC 2026-07-07 §5): no engine trigger, not enumerated.
+    target = tmp_path / "p"
+    target.mkdir()
+    config = WizardConfig(
+        project_name="demo", output_dir=target, ai_tools=["gemini", "cursor"], init_git=False
+    )
+    sc = Scaffolder(target)
+    onboarding.generate(
+        config,
+        sc,
+        profile_steps=("Do the thing.",),
+        base=False,
+        profile_paths=frozenset({".gemini/commands/onboard.toml"}),
+    )
+    assert not (target / ".gemini/commands/onboard.toml").exists()
+    body = (target / "ONBOARDING.md").read_text(encoding="utf-8")
+    assert ".gemini" not in body and "`.cursor/commands/onboard.md`" in body
+
+    # A pre-existing user file is preserved and never listed for deletion.
+    target2 = tmp_path / "u"
+    (target2 / ".cursor/commands").mkdir(parents=True)
+    (target2 / ".cursor/commands/onboard.md").write_text("mine\n", encoding="utf-8")
+    config2 = WizardConfig(
+        project_name="demo", output_dir=target2, ai_tools=["cursor"], init_git=False
+    )
+    sc2 = Scaffolder(target2)
+    onboarding.generate(config2, sc2, profile_steps=("Step.",), base=False)
+    assert (target2 / ".cursor/commands/onboard.md").read_text(encoding="utf-8") == "mine\n"
+    assert ".cursor" not in (target2 / "ONBOARDING.md").read_text(encoding="utf-8")
 
 
 def test_cleanup_removes_banner_when_injected(tmp_path: Path) -> None:

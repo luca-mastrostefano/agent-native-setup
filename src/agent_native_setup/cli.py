@@ -381,23 +381,22 @@ def _summary(config: WizardConfig, sc: Scaffolder) -> None:
         )
     contract = "Read [bold]AGENTS.md[/] — the contract for all contributors."
     onboard: str | None = None
-    if config.include_quality or config.include_ci:
+    # Hint whenever the runbook actually shipped (RFC 2026-07-07 §6) — including profile
+    # scaffolds, which previously printed no pointer at all.
+    if any(rel.split(" ")[0] == "ONBOARDING.md" for rel in sc.created):
         # ONBOARDING.md owns the one-time setup; tell the user the concrete first action
         # (the agent can't speak first — it waits for input), not "it self-onboards".
         banner_on = config.first_run_banner and bool(config.ai_tools)
-        if config.include_agents and "claude" in config.ai_tools:
+        if config.ai_tools:
+            # /onboard is every targeted tool's verb now (Claude, Cursor, Copilot, Gemini).
             tail = (
                 " (or just ask it what to do — AGENTS.md flags the pending setup)"
-                if banner_on
+                if banner_on and config.include_agents and "claude" in config.ai_tools
                 else " (walks through ONBOARDING.md)"
             )
-            onboard = f"Finish setup: in Claude Code, type [bold]/onboard[/] at the prompt{tail}."
+            onboard = f"Finish setup: type [bold]/onboard[/] in your AI assistant{tail}."
         else:
-            tail = " — it'll also see the first-run note in AGENTS.md" if banner_on else ""
-            onboard = (
-                "Finish setup: open [bold]ONBOARDING.md[/] and follow it, or ask your "
-                f"AI assistant to{tail}."
-            )
+            onboard = "Finish setup: open [bold]ONBOARDING.md[/] and follow it."
     # The one-time setup is the must-do; reading the contract is recommended-not-required.
     # Label them as a contrasting pair only when both show, so a lone contract step (no
     # quality/CI) isn't mislabelled "Optional".
