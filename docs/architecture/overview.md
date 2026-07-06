@@ -1,8 +1,10 @@
 # Architecture overview
 
 `agent-native-setup` is a Python CLI that scaffolds an agent-native setup into a target
-repo. It reads a `WizardConfig`, then a set of generators write files through a
-`Scaffolder`. There is no runtime service. Beyond the one-shot scaffold, an `update`
+repo. It reads a `WizardConfig` and scaffolds the **vendored flagship profile**
+(`agent-native-baseline`) through the profile pipeline (RFC 2026-07-05 stage B); the
+legacy generators remain shipped, byte-equivalent (the parity gate), and serve the
+update path until stage C. There is no runtime service. Beyond the one-shot scaffold, an `update`
 subcommand refreshes an already-scaffolded project to a newer version of the setup, using
 the provenance recorded in `.agent-native-setup.json`.
 
@@ -21,7 +23,7 @@ the provenance recorded in `.agent-native-setup.json`.
 | `migrations.py` | Ordered, version-keyed structural migrations (`auto` idempotent moves, `agent`/`manual` steps) replayed across the installed→latest span on update, with the agent steps aggregated into `UPDATING.md`. |
 | `update_check.py` | Cached "is there a newer release?" lookup (GitHub), shared by the end-of-run nudge and the SessionStart `update --check`. |
 | `profiles.py` | The profiles subsystem — packaged, versioned setups that compose on the default scaffold (`extends: default`) or replace it (`extends: null`): resolution (path / `~/.config` name / community-index name / `git+` URL with a cached, allowlisted fetch), declarative `prompts` (+ headless `--answer`), the `env` namespace, `onboarding`/`session_start` contributions, the derived safe/unsafe classifier + sandbox + path confinement + content-hash consent trust model, the authoring CLI (`init`/`save`/`validate`/`show`/`list`/`add`/`search`/`publish`/`trust`/`untrust`), community-index discovery, and the update-time re-gates. **See [`profiles.md`](./profiles.md)** for the full map and RFC trail. |
-| `profiles/agent-native-baseline/` | The flagship profile under stage-A extraction (RFC 2026-07-05): the default scaffold being re-expressed as a normal profile. `build.py` derives its templates from the generators themselves — verbatim constants raw-wrapped, rendering templates re-emitted over answers/env (the generators remain the source of truth); `tests/test_flagship_parity.py` gates byte parity incrementally. See its [README](../../profiles/agent-native-baseline/README.md). |
+| `profiles/agent-native-baseline/` | The flagship profile (RFC 2026-07-05): the default scaffold as a normal profile — **what `cli.main` scaffolds by default** (stage B), vendored into the wheel as `builtin:agent-native-baseline`. `build.py` derives its templates from the generators (still the source of truth until stage C); `tests/test_flagship_parity.py` gates whole-tree byte parity. See its [README](../../profiles/agent-native-baseline/README.md). |
 | `generators/` | One module per concern — `ai_context` (AGENTS.md + per-tool entry points: CLAUDE.md/GEMINI.md symlinks, Cursor/Copilot pointer files, plus an optional self-removing first-run banner), `agents` (`.claude/`), `docs` (docs tree + RFC lifecycle + embedded check scripts), `quality` (pre-commit, Taskfile, gitignore), `ci` (GitHub Actions), `onboarding` (the self-deleting `ONBOARDING.md` first-run runbook, whose last step also removes the banner). Each exposes `generate(config, sc)`; `agents` and `onboarding` also accept a profile's `session_start`/`onboarding` contributions to merge in. |
 | `tools/checks/` | Standalone enforcement scripts run as hooks: `sync_rfc_status.py` (any project with docs), `rfc_needed.py` (any language with a dependency manifest — its dep trigger reads pyproject.toml/package.json/go.mod/Cargo.toml), `docs_sync.py` and `tests_needed.py` (Python `src/`+`tests/` layout), and `format_on_edit.py` (the Claude PostToolUse format-on-edit helper); `check_index.py` (repo-only, not embedded) fetches + validates every community-index entry — run weekly / on `contributions/` PRs by the `index-check` workflow. Each ships with a stdlib-`unittest` test, run via `python -m unittest discover -s tools/checks` (wired into the command surface, a pre-push hook, and CI). The wizard embeds the scripts and their tests as constants in `generators/docs.py` (gates) and `generators/agents.py` (format hook). |
 

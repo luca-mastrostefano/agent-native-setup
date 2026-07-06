@@ -413,7 +413,11 @@ def _dry_run(
     """Preview a scaffold without writing. Builds into throwaway dirs so the real generators
     (and a composed profile, if any) decide the file set *and* the real ``Scaffolder`` decides
     create-vs-skip against what the target already contains — so the preview matches a real run
-    (including the files it would skip), instead of pretending every path is new."""
+    (including the files it would skip), instead of pretending every path is new.
+    Known preview gap: the contract fold keys on live target files, which the staging can't
+    reproduce — a brownfield AGENTS.md/CLAUDE.md shows as 'would skip' though a real run
+    folds it (content preserved). Tracked in docs/improvements.md.
+    """
     with tempfile.TemporaryDirectory() as tmp:
         root = Path(tmp)
         # Pass 1: discover every path a run would write (empty dir → `recorded` holds them all,
@@ -599,6 +603,9 @@ def main(argv: list[str] | None = None) -> int:
         )
     except profiles.ProfileError as exc:
         console.print(f"[red]{exc}[/]")
+        return 2
+    if args.answer and profile is None:  # --profile default: no prompts to answer
+        console.print("[red]--answer has no target[/] — 'default' is the bare engine baseline.")
         return 2
     answers: dict[str, object] | None = None
     if profile is not None:
