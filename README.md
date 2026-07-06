@@ -2,7 +2,11 @@
 
 # 🪄 agent-native-setup
 
-**One command to make any repo agent-native — new or existing.**
+**One command to make any repo agent-native — new or existing — and keep it that way.**
+
+Your agent setup — contract, prompts, subagents, guardrails — installs like a package and
+**updates like one**: as the profile you adopted improves, `update` brings the best current
+version into your repo, without touching what you've customized.
 
 ![Python](https://img.shields.io/badge/python-3.10%2B-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
@@ -34,11 +38,13 @@ This project turns that private, perishable effort into a **community asset**:
 - You **adopt** one in a command, **tune** it to your stack, **snapshot** what you built
   (`profile save`), and **share** it through the community index — so the next team with
   your use case starts where you finished, not from zero.
-- **Improvements compound instead of scattering.** Fork a profile and `git merge` takes
-  upstream fixes; `agent-native-setup update` flows each profile release into every
-  project scaffolded from it (refreshing pristine files, never clobbering your edits).
-  One good idea — a better reviewer prompt, a sharper gate — propagates to every
-  downstream repo, instead of dying in the one repo that had it.
+- **Improvements compound instead of scattering — and your setup never goes stale.**
+  Fork a profile and `git merge` takes upstream fixes; `agent-native-setup update` flows
+  each profile release into every project scaffolded from it (refreshing pristine files,
+  never clobbering your edits). One good idea — a better reviewer prompt, a sharper gate —
+  propagates to every downstream repo instead of dying in the one repo that had it, and
+  every repo keeps running the best current version of its setup rather than a snapshot
+  of the day it was scaffolded.
 
 The goal: the community **converges** on great agentic scaffolding per use case — searched,
 adopted, extended — the way package registries let code converge, with the trust model
@@ -177,8 +183,10 @@ agent-native-setup -o ./existing-app --yes
 
 ### Keeping a project up to date
 
-The wizard records what it generated in `.agent-native-setup.json`, so a scaffolded project
-isn't frozen at the version that made it:
+A scaffolded setup is a **living dependency, not a one-time template**: the wizard records
+what it generated in `.agent-native-setup.json`, so your prompts, agents, and gates track
+the best current version of the profile you adopted instead of freezing at the version
+that made them:
 
 ```bash
 agent-native-setup update            # refresh managed files to the installed version
