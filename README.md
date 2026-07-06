@@ -115,7 +115,7 @@ agent-native-setup -o ./existing-app --yes
 | --- | --- |
 | `-o, --output` | Target directory (default: current dir). |
 | `--description "..."` | One-line project description (used in `AGENTS.md`/`README.md`). |
-| `--profile <name\|path>` | Scaffold from a [profile](#profiles--the-community-loop-experimental) instead of the flagship baseline. |
+| `--profile <name\|path>` | Scaffold from a [profile](#profiles--the-community-loop) instead of the flagship baseline. |
 | `--answer NAME=VALUE` | Answer a profile prompt headlessly (repeatable) — for agents/CI; others take defaults with `-y`. |
 | `--languages` | Comma-separated: `python,node,go,rust,html`. Linters only for these. |
 | `--tools` | Comma-separated: `claude,cursor,copilot,gemini` (default: all). |
@@ -152,130 +152,46 @@ confirmation and writes an `UPDATING.md` runbook. On an already-current project,
 `update --dry-run` doubles as a **conformance check** — it flags any managed file that has
 drifted from the scaffold.
 
-### Profiles — the community loop (experimental)
+### Profiles — the community loop
 
 A **profile** is a packaged, versioned, **complete** project setup — the built-in scaffold is
-itself just the vendored flagship profile (`agent-native-baseline`). A team or community ships
-their own — their `.claude/` agents, MCP config, house rules, extra gates — so new projects
-start from "exactly like ours," not just the generic baseline. The loop is: **discover** a
-profile for your use case → **adopt** it → **tune** it → **snapshot or fork** what you built →
-**publish** it back — and every release you cut flows to your consumers through `update`.
+itself just the flagship profile. A team or community ships their own (`.claude/` agents, MCP
+config, house rules, extra gates), so new projects start from "exactly like ours," not just
+the generic baseline. The loop: **discover → adopt → tune → snapshot or fork → publish** —
+and every release you cut flows to your consumers through `update`.
 
 ```bash
-# Find & use a community profile
-agent-native-setup profile search python         # search the community index (name/description/tags)
-agent-native-setup profile list --community       # …or browse the whole index
-agent-native-setup profile show git+https://github.com/acme/profile.git   # inspect one before adopting
-agent-native-setup my-app --profile git+https://github.com/acme/profile.git    # use one by URL
-agent-native-setup profile add acme-profile      # …or install a search hit by its index name
+# Find & use
+agent-native-setup profile search python           # search the community index (name/description/tags)
+agent-native-setup profile show acme-profile       # inspect before adopting: files, prompts, safety
+agent-native-setup my-app --profile acme-profile   # scaffold from it (also: a path or git+https://… URL)
 
 # Make & share your own
-agent-native-setup profile init my-team           # scaffold a skeleton
-agent-native-setup profile save ./my-app team     # …or snapshot a project you tuned
-agent-native-setup profile validate ./my-team     # check it loads + every template renders
-agent-native-setup profile publish ./my-team      # print its shareable URL + index entry (then PR it)
+agent-native-setup profile init my-team            # scaffold a skeleton…
+agent-native-setup profile save ./my-app my-team   # …or snapshot a project you've tuned
+agent-native-setup profile validate ./my-team      # check it loads + every template renders
+agent-native-setup profile publish ./my-team       # print its shareable URL + index entry (then PR it)
 ```
 
-**Discover, then share.** Profiles are found through a curated, zero-infra
-[community index](contributions/index.json) — a PR-gated list of URLs (each profile lives in its own
-repo). `profile search` / `list --community` read it; `profile publish` prints the entry to PR. A
-team can point `AGENT_NATIVE_SETUP_INDEX_URL` at a private index. A listing is *discovery, not
-endorsement* — trust is decided at fetch, not by being listed.
+- **Discover** — profiles are found through the curated
+  [community index](contributions/index.json): a PR-gated list of URLs, kept rot-free by CI
+  (`AGENT_NATIVE_SETUP_INDEX_URL` points a team at a private one). A listing is discovery,
+  not endorsement — trust is decided at fetch.
+- **Trust** — fetches are data-only (an https/ssh allowlist), templates render in a sandbox
+  with outputs confined to the project, and each profile is classified **safe**/**unsafe**
+  from its content. A fetched code-carrying profile asks for consent once per exact content
+  (`--allow-code`; review or revoke with `profile trust --list` / `untrust`).
+- **Extend** — fork the profile's repo (the flagship included), add your templates, and
+  publish your fork to the index; `git fetch upstream && git merge` takes base improvements
+  later.
+- **Update** — bump your profile's `version`, and your consumers' `agent-native-setup update`
+  refreshes its files: pristine ones only (edits are reported as conflicts, `seed` files are
+  never touched), with a pause for confirmation on a breaking bump or new session hooks.
 
-**Trust.** Consume a profile by URL (`--profile git+https://…`, optionally `@v1.2.0` to pin,
-`#subdir=team` for a monorepo) or `profile add <url-or-index-name>` to install it (a bare name
-that isn't local is looked up in the index — the redirection is printed). The fetch is data-only (an
-https/ssh allowlist, no submodules). A **safe** profile (declarative — sandboxed, no hooks/sinks)
-applies with no prompt; a fetched **unsafe** (code-carrying) one asks for `--allow-code` and
-remembers your consent per exact content (`profile trust --list` / `untrust` to review or revoke). A
-local or `~/.config` profile is trusted — the gate is for code fetched from the internet.
-
-`profile save <project> <name>` is the reverse of authoring: point it at a project you
-scaffolded and then customized, and it **snapshots the complete setup** as a standalone profile
-— every scaffold-recorded file as it exists on disk (your edits included, plus files you added
-in setup-owned dirs), with the project name and scaffold date parameterized, `seed` status
-preserved, and symlinks captured as `links`. It's read-only on the source and produces a
-review-ready draft (run `profile validate` on it). The snapshot is pinned to your project's
-languages and choices — for a *general* reusable base, fork the flagship instead (below).
-
-**Extend.** To build on any profile — the flagship baseline or a community one, "that base
-plus our house files" — fork it and publish your fork to the index:
-
-```bash
-git clone https://github.com/acme/python-backend-profile.git my-profile
-cd my-profile && git remote rename origin upstream
-# edit templates/, set your own name/version in profile.json, push to your repo, tag, publish
-git fetch upstream && git merge upstream/main   # later: take base improvements, then bump + tag
-```
-
-Your consumers get each release through the normal `update` flow.
-
-**Safety.** Profile templates are untrusted input, so they render in a **sandbox** (a hostile
-template can't reach Python) and every output path is **confined** to the project (no `../`
-escape). Each profile is classified **safe** or **unsafe** from its content (`session_start` hooks,
-`onboarding` steps, or writing an execution sink like a CI workflow or `Makefile` → unsafe;
-`validate` shows the tier), and an `update` that flips a profile safe → unsafe asks before applying.
-
-`profile init` also drops an **`AGENTS.md`** at the profile root (and a `README.md`) — a contract
-that lets an assistant help you *build* the profile. Those root files are **meta**: only what's
-under `templates/` ever ships, so your notes/scratch/harness live at the root and never leak into
-scaffolded projects.
-
-A profile is a directory with a `profile.json` and a `templates/` tree. A full example:
-
-```json
-{
-  "name": "my-team",
-  "version": "1.0.0",
-  "description": "Our team's agent setup",
-  "tags": ["backend", "python"],
-  "seed": ["docs/team-notes.md"],
-  "prompts": [
-    {"name": "tier",   "type": "select",  "message": "Service tier?",   "choices": ["basic", "enterprise"], "default": "basic"},
-    {"name": "use_db", "type": "confirm", "message": "Include the DB?",  "default": false},
-    {"name": "engine", "type": "select",  "message": "DB engine?",       "choices": ["postgres", "mysql"], "when": "answers.use_db"}
-  ],
-  "onboarding": ["Run `task team-setup` to configure the toolchain."],
-  "session_start": ["echo 'Remember the team release checklist'"]
-}
-```
-
-Only `name` and `version` are required; `tags` (freeform discovery keywords — who/what
-it targets, surfaced by `search`/`show` and carried into the community index by `publish`), `seed`,
-`prompts`, `onboarding`, and `session_start` are optional. `agent-native-setup profile init` writes
-this skeleton **plus a README documenting every field** — start there.
-
-In short: a profile ships **everything** — a scaffolded project gets exactly the files under
-`templates/` (its own `AGENTS.md` included), nothing else. `.j2` templates render (sandboxed)
-against the project context — the profile's own **prompt answers** (`{{ answers.tier }}`; a
-`when` asks a question only when relevant, answers are recorded and replayed on `update`, and
-`-y` / `--answer name=value` cover headless runs) and an **`env`** namespace of sensed facts
-(`{% if env.existing_project %}…`; never an echo of a wizard choice) — while every other file
-ships verbatim, so a literal
-`${{ ... }}` is safe. `onboarding` steps fold into the project's one-time `ONBOARDING.md`;
-`session_start` commands join the `.claude` SessionStart hooks (each wrapped so a failure can't
-disrupt a session). The full subsystem reference — resolution precedence, prompt types, the
-trust model, integration points — lives in
-[`docs/architecture/profiles.md`](docs/architecture/profiles.md).
-
-**Updating to a new profile version.** Bump the profile's `version` when you change its
-templates. In projects scaffolded from it, `agent-native-setup update` then refreshes those
-files — each is **managed** (refreshed when the user hasn't touched it; reported as a conflict
-to reconcile if they have), unless you list it under `seed` (shipped once, never refreshed). A
-breaking bump (major, or the minor pre-1.0) pauses for confirmation, just like a base update;
-and a bump that introduces **new `session_start` commands** lists them and asks before applying
-(even on a non-breaking bump) — new shell shouldn't start running on a machine unannounced.
-`agent-native-setup update --check` (also wired into the SessionStart hook) **nudges** when a
-newer version exists at the profile's source. For `update` to pull it, the profile must still be
-resolvable then — the same path, or a name in `~/.config/agent-native-setup/profiles/` —
-otherwise the base still updates and the profile's files are left as-is.
-
-> **Still experimental.** The community loop is complete end-to-end — authoring, composing,
-> prompts, updating, the safety/trust model, git-URL distribution, and discovery (the community
-> index, kept rot-free by CI) — but the format may still evolve with feedback. The deliberate
-> frontier: **code-plugin** profiles (arbitrary generator code — a one-way trust door we haven't
-> opened; `ecosystem-core`) and per-profile **migrations** (`scaffolding-profiles`), both under
-> [`docs/rfc/proposed/`](docs/rfc/proposed/).
+The format (`profile.json` + `templates/` with prompts, sensed `env` facts, `seed` /
+`transient` / `links`) and the full trust model live in
+[`docs/architecture/profiles.md`](docs/architecture/profiles.md) — and `profile init` writes
+a skeleton whose README documents every field.
 
 ## Develop
 
