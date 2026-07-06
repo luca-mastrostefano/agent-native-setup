@@ -202,6 +202,10 @@ def _matrix() -> list[tuple[str, dict]]:
             dict(languages=["rust"], ai_tools=["gemini"]),
         ),
         (
+            "rusty-legacy",  # the cargo sec-variant dependabot entry (review of #53)
+            dict(languages=["rust", "go"], existing_project=True),
+        ),
+        (
             "legacy-two-langs",  # existing runner + two languages in NON-registry order:
             # AGENTS.md's raw-command surface, label-major in SELECTED-language order (the
             # cross-language dedupe itself is latent — no two registry languages share a
@@ -292,17 +296,25 @@ def test_flagship_matches_generators_on_ported_files(
 ) -> None:
     _pin_clock(monkeypatch)
     gen_dir, flag_dir = tmp_path / "gen", tmp_path / "flag"
-    cli.build(_config(gen_dir, **over), Scaffolder(gen_dir), None)
+    gen_sc = Scaffolder(gen_dir)
+    cli.build(_config(gen_dir, **over), gen_sc, None)
 
     flagship = profiles.load(FLAGSHIP)
     config = _config(flag_dir, **over)
+    flag_sc = Scaffolder(flag_dir)
     cli.build(
         config,
-        Scaffolder(flag_dir),
+        flag_sc,
         flagship,
         answers=config_to_answers(config),
         profile_date=PINNED_DAY,
     )
+
+    # Seed-set parity (review of #53): a preserve/seed-class file missing from the flagship's
+    # seed list is invisible to tree comparison but makes update clobber a user's file later.
+    gen_seed = {r for r in gen_sc.seed if r in PORTED}
+    flag_seed = {r for r in flag_sc.seed if r in PORTED}
+    assert gen_seed == flag_seed, f"[{cell}] seed sets differ: {gen_seed ^ flag_seed}"
 
     gen_tree, flag_tree = _tree(gen_dir), _tree(flag_dir)
     for rel in sorted(PORTED):

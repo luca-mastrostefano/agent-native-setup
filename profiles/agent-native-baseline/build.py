@@ -414,15 +414,24 @@ def _matrix_ports() -> list[tuple[str, str | None, str, list[str]]]:
     sec_header = base_sec[: base_sec.index("version: 2")]
     actions_plain = base_plain[len(prefix_plain) :]
     actions_sec = base_sec[len(sec_header) + len(prefix_plain) :]
+    # Slicing self-check: a shape change in _dependabot must fail HERE, not as opaque
+    # byte diffs across matrix cells.
+    assert prefix_plain + actions_plain == base_plain
+    assert sec_header + prefix_plain + actions_sec == base_sec
     eco_by_lang: dict[str, list[str]] = {}
     for key, lang in REGISTRY.items():
         if not lang.dependabot_ecosystem:
             continue
         fake = SimpleNamespace(dependabot_ecosystem=lang.dependabot_ecosystem)
-        eco_by_lang[key] = [
-            ci._dependabot([fake], False)[len(prefix_plain) + len(actions_plain) :],
-            ci._dependabot([fake], True)[len(sec_header) + len(prefix_plain) + len(actions_sec) :],
-        ]
+        plain_full = ci._dependabot([fake], False)
+        sec_full = ci._dependabot([fake], True)
+        entry_plain = plain_full[len(prefix_plain) + len(actions_plain) :]
+        entry_sec = sec_full[len(sec_header) + len(prefix_plain) + len(actions_sec) :]
+        assert prefix_plain + actions_plain + entry_plain == plain_full
+        assert sec_header + prefix_plain + actions_sec + entry_sec == sec_full
+        # (_dependabot's cross-language ecosystem dedupe is latent — no two registry
+        # languages share an ecosystem — mirroring the other latent dedupes noted in the matrix.)
+        eco_by_lang[key] = [entry_plain, entry_sec]
     dep_prelude = [
         '{% set _sec = env.existing_project and answers.adopt != "full" %}',
         "{% set _i = 1 if _sec else 0 %}",
