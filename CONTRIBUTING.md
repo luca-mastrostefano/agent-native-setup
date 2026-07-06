@@ -12,6 +12,9 @@ task quality   # lint + typecheck + tests
 
 ## Dev loop
 
+`main` is protected by a GitHub ruleset: changes land only through a pull request with
+the `quality` and `checks` status checks green (squash-merged — linear history).
+
 1. Read `AGENTS.md` (the project map) and the `INSTRUCTION.md` it points to — the
    contract and the four execution principles.
 2. For anything architectural or hard to reverse, write an RFC first
