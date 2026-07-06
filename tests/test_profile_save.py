@@ -114,6 +114,50 @@ def test_save_captures_the_bootstrap_rfc_through_date_token(tmp_path: Path) -> N
     assert "{{ env.date }}" in tmpl and stamp not in tmpl  # the body re-stamps with the path
 
 
+def test_save_skips_binary_files_and_its_output_still_validates(tmp_path: Path) -> None:
+    proj = _scaffold(tmp_path / "proj")
+    (proj / ".claude" / "logo.png").write_bytes(b"\x89PNG\x00\xff\xfe")  # binary house file
+    console = _Console()
+    args = argparse.Namespace(project=str(proj), name="house", output=str(tmp_path / "out"))
+    assert profiles._save(args, console) == 0
+
+    shipped = [rel for rel, _ in profiles.load(tmp_path / "out/house").template_files()]
+    # Profiles ship text only (apply reads UTF-8) — a captured binary would produce a draft
+    # that crashes the consumer's scaffold. Skipped and reported instead (review of B2).
+    assert not any("logo.png" in s for s in shipped)
+    assert "binary" in console.text and "logo.png" in console.text
+    # save must never produce output its own validator rejects.
+    assert cli.main(["profile", "validate", str(tmp_path / "out/house")]) == 0
+
+
+def test_save_falls_back_to_onboarding_for_an_unconfinable_symlink(tmp_path: Path) -> None:
+    proj = _scaffold(tmp_path / "proj")
+    (proj / "CLAUDE.md").unlink()
+    (proj / "CLAUDE.md").symlink_to("/etc/hosts")  # absolute target — can't ship as a link
+    assert _save(proj, "house", tmp_path / "out") == 0
+
+    pj = json.loads((tmp_path / "out/house/profile.json").read_text(encoding="utf-8"))
+    assert "CLAUDE.md" not in pj.get("links", {})  # never a confinement-violating links entry
+    assert any("ln -s /etc/hosts CLAUDE.md" in s for s in pj["onboarding"])  # the fallback
+
+
+def test_save_warns_when_onboarding_is_incomplete(tmp_path: Path) -> None:
+    # A pre-onboarding AGENTS.md bakes in the first-run banner while the snapshot ships no
+    # ONBOARDING.md — an inconsistency the author must see (review of B2).
+    proj = _scaffold(tmp_path / "proj")
+    console = _Console()
+    args = argparse.Namespace(project=str(proj), name="early", output=str(tmp_path / "out1"))
+    assert profiles._save(args, console) == 0
+    assert "onboarding incomplete" in console.text  # ONBOARDING.md still on disk
+
+    (proj / "ONBOARDING.md").unlink()  # onboarding done — the transients self-deleted
+    (proj / ".claude" / "commands" / "onboard.md").unlink()
+    console2 = _Console()
+    args2 = argparse.Namespace(project=str(proj), name="late", output=str(tmp_path / "out2"))
+    assert profiles._save(args2, console2) == 0
+    assert "onboarding incomplete" not in console2.text
+
+
 def test_save_excludes_user_source_and_reports_it(tmp_path: Path) -> None:
     proj = _scaffold(tmp_path / "proj")
     (proj / "src").mkdir()

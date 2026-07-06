@@ -342,15 +342,18 @@ def _reresolve_profile(old: dict, console: Any) -> tuple[profiles.Profile | None
         return None, block
     source = block.get("source")
     profile = None
+    why = ""
     if source:
         try:
             profile = profiles.resolve(str(source), console=console)  # re-fetches a git URL
-        except profiles.ProfileError:
-            profile = None
+        except profiles.ProfileError as exc:
+            # Surface the actual error — e.g. the profile still declares the removed
+            # `extends` field, where the load message carries the one-line fix.
+            why = f": {exc}"
     if profile is None:
         console.print(
             f"[yellow]Profile {block.get('name')!r} couldn't be re-resolved[/] "
-            f"(source {source!r}) — its files are kept as-is; the base setup still updates."
+            f"(source {source!r}){why} — its files are kept as-is."
         )
         return None, block
     return profile, None

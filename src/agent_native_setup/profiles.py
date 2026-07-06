@@ -666,7 +666,12 @@ def apply(
         dest = (sc.target / out_rel).resolve()
         if dest != target_root and target_root not in dest.parents:
             raise ProfileError(f"profile output path escapes the project: {out_rel!r}")
-        raw = src.read_text(encoding="utf-8")
+        try:
+            raw = src.read_text(encoding="utf-8")
+        except UnicodeDecodeError:
+            raise ProfileError(  # a legible refusal, not a mid-scaffold traceback
+                f"profile template {out_rel!r} is not UTF-8 — profiles ship text files only"
+            ) from None
         if src.name.endswith(".j2"):
             content = render(raw, **ctx)
             if not content.strip():
@@ -870,9 +875,14 @@ def _validate(args: argparse.Namespace, console: Any) -> int:
     )
     files = prof.template_files()
     for out_rel, src in files:
+        try:
+            raw = src.read_text(encoding="utf-8")
+        except UnicodeDecodeError:  # apply() ships text — a binary template crashes a scaffold
+            errors.append(f"template {out_rel}: not UTF-8 (profiles ship text files only)")
+            continue
         if src.suffix == ".j2":
             try:
-                render_strict(src.read_text(encoding="utf-8"), **ctx)
+                render_strict(raw, **ctx)
             except Exception as exc:  # Jinja syntax error or undefined variable — name the template
                 errors.append(f"template {out_rel}: {exc}")
     outputs = {out_rel for out_rel, _ in files}
@@ -1331,20 +1341,23 @@ def _save(args: argparse.Namespace, console: Any) -> int:
     (out / TEMPLATES_DIR).mkdir(parents=True)
     subs: list[tuple[str, str, int]] = []
     seed_list: list[str] = []
+    skipped_binary: list[str] = []
     for rel, (content, is_seed) in sorted(captured.items()):
         dated = bool(stamp) and stamp in rel
         out_rel = rel.replace(stamp, "@DATE@") if dated else rel
         text, tmpl_name = _parameterize(content, config.project_name, config.slug, out_rel, subs)
-        if dated and text is not None and stamp in text:
+        if text is None:
+            # Profiles ship text only (apply() reads UTF-8) — capturing a binary would produce
+            # a draft that validates but crashes the consumer's scaffold. Skip and report.
+            skipped_binary.append(rel)
+            continue
+        if dated and stamp in text:
             text = text.replace(stamp, "{{ env.date }}")  # the body re-stamps with the path
             if tmpl_name == out_rel:
                 tmpl_name = out_rel + ".j2"
         dst = out / TEMPLATES_DIR / tmpl_name
         dst.parent.mkdir(parents=True, exist_ok=True)
-        if text is None:
-            dst.write_bytes(content)
-        else:
-            dst.write_text(text, encoding="utf-8")
+        dst.write_text(text, encoding="utf-8")
         if is_seed:
             seed_list.append(out_rel)
 
@@ -1399,6 +1412,20 @@ def _save(args: argparse.Namespace, console: Any) -> int:
             "review and copy any house content into templates/ by hand): "
             + ", ".join(added_elsewhere[:8])
             + (" …" if len(added_elsewhere) > 8 else "")
+        )
+    if skipped_binary:
+        console.print(
+            f"  [yellow]not captured[/] ({len(skipped_binary)} binary file(s) — profiles ship "
+            "text only): "
+            + ", ".join(skipped_binary[:8])
+            + (" …" if len(skipped_binary) > 8 else "")
+        )
+    if pending := [t for t in sorted(transient) if (project / t).is_file()]:
+        # The snapshot ships no first-run apparatus, but a pre-onboarding AGENTS.md still
+        # carries the banner pointing at it — an inconsistency the author should resolve.
+        console.print(
+            f"  [yellow]onboarding incomplete[/] ({', '.join(pending)} still present) — finish "
+            "it before saving, or the snapshot bakes in a first-run banner with no ONBOARDING.md."
         )
     tier, _ = classify_safety(load(out))  # the real classifier on the written draft
     console.print(f"  [yellow]safety:[/] {tier}. Review, then run [bold]profile validate {out}[/].")
@@ -1455,7 +1482,7 @@ def _show(args: argparse.Namespace, console: Any) -> int:
         console.print(f"[red]{exc}[/]")
         return 2
     if prof is None:
-        console.print("[cyan]default[/] — the built-in setup (no profile overlay).")
+        console.print("[cyan]default[/] — the legacy bare-generator scaffold (no profile).")
         return 0
     tier, reasons = classify_safety(prof)
     desc = escape(prof.description) or "(no description)"

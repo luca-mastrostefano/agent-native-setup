@@ -90,3 +90,4 @@ that needs a real decision into an RFC in `docs/rfc/proposed/`.
   `profile show` and **code-plugin** profiles (the ecosystem-core stage-D one-way door) — see the
   `ecosystem-core` RFC, not here.*
 - 4714a97 (2026-07-06) dry-run doesn't preview the contract fold: staging can't reproduce live target files, so a brownfield AGENTS.md shows 'would skip' though a real run folds it. Fix: stage copies of fold-relevant files (or simulate the fold read-only) so the preview matches. (review of #55)
+- feat/remove-extends (2026-07-06) `profile save` sources its transient-exclusion set from the vendored baseline only — a project scaffolded from a third-party profile that declares its own `transient` files would capture those first-run artifacts into the snapshot. Fix: record the applied profile's `transient` list in the manifest (like `session_start`) and read it back in save. (review of B2)

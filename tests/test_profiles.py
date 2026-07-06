@@ -1237,6 +1237,60 @@ def test_degraded_update_of_a_standalone_project_does_not_regenerate_the_default
     assert not (target / ".claude").exists()
 
 
+def test_degraded_update_surfaces_the_profile_load_error(tmp_path: Path) -> None:
+    # A pre-B2 profile still declaring `extends` fails to load at update time — the degraded
+    # warning must carry load()'s actual message (the one-line fork-recipe fix), not just
+    # "couldn't be re-resolved" (review of B2).
+    prof = _make_profile(tmp_path, "team", {"AGENTS.md": "v1\n"}, by_path=True)
+    target = tmp_path / "proj"
+    target.mkdir()
+    cli.build(_config(target), Scaffolder(target), prof)
+    _commit(target)
+
+    data = json.loads((prof.root / "profile.json").read_text(encoding="utf-8"))
+    data["extends"] = None  # the author's copy still carries the removed field
+    (prof.root / "profile.json").write_text(json.dumps(data), encoding="utf-8")
+    console = _Console()
+    assert update.run(target, dry_run=False, console=console) == 0
+    assert "couldn't be re-resolved" in console.text
+    assert "'extends' was removed" in console.text  # the actionable reason, surfaced
+    assert (target / "AGENTS.md").read_text(encoding="utf-8") == "v1\n"  # frozen, kept
+
+
+def test_update_degrades_a_composed_manifest_even_when_its_source_resolves(
+    tmp_path: Path,
+) -> None:
+    # The composed-degrade guard's load-bearing case (review of B2): a pre-B2 *composed*
+    # manifest whose source was already updated to the post-B2 format re-resolves fine —
+    # without the guard, re-applying it as a complete setup makes classify strip the whole
+    # generator base as pristine orphans.
+    target = tmp_path / "proj"
+    target.mkdir()
+    cli.build(_config(target), Scaffolder(target), None)  # the legacy generator scaffold
+    prof = _make_profile(tmp_path, "team", {"x.md": "x\n"}, by_path=True)  # post-B2 source
+    (target / "x.md").write_text("x\n", encoding="utf-8")
+    m = json.loads((target / MANIFEST_PATH).read_text(encoding="utf-8"))
+    m["files"]["x.md"] = "sha256:" + hashlib.sha256(b"x\n").hexdigest()
+    m["profile"] = {
+        "name": "team",
+        "version": "1.0.0",
+        "extends": "default",
+        "source": str(prof.root),
+        "files": ["x.md"],
+    }
+    (target / MANIFEST_PATH).write_text(json.dumps(m, indent=2) + "\n", encoding="utf-8")
+    _commit(target)
+
+    console = _Console()
+    assert update.run(target, dry_run=False, console=console) == 0
+    assert "composed on the default setup" in console.text
+    assert (target / "INSTRUCTION.md").exists()  # the generator base was NOT stripped
+    assert (target / ".editorconfig").exists()
+    assert (target / "x.md").read_text(encoding="utf-8") == "x\n"  # overlay frozen
+    nm = json.loads((target / MANIFEST_PATH).read_text(encoding="utf-8"))
+    assert nm["profile"]["extends"] == "default"  # keeps degrading until stage C migrates
+
+
 # --- safety: derived classifier, sandbox, path confinement, update re-gate ------------------
 
 
@@ -1382,6 +1436,29 @@ def test_profile_validate_flags_a_broken_template(
     assert "bad.md" in capsys.readouterr().out  # names the offending template
 
 
+def test_profile_validate_flags_a_binary_template(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # apply() ships text (UTF-8) — a binary template would crash the consumer's scaffold, so
+    # validate must catch it at author time (review of B2).
+    prof = _make_profile(tmp_path, "team", {"ok.md": "hi\n"})
+    (prof.root / "templates" / "logo.png").write_bytes(b"\x89PNG\x00\xff\xfe")
+    assert cli.main(["profile", "validate", str(prof.root)]) == 1
+    assert "not UTF-8" in capsys.readouterr().out
+
+
+def test_apply_refuses_a_binary_template_legibly(tmp_path: Path) -> None:
+    # And if an unvalidated profile reaches apply anyway, the failure is a legible
+    # ProfileError naming the file — not a raw UnicodeDecodeError mid-scaffold.
+    _make_profile(tmp_path, "bin", {"ok.md": "hi\n"})
+    (tmp_path / "bin" / "templates" / "logo.png").write_bytes(b"\x89PNG\x00\xff\xfe")
+    prof = profiles.load(tmp_path / "bin")
+    target = tmp_path / "proj"
+    target.mkdir()
+    with pytest.raises(profiles.ProfileError, match="not UTF-8"):
+        profiles.apply(prof, _config(target), Scaffolder(target), {})
+
+
 def test_profile_validate_flags_an_undefined_variable_typo(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
@@ -1459,7 +1536,7 @@ def test_profile_show_default_and_missing(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     assert cli.main(["profile", "show", "default"]) == 0
-    assert "built-in" in capsys.readouterr().out
+    assert "legacy bare-generator" in capsys.readouterr().out
     assert cli.main(["profile", "show", str(tmp_path / "nope")]) == 2
 
 
