@@ -1,6 +1,6 @@
 {
   "name": "agent-native-baseline",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "The agent-native project setup: an AGENTS.md contract, docs + RFCs, linters + pre-commit + security scanning, CI, and a .claude agents/commands library — the setup agent-native-setup scaffolds by default.",
   "tags": ["general", "baseline", "multi-language"],
   "seed": ["AGENTS.md", ".gitignore", "docs/architecture/overview.md", "docs/improvements.md", "docs/rfc/active/@DATE@-adopt-agent-native-setup.md", "README.md"],

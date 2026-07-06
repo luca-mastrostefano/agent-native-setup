@@ -405,7 +405,7 @@ def generate(config: WizardConfig, sc: Scaffolder, session_start: tuple[str, ...
         hooks["PostToolUse"] = [
             {
                 "matcher": "Edit|Write",
-                "hooks": [{"type": "command", "command": "python tools/checks/format_on_edit.py"}],
+                "hooks": [{"type": "command", "command": "python3 tools/checks/format_on_edit.py"}],
             }
         ]
     if hooks:

@@ -32,6 +32,11 @@ python_version = "3.10"
 warn_redundant_casts = true
 warn_unused_ignores = true
 
+# Stdlib tomllib lacks a py.typed marker under some mypy releases.
+[[tool.mypy.overrides]]
+module = "tomllib"
+ignore_missing_imports = true
+
 # Pytest. https://docs.pytest.org/
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -96,6 +101,7 @@ PRETTIERIGNORE = """\
 dist/
 package-lock.json
 *.md
+.agent-native-setup.json
 """
 
 PRETTIER_CONFIG = """\

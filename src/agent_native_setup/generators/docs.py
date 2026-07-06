@@ -24,7 +24,7 @@ The dev loop lives in [`CONTRIBUTING.md`](../CONTRIBUTING.md) at the repo root.
 
 RFCs are named `YYYY-MM-DD-short-slug.md`. You don't move them by hand: edit the
 `Status:` line and the `rfc-status` pre-commit hook relocates the file via `git mv`
-(or run `python tools/checks/sync_rfc_status.py`), preserving history.
+(or run `python3 tools/checks/sync_rfc_status.py`), preserving history.
 """
 
 IMPROVEMENTS = """\
@@ -675,10 +675,7 @@ class DepNamesCargo(unittest.TestCase):
         self.assertEqual(rfc_needed.dep_names_cargo(text), expected)
 
     def test_py310_fallback_matches_incl_dotted_tables(self) -> None:
-        text = (
-            '[dependencies.serde]\nversion = "1"\n\n'
-            '[dev-dependencies]\nrstest = "0.18"\n'
-        )
+        text = '[dependencies.serde]\nversion = "1"\n\n[dev-dependencies]\nrstest = "0.18"\n'
         expected = {"serde", "rstest"}
         self.assertEqual(rfc_needed._cargo_names_fallback(text), expected)
         self.assertEqual(rfc_needed.dep_names_cargo(text), expected)

@@ -113,7 +113,7 @@ TOOLS_TESTS_CI = sub("""\
 - uses: actions/setup-python@v6
   with:
     python-version: "@PYTHON_VERSION@"
-- run: python -m unittest discover -s tools/checks
+- run: python3 -m unittest discover -s tools/checks
 """)
 
 PULL_REQUEST_TEMPLATE = """\

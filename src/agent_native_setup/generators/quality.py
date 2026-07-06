@@ -62,7 +62,7 @@ RFC_STATUS_HOOK = """\
   hooks:
     - id: rfc-status
       name: rfc status -> folder sync
-      entry: python tools/checks/sync_rfc_status.py
+      entry: python3 tools/checks/sync_rfc_status.py
       language: system
       pass_filenames: false
       files: ^docs/rfc/.*\\.md$
@@ -75,7 +75,7 @@ RFC_NEEDED_HOOK = """\
   hooks:
     - id: rfc-needed
       name: RFC needed for structural changes
-      entry: python tools/checks/rfc_needed.py
+      entry: python3 tools/checks/rfc_needed.py
       language: system
       stages: [commit-msg]
 """
@@ -87,12 +87,12 @@ PY_LAYOUT_COMMIT_HOOKS = """\
   hooks:
     - id: docs-sync
       name: architecture docs for new components
-      entry: python tools/checks/docs_sync.py
+      entry: python3 tools/checks/docs_sync.py
       language: system
       stages: [commit-msg]
     - id: tests-needed
       name: tests accompany code changes
-      entry: python tools/checks/tests_needed.py
+      entry: python3 tools/checks/tests_needed.py
       language: system
       stages: [commit-msg]
 """
@@ -162,7 +162,7 @@ _TOOLS_RUFF_CMDS = {
 # Runs the stdlib-unittest tests shipped beside the tools/checks helpers (docs.py). One
 # command for the command surface, the pre-push hook, and CI; needs only `python`, so it
 # works even when Python isn't a selected language (no pytest to install).
-TOOLS_TESTS_CMD = "python -m unittest discover -s tools/checks"
+TOOLS_TESTS_CMD = "python3 -m unittest discover -s tools/checks"
 
 # Appends a stamped entry to the improvements backlog, encoding its convention as a
 # runner target so agents log ideas the right way instead of re-deriving the format.
@@ -304,7 +304,7 @@ def _taskfile(config: WizardConfig, langs: list[Language], hooks: bool) -> str:
         lines += task(
             "rfc-sync",
             "move RFCs into the folder matching their Status",
-            ["python tools/checks/sync_rfc_status.py"],
+            ["python3 tools/checks/sync_rfc_status.py"],
         )
         lines += task(
             "improvement",
@@ -378,7 +378,7 @@ def _makefile(config: WizardConfig, langs: list[Language], hooks: bool) -> str:
         out += target(
             "rfc-sync",
             "move RFCs into the folder matching their Status",
-            ["python tools/checks/sync_rfc_status.py"],
+            ["python3 tools/checks/sync_rfc_status.py"],
         )
         out += target(
             "improvement",

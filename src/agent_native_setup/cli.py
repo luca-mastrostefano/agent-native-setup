@@ -346,7 +346,17 @@ def build(
     git_dir = config.target / ".git"
     if config.init_git and not git_dir.exists():
         try:
-            subprocess.run(["git", "init", "-q"], cwd=config.target, check=True)
+            # `-b main` regardless of the user's init.defaultBranch — the scaffolded docs,
+            # CI triggers, and onboarding all say `main`, so a `master` default would break
+            # the first push. Older git (<2.28) lacks `-b`; fall back and rename.
+            init = subprocess.run(
+                ["git", "init", "-q", "-b", "main"], cwd=config.target, capture_output=True
+            )
+            if init.returncode != 0:
+                subprocess.run(["git", "init", "-q"], cwd=config.target, check=True)
+                subprocess.run(
+                    ["git", "branch", "-m", "main"], cwd=config.target, capture_output=True
+                )
             sc.created.append(".git/ (initialized)")
             sc.track_new(git_dir, existed=False)
         except (OSError, subprocess.CalledProcessError):

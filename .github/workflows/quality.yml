@@ -23,7 +23,7 @@ jobs:
       - run: pipx install ruff
       - run: ruff check .
       - run: ruff format --check .
-      - run: python -m pip install -e . pytest
+      - run: python -m pip install -e . pytest ruff
       - run: pytest
       - run: python -m unittest discover -s tools/checks
       # The vendored baseline must actually ship (review of #55): every test runs against

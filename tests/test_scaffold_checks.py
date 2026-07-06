@@ -6,6 +6,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 from agent_native_setup import cli
 from agent_native_setup.config import WizardConfig
 from agent_native_setup.generators import agents, docs
@@ -212,7 +214,7 @@ def test_no_docs_omits_the_helper_tests(tmp_path: Path) -> None:
 def test_tools_tests_runner_wired_at_all_three_layers(tmp_path: Path) -> None:
     # Even a non-Python project gets the runner — it needs only `python`, not pytest.
     root = _build(tmp_path, languages=["node"])
-    runner = "python -m unittest discover -s tools/checks"
+    runner = "python3 -m unittest discover -s tools/checks"
     assert runner in (root / "Makefile").read_text(encoding="utf-8")  # command surface
     pc = (root / ".pre-commit-config.yaml").read_text(encoding="utf-8")
     assert "id: tools-checks-tests" in pc and runner in pc  # pre-push hook
@@ -229,13 +231,13 @@ def test_pre_push_test_hooks_scrub_git_env(tmp_path: Path) -> None:
     )
     scrub = "env -u GIT_DIR -u GIT_WORK_TREE -u GIT_INDEX_FILE "
     assert f"entry: {scrub}pytest" in pc  # python test hook
-    assert f"entry: {scrub}python -m unittest discover -s tools/checks" in pc  # tools tests
-    assert "entry: python tools/checks/sync_rfc_status.py" in pc  # git-aware hook NOT scrubbed
+    assert f"entry: {scrub}python3 -m unittest discover -s tools/checks" in pc  # tools tests
+    assert "entry: python3 tools/checks/sync_rfc_status.py" in pc  # git-aware hook NOT scrubbed
 
 
 def test_tools_tests_runner_omitted_without_docs(tmp_path: Path) -> None:
     root = _build(tmp_path, languages=["node"], include_docs=False)
-    runner = "python -m unittest discover -s tools/checks"
+    runner = "python3 -m unittest discover -s tools/checks"
     assert runner not in (root / "Makefile").read_text(encoding="utf-8")
     assert runner not in (root / ".pre-commit-config.yaml").read_text(encoding="utf-8")
     assert runner not in (root / ".github/workflows/quality.yml").read_text(encoding="utf-8")
@@ -262,3 +264,51 @@ def test_sync_rfc_status_stays_under_default_line_length(tmp_path: Path) -> None
     body = (root / "tools/checks/sync_rfc_status.py").read_text(encoding="utf-8")
     too_long = [line for line in body.splitlines() if len(line) > 88]
     assert not too_long, f"lines over 88 cols: {too_long}"
+
+
+# --- the scaffold passes its own gate (real-run onboarding feedback, 2026-07-06) ------------
+
+
+def test_generated_python_passes_the_generated_format_check(tmp_path: Path) -> None:
+    # The runbook says "run the gate to establish a clean baseline" — so the shipped files
+    # must already pass the shipped formatter (a fresh scaffold failed ruff format on
+    # tools/checks/test_rfc_needed.py in the wild).
+    pytest.importorskip("ruff", reason="ruff not installed in this environment")
+    root = _build(tmp_path, languages=["python"])
+    result = subprocess.run(
+        [sys.executable, "-m", "ruff", "format", "--check", "."],
+        cwd=root,
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0, f"shipped files fail their own format gate:\n{result.stdout}"
+
+
+def test_manifest_is_prettier_ignored(tmp_path: Path) -> None:
+    # The machine-managed provenance manifest failed `prettier --check` in the wild —
+    # it's not the formatter's business.
+    root = _build(tmp_path, languages=["node"])
+    assert ".agent-native-setup.json" in (root / ".prettierignore").read_text(encoding="utf-8")
+
+
+def test_pyproject_ships_the_tomllib_mypy_override(tmp_path: Path) -> None:
+    # Stdlib tomllib lacks a py.typed marker under some mypy releases (seen: mypy 2.1.0 on
+    # Python 3.14) — without the override, `make typecheck` fails on rfc_needed.py's import.
+    root = _build(tmp_path, languages=["python"])
+    body = (root / "pyproject.toml").read_text(encoding="utf-8")
+    assert 'module = "tomllib"' in body and "ignore_missing_imports = true" in body
+
+
+def test_no_bare_python_invocations_in_local_surfaces(tmp_path: Path) -> None:
+    # On modern macOS only `python3` is on PATH — every local invocation the scaffold
+    # ships (runner targets, hook entries, the settings hook, the runbook) must use it.
+    # CI steps may keep `python`: setup-python guarantees both there.
+    root = _build(tmp_path, languages=["python", "node"])
+    for rel in ("Makefile", ".pre-commit-config.yaml", ".claude/settings.json", "ONBOARDING.md"):
+        body = (root / rel).read_text(encoding="utf-8")
+        bare = [
+            line
+            for line in body.splitlines()
+            if "python " in line and "python3 " not in line and "python -u" not in line
+        ]
+        assert not bare, f"{rel} still invokes bare `python`: {bare}"
