@@ -290,11 +290,7 @@ def _onboarding_prelude() -> list[str]:
         '+ ([".gemini/commands/onboard.toml"] if "gemini" in answers.tools else []) %}'
     )
     A('{% set _tpaths = "`" ~ (_trigs | join("`, `")) ~ "`" %}')
-    A(
-        "{% set r_onboard = "
-        + _jexpr(ob.R_ONBOARD, paths="_tpaths")
-        + ' if _trigs else "" %}'
-    )
+    A("{% set r_onboard = " + _jexpr(ob.R_ONBOARD, paths="_tpaths") + ' if _trigs else "" %}')
     A("{% set _r = [" + _j(ob.R_DELETE) + ", r_banner, r_onboard] | select | list %}")
     A(
         "{% set cleanup = _r[0] if _r | length == 1 else "
