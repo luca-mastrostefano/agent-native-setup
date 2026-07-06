@@ -331,15 +331,15 @@ def build(
         from datetime import date
 
         resolved = answers if answers is not None else profiles.default_answers(profile)
-        # @DATE@ paths substitute once at scaffold and replay on update (RFC 2026-07-05 §6):
-        # the stamp is recorded (only when used) so the path never drifts under a refresh.
+        # The scaffold stamp (@DATE@ paths AND env.date bodies) is recorded unconditionally
+        # and replayed on update, so dated paths and dated content never drift (review of
+        # #54: a body-only {{ env.date }} would otherwise re-stamp every refresh).
         stamp = profile_date or f"{date.today():%Y-%m-%d}"
         profile_block = {
             **profile.manifest_block(),
             "files": profiles.apply(profile, config, sc, resolved, applied_on=stamp),
         }
-        if any("@DATE@" in rel for rel, _ in profile.template_files()):
-            profile_block["date"] = stamp
+        profile_block["date"] = stamp
         if resolved:
             profile_block["answers"] = resolved
     git_dir = config.target / ".git"

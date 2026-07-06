@@ -1608,13 +1608,30 @@ def test_date_token_substitutes_and_replays_on_update(tmp_path: Path) -> None:
     assert m2["profile"]["date"] == old_day  # the stamp survives the refresh
 
 
-def test_no_date_key_recorded_when_token_unused(tmp_path: Path) -> None:
-    prof = _make_profile(tmp_path, "team", {"docs/plain.md": "x\n"})
+def test_date_is_always_recorded_and_env_date_replays(tmp_path: Path) -> None:
+    # Recorded unconditionally (review of #54): a body-only {{ env.date }} must replay the
+    # recorded stamp on update, not re-stamp with update-day.
+    prof = _make_profile(
+        tmp_path, "team", {"docs/stamped.md.j2": "born {{ env.date }}"}, by_path=True
+    )
     target = tmp_path / "proj"
     target.mkdir()
     cli.build(_config(target), Scaffolder(target), prof)
     m = json.loads((target / MANIFEST_PATH).read_text(encoding="utf-8"))
-    assert "date" not in m["profile"]
+    from datetime import date
+
+    assert m["profile"]["date"] == f"{date.today():%Y-%m-%d}"
+    m["profile"]["date"] = "2020-01-01"  # simulate an old scaffold
+    stamped = target / "docs" / "stamped.md"
+    stamped.write_text("born 2020-01-01", encoding="utf-8")
+    m["files"]["docs/stamped.md"] = (
+        "sha256:" + __import__("hashlib").sha256(b"born 2020-01-01").hexdigest()
+    )
+    (target / MANIFEST_PATH).write_text(json.dumps(m, indent=2), encoding="utf-8")
+    _commit(target)
+    _bump_profile(prof.root, version="1.0.1", files={"docs/other.md": "y\n"})
+    assert update.run(target, dry_run=False, console=_Console()) == 0
+    assert stamped.read_text(encoding="utf-8") == "born 2020-01-01"  # replayed, no drift
 
 
 def test_link_target_resolving_outside_is_refused(tmp_path: Path) -> None:

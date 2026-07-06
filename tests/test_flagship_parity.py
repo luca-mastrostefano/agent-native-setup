@@ -252,9 +252,11 @@ def test_flagship_matches_generators_on_ported_files(
 
     # Seed-set parity (review of #53): a preserve/seed-class file whose protection status
     # differs is invisible to tree comparison but makes update clobber a user's file later.
-    excluded_seed = EXCLUDED | {"ONBOARDING.md"}  # transient: written, never in seed/manifest
-    gen_seed = {r for r in gen_sc.seed if r not in excluded_seed}
-    flag_seed = {r for r in flag_sc.seed if r not in excluded_seed}
+    # Transient files must never be seeded on EITHER side (excluding one would hide
+    # exactly the one-sided regression this check exists for — review of #54).
+    assert "ONBOARDING.md" not in gen_sc.seed | flag_sc.seed
+    gen_seed = {r for r in gen_sc.seed if r not in EXCLUDED}
+    flag_seed = {r for r in flag_sc.seed if r not in EXCLUDED}
     assert gen_seed == flag_seed, f"[{cell}] seed sets differ: {gen_seed ^ flag_seed}"
 
     # Whole-tree equality (stage A complete): every path, byte for byte, both directions.
