@@ -1,13 +1,7 @@
-"""Stage-A parity harness (RFC 2026-07-05 §7-A): the flagship profile must reproduce the
-generators' output byte-for-byte before it can replace them.
-
-The gate is **incremental**: ``PORTED`` is the set of output paths already extracted into
-``profiles/agent-native-baseline/templates/``. For every matrix cell and every ported path,
-either both trees contain identical bytes or both lack the file (absence parity — the
-conditional-inclusion cases). Coverage is reported on every run; stage A completes when
-``PORTED`` equals the full generated tree and the assertion flips to whole-tree equality.
-The generators remain the source of truth until then (``build.py`` derives verbatim ported
-files from their constants, so drift in either direction fails here).
+"""Stage-A parity gate (RFC 2026-07-05 §7-A) — COMPLETE: the flagship profile reproduces
+the generators' output byte-for-byte, whole-tree, across every matrix cell. The generators
+remain the source of truth until stage B; ``build.py`` derives the templates from them, so
+drift in either direction fails here.
 
 Known out-of-scope behavior (RFC §7-A enumeration): the **AGENTS.md brownfield fold** —
 both trees build into empty dirs, so the generators' merge of a pre-existing
@@ -30,60 +24,6 @@ from agent_native_setup.generators import docs as docs_gen
 from agent_native_setup.scaffold import Scaffolder
 
 FLAGSHIP = Path(__file__).resolve().parent.parent / "profiles" / "agent-native-baseline"
-
-# Output paths already extracted — grow this set file by file; never shrink it.
-PORTED = {
-    "AGENTS.md",
-    ".claude/README.md",
-    ".claude/agents/planner.md",
-    ".claude/agents/rfc-reviewer.md",
-    ".claude/commands/review.md",
-    ".claude/commands/rfc.md",
-    ".claude/commands/update-agent-scaffolding.md",
-    ".cursor/rules/agent-contract.mdc",
-    ".editorconfig",
-    ".git-blame-ignore-revs",
-    ".gitattributes",
-    ".gitignore",
-    ".github/dependabot.yml",
-    "pyproject.toml",
-    "tests/test_architecture.py",
-    "package.json",
-    "tsconfig.json",
-    "eslint.config.mjs",
-    ".prettierrc.json",
-    ".prettierignore",
-    ".golangci.yml",
-    "rustfmt.toml",
-    ".htmlhintrc",
-    ".github/PULL_REQUEST_TEMPLATE.md",
-    ".github/copilot-instructions.md",
-    "SECURITY.md",
-    "CLAUDE.md",
-    "GEMINI.md",
-    "CONTRIBUTING.md",
-    "INSTRUCTION.md",
-    ".claude/agents/code-reviewer.md",
-    ".claude/commands/onboard.md",
-    "ONBOARDING.md",
-    "README.md",
-    "docs/architecture/overview.md",
-    "docs/improvements.md",
-    "docs/README.md",
-    "docs/rfc/TEMPLATE.md",
-    "docs/rfc/proposed/.gitkeep",
-    "docs/rfc/active/.gitkeep",
-    "docs/rfc/superseded/.gitkeep",
-    "docs/rfc/retired/.gitkeep",
-    "tools/checks/docs_sync.py",
-    "tools/checks/rfc_needed.py",
-    "tools/checks/sync_rfc_status.py",
-    "tools/checks/test_docs_sync.py",
-    "tools/checks/test_rfc_needed.py",
-    "tools/checks/test_sync_rfc_status.py",
-    "tools/checks/test_tests_needed.py",
-    "tools/checks/tests_needed.py",
-}
 
 # Paths the two trees legitimately never compare (provenance differs by design).
 EXCLUDED = {".agent-native-setup.json"}
@@ -310,23 +250,22 @@ def test_flagship_matches_generators_on_ported_files(
         profile_date=PINNED_DAY,
     )
 
-    # Seed-set parity (review of #53): a preserve/seed-class file missing from the flagship's
-    # seed list is invisible to tree comparison but makes update clobber a user's file later.
-    gen_seed = {r for r in gen_sc.seed if r in PORTED}
-    flag_seed = {r for r in flag_sc.seed if r in PORTED}
+    # Seed-set parity (review of #53): a preserve/seed-class file whose protection status
+    # differs is invisible to tree comparison but makes update clobber a user's file later.
+    excluded_seed = EXCLUDED | {"ONBOARDING.md"}  # transient: written, never in seed/manifest
+    gen_seed = {r for r in gen_sc.seed if r not in excluded_seed}
+    flag_seed = {r for r in flag_sc.seed if r not in excluded_seed}
     assert gen_seed == flag_seed, f"[{cell}] seed sets differ: {gen_seed ^ flag_seed}"
 
+    # Whole-tree equality (stage A complete): every path, byte for byte, both directions.
     gen_tree, flag_tree = _tree(gen_dir), _tree(flag_dir)
-    for rel in sorted(PORTED):
-        in_gen, in_flag = rel in gen_tree, rel in flag_tree
-        assert in_gen == in_flag, (
-            f"[{cell}] {rel}: present in {'generators' if in_gen else 'flagship'} only"
-        )
-        if in_gen:
-            assert gen_tree[rel] == flag_tree[rel], f"[{cell}] {rel}: bytes differ"
-
-    covered = len([r for r in gen_tree if r in PORTED])
-    print(f"[parity:{cell}] ported {covered}/{len(gen_tree)} generated files")
+    assert set(gen_tree) == set(flag_tree), (
+        f"[{cell}] tree mismatch: only-generators={sorted(set(gen_tree) - set(flag_tree))} "
+        f"only-flagship={sorted(set(flag_tree) - set(gen_tree))}"
+    )
+    for rel in sorted(gen_tree):
+        assert gen_tree[rel] == flag_tree[rel], f"[{cell}] {rel}: bytes differ"
+    print(f"[parity:{cell}] whole tree identical: {len(gen_tree)} paths")
 
 
 def test_flagship_profile_loads_and_validates() -> None:

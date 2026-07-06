@@ -1,0 +1,39 @@
+{% if answers.include_quality and not env.existing_runner and answers.runner == "make" %}
+{% set _ships = answers.include_docs and "python" not in answers.languages %}
+{% set ns = namespace(o=[], gd=[], ph=[]) %}
+{% set _m = {"python": ["ruff check ."], "node": ["npx eslint ."], "go": ["golangci-lint run"], "rust": ["cargo clippy"], "html": ["npx --yes htmlhint@1.9.2 \"**/*.html\""]} %}
+{% set ns.c_lint = [] %}{% for _l in answers.languages %}{% for _c in _m.get(_l, []) %}{% set ns.c_lint = ns.c_lint + [_c] %}{% endfor %}{% endfor %}
+{% if _ships %}{% set ns.c_lint = ns.c_lint + ["ruff check tools/"] %}{% endif %}
+{% set _m = {"python": ["ruff format ."], "node": ["npx prettier --write ."], "go": ["gofmt -w ."], "rust": ["cargo fmt"]} %}
+{% set ns.c_format = [] %}{% for _l in answers.languages %}{% for _c in _m.get(_l, []) %}{% set ns.c_format = ns.c_format + [_c] %}{% endfor %}{% endfor %}
+{% if _ships %}{% set ns.c_format = ns.c_format + ["ruff format tools/"] %}{% endif %}
+{% set _m = {"python": ["ruff format --check ."], "node": ["npx prettier --check ."], "go": ["! gofmt -l . | grep -q ."], "rust": ["cargo fmt --check"]} %}
+{% set ns.c_format_check = [] %}{% for _l in answers.languages %}{% for _c in _m.get(_l, []) %}{% set ns.c_format_check = ns.c_format_check + [_c] %}{% endfor %}{% endfor %}
+{% if _ships %}{% set ns.c_format_check = ns.c_format_check + ["ruff format --check tools/"] %}{% endif %}
+{% set _m = {"python": ["mypy ."], "node": ["if git ls-files '*.ts' '*.tsx' | grep -q .; then npx tsc --noEmit; else echo \"no TypeScript yet\"; fi"], "go": ["go vet ./..."], "rust": ["cargo check"]} %}
+{% set ns.c_typecheck = [] %}{% for _l in answers.languages %}{% for _c in _m.get(_l, []) %}{% set ns.c_typecheck = ns.c_typecheck + [_c] %}{% endfor %}{% endfor %}
+{% set _m = {"python": ["pytest"], "node": ["npm test --if-present"], "go": ["go test ./..."], "rust": ["cargo test"]} %}
+{% set ns.c_test = [] %}{% for _l in answers.languages %}{% for _c in _m.get(_l, []) %}{% set ns.c_test = ns.c_test + [_c] %}{% endfor %}{% endfor %}
+{% if answers.include_docs %}{% set ns.c_test = ns.c_test + ["python -m unittest discover -s tools/checks"] %}{% endif %}
+{% set _setup_m = {"node": "npm install"} %}
+{% set ns.setup = [] %}{% for _l in answers.languages %}{% if _l in _setup_m %}{% set ns.setup = ns.setup + [_setup_m[_l]] %}{% endif %}{% endfor %}
+{% set ns.ph = ["help"] + (["install"] if answers.hooks else []) + (["bootstrap"] if ns.setup else []) + ["lint", "format"] %}
+{% if ns.c_format_check %}{% set ns.ph = ns.ph + ["format-check"] %}{% endif %}
+{% if ns.c_typecheck %}{% set ns.ph = ns.ph + ["typecheck"] %}{% endif %}
+{% if ns.c_test %}{% set ns.ph = ns.ph + ["test"] %}{% endif %}
+{% set ns.ph = ns.ph + ["quality"] %}{% if answers.include_docs %}{% set ns.ph = ns.ph + ["rfc-sync", "improvement"] %}{% endif %}
+{% set ns.o = ns.o + [".PHONY: " ~ (ns.ph | join(" ")), ""] %}
+{% set ns.o = ns.o + ["help: ## Show available targets", "\t@grep -E '^[a-zA-Z0-9_.-]+:.*## ' $(MAKEFILE_LIST) | sed -E 's/:.*## /  /'", ""] %}
+{% if answers.hooks %}{% set ns.o = ns.o + ["install: ## " ~ "set up git hooks (once)"] %}{% for _c in ["pre-commit install"] %}{% set ns.o = ns.o + ["	" ~ _c] %}{% endfor %}{% set ns.o = ns.o + [""] %}{% endif %}
+{% if ns.setup %}{% set ns.o = ns.o + ["bootstrap:" ~ ((" " ~ (("install" if answers.hooks else ""))) if (("install" if answers.hooks else "")) else "") ~ " ## " ~ ("first-run setup: git hooks + fetch deps" if answers.hooks else "first-run setup: fetch deps")] %}{% for _c in ns.setup %}{% set ns.o = ns.o + ["	" ~ _c] %}{% endfor %}{% set ns.o = ns.o + [""] %}{% endif %}
+{% set ns.o = ns.o + ["lint: ## " ~ "run linters"] %}{% for _c in (ns.c_lint or ["true"]) %}{% set ns.o = ns.o + ["	" ~ _c] %}{% endfor %}{% set ns.o = ns.o + [""] %}
+{% set ns.o = ns.o + ["format: ## " ~ "auto-format"] %}{% for _c in (ns.c_format or ["true"]) %}{% set ns.o = ns.o + ["	" ~ _c] %}{% endfor %}{% set ns.o = ns.o + [""] %}
+{% set ns.gd = ["lint"] %}
+{% if ns.c_format_check %}{% set ns.o = ns.o + ["format-check: ## " ~ "check formatting (read-only)"] %}{% for _c in ns.c_format_check %}{% set ns.o = ns.o + ["	" ~ _c] %}{% endfor %}{% set ns.o = ns.o + [""] %}{% set ns.gd = ns.gd + ["format-check"] %}{% endif %}
+{% if ns.c_typecheck %}{% set ns.o = ns.o + ["typecheck: ## " ~ "type-check"] %}{% for _c in ns.c_typecheck %}{% set ns.o = ns.o + ["	" ~ _c] %}{% endfor %}{% set ns.o = ns.o + [""] %}{% set ns.gd = ns.gd + ["typecheck"] %}{% endif %}
+{% if ns.c_test %}{% set ns.o = ns.o + ["test: ## " ~ "run tests"] %}{% for _c in ns.c_test %}{% set ns.o = ns.o + ["	" ~ _c] %}{% endfor %}{% set ns.o = ns.o + [""] %}{% set ns.gd = ns.gd + ["test"] %}{% endif %}
+{% set ns.o = ns.o + ["quality:" ~ ((" " ~ ((ns.gd | join(" ")))) if ((ns.gd | join(" "))) else "") ~ " ## " ~ "full local gate"] %}{% for _c in [] %}{% set ns.o = ns.o + ["	" ~ _c] %}{% endfor %}{% set ns.o = ns.o + [""] %}
+{% if answers.include_docs %}{% set ns.o = ns.o + ["rfc-sync: ## " ~ "move RFCs into the folder matching their Status"] %}{% for _c in ["python tools/checks/sync_rfc_status.py"] %}{% set ns.o = ns.o + ["	" ~ _c] %}{% endfor %}{% set ns.o = ns.o + [""] %}{% set ns.o = ns.o + ["improvement: ## " ~ "append a commit+date-stamped idea to docs/improvements.md (make improvement TEXT=\"<idea>\")"] %}{% for _c in ["sha=$$(git rev-parse --short HEAD 2>/dev/null); echo \"- [$${sha:+$$sha \u00b7 }$$(date +%F)] $(TEXT)\" >> docs/improvements.md"] %}{% set ns.o = ns.o + ["	" ~ _c] %}{% endfor %}{% set ns.o = ns.o + [""] %}{% endif %}
+{{ ((ns.o | join("
+")) | trim) ~ "
+" }}{% endif %}

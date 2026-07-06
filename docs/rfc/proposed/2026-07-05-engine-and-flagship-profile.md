@@ -169,7 +169,9 @@ both load-bearing for parity (§7):
 `update`: every existing project's manifest records "tool version X generated these files"
 and refreshes through `cli.build`'s generators. Sequencing:
 
-- **A. Parity harness first.** A test renders the flagship profile and the current
+- **A. Parity harness first — COMPLETE (2026-07-06):** whole-tree byte parity across the
+  matrix; the gate flipped from the incremental allowlist to whole-tree equality.
+  Original plan: A test renders the flagship profile and the current
   generators against the same configs — **clock pinned** (the dated RFC path), across the
   full matrix (languages × tools × part toggles × existing-repo modes) — and asserts
   **byte-identical trees, symlinks included** (via §6 `links`). Any exception must be

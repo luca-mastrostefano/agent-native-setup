@@ -68,10 +68,12 @@ re-fetches) the same way later.
 `runner`, `adoption`, `ai_tools`, the `has_quality`/`has_ci`/… toggles, and the sensed facts
 `is_git` (is/will be a git repo), `os` (`darwin`/`linux`/`windows`, `""` = other/unsensed),
 `has_readme` / `has_agents_md` / `has_ci_config` (a `README.md` / `AGENTS.md` /
-`.github/workflows/` directory present before scaffolding) — sensed once at
+`.github/workflows/` directory present before scaffolding), and `date` (the scaffold date —
+the same stamp `@DATE@` paths use, replayed on update) — sensed once at
 scaffold, recorded in the manifest snapshot, and **replayed by `update`, never re-sensed**,
 per RFC 2026-07-05 §2) — both
-namespaced so they can never shadow a base key. The env contract is **add-only**: renaming or
+namespaced so they can never shadow a base key. Templates also get a `to_json` filter
+(byte-equal to `json.dumps(indent=2)` — unlike `tojson`, no HTML escaping). The env contract is **add-only**: renaming or
 removing a key is a breaking engine change, gated like a breaking scaffold update. All rendering goes through Jinja's
 `SandboxedEnvironment` (`scaffold.py`): profile templates are untrusted input.
 

@@ -583,6 +583,9 @@ def apply(
     ctx = _context(config, answers)
     target_root = sc.target.resolve()
     stamp = applied_on or f"{date.today():%Y-%m-%d}"
+    # The scaffold date, as a fact templates can read (dated docs) — same stamp as @DATE@
+    # paths, recorded as profile.date and replayed on update, so it never drifts.
+    ctx["env"]["date"] = stamp
     seed_set = {s.replace("@DATE@", stamp) for s in profile.seed}
     transient_set = {t.replace("@DATE@", stamp) for t in profile.transient}
     owned: list[str] = []
@@ -795,6 +798,9 @@ def _validate(args: argparse.Namespace, console: Any) -> int:
     ctx = _context(
         WizardConfig(project_name="example", output_dir=root, languages=[]),
         default_answers(prof),
+    )
+    ctx["env"]["date"] = (
+        "0000-00-00"  # apply() provides the real stamp; strict-render needs a value
     )
     files = prof.template_files()
     for out_rel, src in files:
