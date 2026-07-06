@@ -1,0 +1,25 @@
+{% if answers.include_quality and "python" in answers.languages %}
+{% set name = project_name %}
+[project]
+name = "{{ slug }}"
+version = "0.1.0"
+requires-python = ">=3.10"
+
+# Ruff: linter + formatter for Python. https://docs.astral.sh/ruff/
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "W", "B", "RUF"]
+
+# Mypy: static type checking. https://mypy.readthedocs.io/
+[tool.mypy]
+python_version = "3.10"
+warn_redundant_casts = true
+warn_unused_ignores = true
+
+# Pytest. https://docs.pytest.org/
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+{% endif %}

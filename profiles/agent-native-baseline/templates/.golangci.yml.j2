@@ -1,0 +1,11 @@
+{% if answers.include_quality and "go" in answers.languages %}
+{% set name = project_name %}
+# golangci-lint config. https://golangci-lint.run/
+linters:
+  enable:
+    - gofmt
+    - govet
+    - staticcheck
+    - errcheck
+    - ineffassign
+{% endif %}

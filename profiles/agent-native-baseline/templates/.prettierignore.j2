@@ -1,0 +1,6 @@
+{% if answers.include_quality and "node" in answers.languages %}
+{% set name = project_name %}
+dist/
+package-lock.json
+*.md
+{% endif %}

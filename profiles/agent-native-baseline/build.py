@@ -374,6 +374,93 @@ def _agents_prelude() -> list[str]:
     return L
 
 
+def _matrix_ports() -> list[tuple[str, str | None, str, list[str]]]:
+    """The registry-driven config files: per-language configs verbatim-rendered, plus
+    .gitignore and dependabot.yml assembled in the prelude from the SAME sources the
+    generators compose them from (constants + a build-time call of ci._dependabot)."""
+    import json as _json
+    from types import SimpleNamespace
+
+    ports: list[tuple[str, str | None, str, list[str]]] = []
+    # Per-language config files (quality.generate): rendered with slug/name.
+    for key, lang in REGISTRY.items():
+        for path, content in lang.config_files.items():
+            ports.append(
+                (
+                    path,
+                    f'{_QUALITY} and "{key}" in answers.languages',
+                    content,
+                    ["{% set name = project_name %}"],
+                )
+            )
+    # .gitignore (quality.generate): base + per-language lines in SELECTED order + extras.
+    gi_by_lang = {k: list(lang.gitignore) for k, lang in REGISTRY.items() if lang.gitignore}
+    gitignore_prelude = [
+        "{% set ns = namespace(g=" + _json.dumps(quality.BASE_GITIGNORE) + ") %}",
+        "{% set _gi = " + _json.dumps(gi_by_lang) + " %}",
+        "{% for _l in answers.languages %}{% set ns.g = ns.g + _gi.get(_l, []) %}{% endfor %}",
+        '{% if answers.include_docs and "python" not in answers.languages %}'
+        "{% set ns.g = ns.g + " + _json.dumps(quality.TOOLS_PY_GITIGNORE) + " %}{% endif %}",
+        '{% if "claude" in answers.tools %}{% set ns.g = ns.g + ['
+        + _j(quality.CLAUDE_LOCAL_SETTINGS_LINE)
+        + "] %}{% endif %}",
+    ]
+    ports.append((".gitignore", _QUALITY, '{{ ns.g | join("\n") }}\n', gitignore_prelude))
+    # dependabot.yml (ci.generate): entries derived by CALLING ci._dependabot at build time —
+    # the actions entry and each ecosystem's entry, in both security_only variants.
+    base_plain = ci._dependabot([], False)
+    base_sec = ci._dependabot([], True)
+    prefix_plain = "version: 2\nupdates:\n"
+    sec_header = base_sec[: base_sec.index("version: 2")]
+    actions_plain = base_plain[len(prefix_plain) :]
+    actions_sec = base_sec[len(sec_header) + len(prefix_plain) :]
+    # Slicing self-check: a shape change in _dependabot must fail HERE, not as opaque
+    # byte diffs across matrix cells.
+    assert prefix_plain + actions_plain == base_plain
+    assert sec_header + prefix_plain + actions_sec == base_sec
+    eco_by_lang: dict[str, list[str]] = {}
+    for key, lang in REGISTRY.items():
+        if not lang.dependabot_ecosystem:
+            continue
+        fake = SimpleNamespace(dependabot_ecosystem=lang.dependabot_ecosystem)
+        plain_full = ci._dependabot([fake], False)
+        sec_full = ci._dependabot([fake], True)
+        entry_plain = plain_full[len(prefix_plain) + len(actions_plain) :]
+        entry_sec = sec_full[len(sec_header) + len(prefix_plain) + len(actions_sec) :]
+        assert prefix_plain + actions_plain + entry_plain == plain_full
+        assert sec_header + prefix_plain + actions_sec + entry_sec == sec_full
+        # (_dependabot's cross-language ecosystem dedupe is latent — no two registry
+        # languages share an ecosystem — mirroring the other latent dedupes noted in the matrix.)
+        eco_by_lang[key] = [entry_plain, entry_sec]
+    dep_prelude = [
+        '{% set _sec = env.existing_project and answers.adopt != "full" %}',
+        "{% set _i = 1 if _sec else 0 %}",
+        "{% set _eco = " + _json.dumps(eco_by_lang) + " %}",
+        "{% set ns = namespace(d=[]) %}",
+        "{% for _l in answers.languages %}"
+        "{% if _l in _eco %}{% set ns.d = ns.d + [_eco[_l][_i]] %}{% endif %}"
+        "{% endfor %}",
+        "{% set _head = ("
+        + _j(sec_header)
+        + ' if _sec else "") ~ '
+        + _j(prefix_plain)
+        + " ~ ("
+        + _j(actions_sec)
+        + " if _sec else "
+        + _j(actions_plain)
+        + ") %}",
+    ]
+    ports.append(
+        (
+            ".github/dependabot.yml",
+            _GHA,
+            '{{ _head ~ (ns.d | join("")) }}',
+            dep_prelude,
+        )
+    )
+    return ports
+
+
 def _rendered_ports() -> list[tuple[str, str | None, str, list[str]]]:
     """(path, gate, constant, prelude-set-lines) for generator templates that RENDER: the
     prelude maps each template variable onto answers/env (and bakes generator-computed
@@ -528,7 +615,7 @@ def main(argv: list[str] | None = None) -> int:
         path.write_text(body, encoding="utf-8")
         built.append(rel)
         print(f"built {rel}")
-    for out_rel, cond, content, prelude in _rendered_ports():
+    for out_rel, cond, content, prelude in _rendered_ports() + _matrix_ports():
         # A rendering template: prelude {% set %} lines map its variables onto answers/env;
         # trim_blocks consumes the newline after each block tag, so the body stays byte-exact.
         parts = []
