@@ -55,6 +55,7 @@ demands.
 
 ```bash
 # Run it once, no install (uv):
+brew install uv   # if you don't have uv yet (other platforms: docs.astral.sh/uv)
 uvx --from git+https://github.com/luca-mastrostefano/agent-native-setup agent-native-setup -o ./my-app
 
 # …or install the `agent-native-setup` command (pick one):
