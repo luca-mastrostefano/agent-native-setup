@@ -35,6 +35,10 @@ tasks:
     desc: fetch + validate every community-index entry (needs network)
     cmds:
       - python tools/checks/check_index.py
+  check-baseline:
+    desc: verify the vendored flagship matches its pinned tag (needs network; --offline in tests)
+    cmds:
+      - python tools/checks/check_baseline_pin.py
   improvement:
     desc: append a commit+date-stamped idea to docs/improvements.md (task improvement -- "<idea>")
     cmds:

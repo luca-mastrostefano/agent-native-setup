@@ -189,7 +189,11 @@ and refreshes through `cli.build`'s generators. Sequencing:
   recipe, every profile is the complete setup, `save` snapshots the whole recorded tree
   (symlinks as `links`, the dated RFC via `@DATE@`), pre-B2 composed manifests degrade to
   frozen-overlay-over-updating-base until C's migration, and the wizard flags are marked
-  as deprecated `--answer` aliases. The repo split remains.* Original plan: New scaffolds resolve the vendored
+  as deprecated `--answer` aliases. The repo split landed last (B3, 2026-07-06):
+  the flagship lives at github.com/luca-mastrostefano/agent-native-baseline (tagged
+  v0.1.0, listed in the community index); the engine keeps a pin-verified vendored copy
+  (`profiles/baseline-pin.json` — tag + content hash, enforced offline by the test suite
+  and against the live tag by the index-check workflow). Stage B is COMPLETE.* Original plan: New scaffolds resolve the vendored
   flagship through the one profile pipeline (`resolve → consent → gather_answers → apply`);
   the compose path and the `extends` field go in the same release (`profile validate`
   rejects the field with a message pointing at the fork recipe) — which forces `profile

@@ -48,9 +48,12 @@ a refresh.
 
 `--profile` / `profile add` / `profile show` accept, in this order of precedence:
 
-1. `default` / empty → `None` (no overlay) — and with **no `--profile` at all, the engine
-   scaffolds the vendored flagship** (`builtin:agent-native-baseline`, trusted like any
-   local artifact, wheel-embedded; the wizard's flags/questions translate onto its prompts);
+1. `default` / empty → `None` (the legacy bare generators, kept until stage D) — and with
+   **no `--profile` at all, the engine scaffolds the vendored flagship**
+   (`builtin:agent-native-baseline`: a pin-verified copy of the tagged release of
+   [its own repo](https://github.com/luca-mastrostefano/agent-native-baseline), embedded in
+   the wheel and recorded in `profiles/baseline-pin.json`; the wizard's flags/questions
+   translate onto its prompts);
 2. a `git+https://…` / `git+ssh://…` URL (optionally `@ref`, `#subdir=dir`) → fetched into
    `~/.cache/agent-native-setup/profiles/` (pinned refs cached forever, branches re-fetched,
    stale cache reused on fetch failure with a warning);

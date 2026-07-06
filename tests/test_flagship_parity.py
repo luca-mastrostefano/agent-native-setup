@@ -266,6 +266,23 @@ def test_flagship_profile_loads_and_validates() -> None:
     assert profiles._validate(argparse.Namespace(path=str(FLAGSHIP)), _Console()) == 0
 
 
+def test_vendored_flagship_matches_its_pin() -> None:
+    """The offline half of the pin contract (RFC 2026-07-05 §5, stage B3): the vendored copy
+    the wheel embeds must hash to exactly what profiles/baseline-pin.json records, and carry
+    the pinned tag's version — so a template change can't ship without a coordinated re-tag
+    of the profile repo and pin bump. The network half (the tag itself still resolves to this
+    artifact) runs in the index-check workflow."""
+    import json
+
+    pin = json.loads((FLAGSHIP.parent / "baseline-pin.json").read_text(encoding="utf-8"))
+    prof = profiles.load(FLAGSHIP)
+    assert profiles.content_hash(prof) == pin["content_hash"], (
+        "vendored flagship != baseline-pin.json — re-tag the profile repo and update the pin"
+    )
+    assert f"v{prof.version}" == pin["tag"]
+    assert pin["url"].startswith("git+https://") and f"@{pin['tag']}" in pin["url"]
+
+
 def test_built_templates_are_current(tmp_path: Path) -> None:
     """`build.py` output is committed — a generator-constant change without a rebuild fails
     here with the exact command to run. Builds into a scratch dir: the working tree is never
