@@ -1,11 +1,13 @@
 # Profiles
 
-A **profile** is a packaged, versioned setup a team or community ships on top of (or instead
-of) the default scaffold. This is the subsystem map for `src/agent_native_setup/profiles.py`
-and its integration points; [`overview.md`](./overview.md) is the repo-wide index. The RFC
-trail: 2026-06-23-scaffolding-profiles (umbrella), 2026-06-26-profile-prompts,
-2026-07-03-profile-safety / -profile-save / -ecosystem-core, 2026-07-04-profile-fetch /
--community-index / -profile-extends.
+A **profile** is a packaged, versioned, **complete** project setup — one project = one
+profile; the engine's own scaffold is just the vendored flagship profile
+(`agent-native-baseline`). This is the subsystem map for
+`src/agent_native_setup/profiles.py` and its integration points; [`overview.md`](./overview.md)
+is the repo-wide index. The RFC trail: 2026-06-23-scaffolding-profiles (umbrella),
+2026-06-26-profile-prompts, 2026-07-03-profile-safety / -profile-save / -ecosystem-core,
+2026-07-04-profile-fetch / -community-index / -profile-extends, 2026-07-05-engine-and-flagship
+(the inversion: no composition, `env` = sensed facts only).
 
 ## Format
 
@@ -13,15 +15,15 @@ A profile is a directory:
 
 ```
 my-profile/
-  profile.json   # name, version (own semver), extends, description, tags, seed,
+  profile.json   # name, version (own semver), description, tags, seed,
                  # prompts, onboarding, session_start
   templates/     # the files it ships; paths relative to the project root
   README.md, AGENTS.md, …   # meta — never ships; only profile.json + templates/ do
 ```
 
-`extends: "default"` composes: the wizard generates its normal output, then each template file
-overlays it (same path supersedes). `extends: null` is **standalone**: the default generators
-are skipped and the profile provides everything. Templates ending in `.j2` are rendered
+A profile ships the **complete** setup — there is no `extends`/composition (removed by RFC
+2026-07-05 §4; `load` rejects the field with a pointer at the fork recipe below). Templates
+ending in `.j2` are rendered
 (Jinja, `.j2` stripped; one that renders empty is skipped — conditional inclusion); everything
 else ships verbatim, so literal `${{ … }}` is safe. Each shipped file is **managed**
 (refreshed by `update`) unless listed in `seed` (written once, then the user's).
@@ -64,17 +66,19 @@ re-fetches) the same way later.
 
 ## Rendering context
 
-`.j2` templates and prompt `when` expressions see `project_name` / `slug` / `description` /
-`languages`, the prompt answers under **`answers.<name>`**, and detected/resolved facts under
-**`env.<name>`** (`existing_project`, `languages`, `detected_languages`, `existing_runner`,
-`runner`, `adoption`, `ai_tools`, the `has_quality`/`has_ci`/… toggles, and the sensed facts
-`is_git` (is/will be a git repo), `os` (`darwin`/`linux`/`windows`, `""` = other/unsensed),
-`has_readme` / `has_agents_md` / `has_ci_config` (a `README.md` / `AGENTS.md` /
-`.github/workflows/` directory present before scaffolding), and `date` (the scaffold date —
-the same stamp `@DATE@` paths use, replayed on update) — sensed once at
-scaffold, recorded in the manifest snapshot, and **replayed by `update`, never re-sensed**,
-per RFC 2026-07-05 §2) — both
-namespaced so they can never shadow a base key. Templates also get a `to_json` filter
+`.j2` templates and prompt `when` expressions see `project_name` / `slug` / `description`,
+the prompt answers under **`answers.<name>`**, and **sensed facts only** under
+**`env.<name>`**: `existing_project`, `detected_languages` (what's actually in the repo),
+`existing_runner`, `is_git` (is/will be a git repo), `os` (`darwin`/`linux`/`windows`, `""` =
+other/unsensed), `has_readme` / `has_agents_md` / `has_ci_config` (a `README.md` /
+`AGENTS.md` / `.github/workflows/` directory present before scaffolding), and `date` (the
+scaffold date — the same stamp `@DATE@` paths use, replayed on update). Facts are sensed once
+at scaffold, recorded in the manifest snapshot, and **replayed by `update`, never re-sensed**
+(RFC 2026-07-05 §2). `env` never echoes a *choice* — what the user picks is the profile's own
+prompt, read as `answers.<name>` (the old `env.languages`/`runner`/`adoption`/`ai_tools`/
+`has_docs`/`has_ci`/… echoes and the top-level `languages` key were removed with
+composition — they existed so an overlay could read the base's choices). Both namespaces
+exist so a key can never shadow a base one. Templates also get a `to_json` filter
 (byte-equal to `json.dumps(indent=2)` — unlike `tojson`, no HTML escaping). The env contract is **add-only**: renaming or
 removing a key is a breaking engine change, gated like a breaking scaffold update. All rendering goes through Jinja's
 `SandboxedEnvironment` (`scaffold.py`): profile templates are untrusted input.
@@ -97,9 +101,9 @@ per-type) default; the repeatable **`--answer NAME=VALUE`** flag answers any pro
 - `session_start` — shell commands appended to the `.claude` SessionStart hooks, run every
   session, each wrapped so a failure can't disrupt the session.
 
-For `extends: default` they merge into the base's onboarding/hooks; standalone profiles get a
-profile-only `ONBOARDING.md` and a minimal hooks `settings.json`. Hooks are recorded in the
-manifest so a *degraded* update (profile unresolvable) keeps them.
+The profile gets a profile-only `ONBOARDING.md` and a minimal hooks `settings.json` (Claude
+targets). Hooks are recorded in the manifest so a *degraded* update (profile unresolvable)
+keeps them.
 
 ## The contract fold (engine mechanic)
 
@@ -145,18 +149,20 @@ every listing so rot fails CI instead of the next adopter.
 
 ## Extension is git-native
 
-There is deliberately no `extends: <url>` chain mechanism (RFC 2026-07-04-profile-extends):
-to build on a community profile, fork its repo, keep `upstream` as a remote, and
+There is deliberately no `extends` mechanism at all (RFC 2026-07-04-profile-extends, extended
+to the baseline itself by RFC 2026-07-05 §4): to build on any profile — including the
+flagship `agent-native-baseline` — fork its repo, keep `upstream` as a remote, and
 `git fetch upstream && git merge` to take base improvements — reviewed, then released to your
 own consumers through the normal version bump. Git's three-way merge handles shared-file
 changes an overlay never could, and the extender stays the review point.
 
 ## Authoring journey
 
-`profile init <name>` (`--standalone`) scaffolds the skeleton plus a field-reference README
-and a meta `AGENTS.md` so an assistant can help build it; `profile save <project> <name>`
-extracts a profile from a scaffolded project's *delta* against the regenerated default
-(parameterizing name/slug, preserving `seed`, turning symlinks into onboarding steps);
+`profile init <name>` scaffolds the skeleton plus a field-reference README and a meta
+`AGENTS.md` so an assistant can help build it; `profile save <project> <name>` snapshots a
+scaffolded project's **complete** setup as a standalone profile (every manifest-recorded file
+as it exists on disk, parameterizing name/slug and the scaffold date via `@DATE@`, preserving
+`seed`, symlinks as `links`, provenance noted in the README/description);
 `profile validate` loads it and strict-renders every template (undefined variable = error);
 `profile publish` validates and prints the shareable URL + index entry. Fields are escaped
 wherever fetched profiles are displayed (`show`/`list`/index output) — remote metadata is
@@ -166,7 +172,7 @@ untrusted display data.
 
 | Where | What |
 | --- | --- |
-| `cli.build` | resolves the profile, gates consent, gathers answers, applies the overlay, records the manifest `profile` block (name/version/extends/source/safety/files/answers/hooks). |
+| `cli.build` | resolves the profile, gates consent, gathers answers, applies the overlay, records the manifest `profile` block (name/version/source/safety/files/answers/date/hooks). |
 | `scaffold.Scaffolder` | `overlay` (child-last write), sandboxed Jinja envs. |
 | `update.py` | re-resolves from the recorded `source`, re-applies (managed refresh / conflict), version + new-hooks + safety-flip + re-consent gates, degraded mode (frozen files, kept hooks), `--check` staleness nudge. |
 | `tools/checks/check_index.py` | the index-rot CI check (`.github/workflows/index-check.yml`). |

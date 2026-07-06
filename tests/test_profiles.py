@@ -1,9 +1,10 @@
-"""Profiles (RFC 2026-06-23): resolve/validate a profile, overlay it on the default scaffold
-(managed by default, seed when listed), record it in the manifest, and refresh its managed
-files on update when the profile ships a new version."""
+"""Profiles (RFC 2026-06-23, inverted by RFC 2026-07-05): resolve/validate a profile, apply it
+as the project's complete setup (managed by default, seed when listed), record it in the
+manifest, and refresh its managed files on update when the profile ships a new version."""
 
 from __future__ import annotations
 
+import hashlib
 import json
 import shutil
 import subprocess
@@ -31,7 +32,6 @@ def _make_profile(
     files: dict[str, str],
     *,
     version: str = "1.0.0",
-    extends: str | None = "default",
     seed: tuple[str, ...] = (),
     onboarding: tuple[str, ...] = (),
     session_start: tuple[str, ...] = (),
@@ -44,7 +44,6 @@ def _make_profile(
     manifest: dict[str, object] = {
         "name": name,
         "version": version,
-        "extends": extends,
         "description": "x",
     }
     if tags:
@@ -101,28 +100,24 @@ def test_resolve_default_is_none_and_missing_errors(tmp_path: Path) -> None:
         profiles.resolve(str(tmp_path / "nope"))
 
 
-def test_load_validates_name_version_and_extends(tmp_path: Path) -> None:
+def test_load_validates_name_version_and_rejects_extends(tmp_path: Path) -> None:
     bad = tmp_path / "bad"
     bad.mkdir()
     (bad / "profile.json").write_text(json.dumps({"name": "x"}), encoding="utf-8")  # no version
     with pytest.raises(profiles.ProfileError, match="required"):
         profiles.load(bad)
-    (bad / "profile.json").write_text(  # extends omitted → must be explicit
-        json.dumps({"name": "x", "version": "1.0.0"}), encoding="utf-8"
-    )
-    with pytest.raises(profiles.ProfileError, match="extends"):
-        profiles.load(bad)
-    (bad / "profile.json").write_text(  # a bogus extends value
-        json.dumps({"name": "x", "version": "1.0.0", "extends": "weird"}), encoding="utf-8"
-    )
-    with pytest.raises(profiles.ProfileError, match="extends"):
-        profiles.load(bad)
-    # "default" and explicit null are both valid.
-    for value in ("default", None):
+    # `extends` was removed (RFC 2026-07-05 §4) — any value is rejected, and the error points
+    # at the fork recipe rather than leaving an author guessing.
+    for value in ("default", None, "weird"):
         (bad / "profile.json").write_text(
             json.dumps({"name": "x", "version": "1.0.0", "extends": value}), encoding="utf-8"
         )
-        assert profiles.load(bad).standalone is (value is None)
+        with pytest.raises(profiles.ProfileError, match="fork"):
+            profiles.load(bad)
+    (bad / "profile.json").write_text(
+        json.dumps({"name": "x", "version": "1.0.0"}), encoding="utf-8"
+    )
+    assert profiles.load(bad).name == "x"
 
 
 def test_resolve_from_user_dir_by_name(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -218,7 +213,7 @@ def test_build_with_profile_records_the_block_and_owned_files(tmp_path: Path) ->
 
     m = json.loads((target / MANIFEST_PATH).read_text(encoding="utf-8"))
     block = m["profile"]
-    keys = ("name", "version", "extends", "source", "safety")
+    keys = ("name", "version", "source", "safety")
     assert {k: block[k] for k in keys} == prof.manifest_block()
     assert block["safety"] == "safe"  # only a .md agent, no hooks → derived safe
     assert block["files"] == [".claude/agents/team.md"]  # exactly what the profile owns
@@ -292,14 +287,15 @@ def test_update_keeps_a_profile_override_of_a_base_managed_file(tmp_path: Path) 
 def test_update_does_not_accumulate_stale_default_seed_for_a_profiled_project(
     tmp_path: Path,
 ) -> None:
-    # Regression: the overlay restore must touch ONLY profile-owned files, not the whole seed
-    # set — else a renamed default seed file (the date-stamped bootstrap RFC) is wrongly carried
-    # into the manifest on a cross-date update, accruing a stale entry every time.
+    # Regression (kept for the pre-B2 *composed* manifests the degraded path still serves): the
+    # overlay restore must touch ONLY profile-owned files, not the whole seed set — else a
+    # renamed default seed file (the date-stamped bootstrap RFC) is wrongly carried into the
+    # manifest on a cross-date update, accruing a stale entry every time.
     target = tmp_path / "proj"
     target.mkdir()
-    prof = _make_profile(tmp_path, "team", {"x.md": "x\n"}, by_path=True)
-    cli.build(_config(target), Scaffolder(target), prof)
-    # Simulate an earlier scaffold: re-date the bootstrap RFC on disk + in the manifest.
+    cli.build(_config(target), Scaffolder(target), None)  # the legacy generator scaffold
+    # Simulate a pre-B2 composed project: an overlay file + a composed profile block.
+    (target / "x.md").write_text("x\n", encoding="utf-8")
     rfc_dir = target / "docs/rfc/active"
     [boot] = list(rfc_dir.glob("*-adopt-agent-native-setup.md"))
     new_rel, old_rel = f"docs/rfc/active/{boot.name}", "docs/rfc/active/2026-01-01-adopt.md"
@@ -307,15 +303,26 @@ def test_update_does_not_accumulate_stale_default_seed_for_a_profiled_project(
     boot.unlink()
     m = json.loads((target / MANIFEST_PATH).read_text(encoding="utf-8"))
     m["files"][old_rel] = m["files"].pop(new_rel)
+    m["files"]["x.md"] = "sha256:" + hashlib.sha256(b"x\n").hexdigest()
     m["seed"] = [old_rel if s == new_rel else s for s in m["seed"]]
+    m["profile"] = {
+        "name": "team",
+        "version": "1.0.0",
+        "extends": "default",
+        "source": "gone",
+        "files": ["x.md"],
+    }
     (target / MANIFEST_PATH).write_text(json.dumps(m, indent=2) + "\n", encoding="utf-8")
     _commit(target)
 
-    assert update.run(target, dry_run=False, console=_Console()) == 0
+    console = _Console()
+    assert update.run(target, dry_run=False, console=console) == 0
+    assert "composed on the default setup" in console.text  # degraded with the fork explainer
     nm = json.loads((target / MANIFEST_PATH).read_text(encoding="utf-8"))
     adopts = [f for f in nm["files"] if f.endswith("-adopt.md") or "adopt-agent-native" in f]
     assert len(adopts) == 1  # exactly one bootstrap RFC tracked — no stale carry-forward
-    assert "x.md" in nm["files"]  # the profile overlay IS still preserved (managed)
+    assert "x.md" in nm["files"]  # the profile overlay IS still preserved (frozen)
+    assert (target / "INSTRUCTION.md").exists()  # the generator base still updates beneath it
 
 
 # --- Phase 2: the profile-update path -------------------------------------------------------
@@ -441,9 +448,7 @@ def test_load_validates_session_start_is_a_string_list(tmp_path: Path) -> None:
     bad = tmp_path / "bad"
     bad.mkdir()
     (bad / "profile.json").write_text(
-        json.dumps(
-            {"name": "x", "version": "1.0.0", "extends": "default", "session_start": "echo"}
-        ),
+        json.dumps({"name": "x", "version": "1.0.0", "session_start": "echo"}),
         encoding="utf-8",
     )
     with pytest.raises(profiles.ProfileError, match="session_start"):
@@ -458,9 +463,8 @@ def test_profile_onboarding_steps_fold_into_onboarding_md(tmp_path: Path) -> Non
 
     body = (target / "ONBOARDING.md").read_text(encoding="utf-8")
     assert "Run `task team-setup`." in body and "Join #eng." in body
-    # Profile steps extend the default flow *before* the bootstrap commit — so team setup is part
-    # of the initial setup and lands in the first commit, not tacked on after it.
-    assert body.index("task team-setup") < body.index("Commit the scaffold")
+    # The profile IS the setup — its onboarding stands alone, with no generator baseline flow.
+    assert "Commit the scaffold" not in body
     # ONBOARDING.md is transient — never recorded, so update can't resurrect it after onboarding.
     m = json.loads((target / MANIFEST_PATH).read_text(encoding="utf-8"))
     assert "ONBOARDING.md" not in m["files"]
@@ -606,7 +610,6 @@ def test_standalone_session_start_refreshes_on_update(tmp_path: Path) -> None:
         "team",
         {"AGENTS.md": "v1\n"},
         version="0.1.0",
-        extends=None,
         session_start=("echo v1",),
         by_path=True,
     )
@@ -674,7 +677,7 @@ def _load_prompts(tmp_path: Path, prompts: list[dict]) -> profiles.Profile:
     d = tmp_path / "p"
     d.mkdir(exist_ok=True)
     (d / "profile.json").write_text(
-        json.dumps({"name": "x", "version": "1.0.0", "extends": "default", "prompts": prompts}),
+        json.dumps({"name": "x", "version": "1.0.0", "prompts": prompts}),
         encoding="utf-8",
     )
     return profiles.load(d)
@@ -1155,7 +1158,7 @@ def test_update_tolerates_a_manifest_without_detected_languages(tmp_path: Path) 
     assert (target / "docs/x.md").read_text(encoding="utf-8") == "langs=[]\n"  # defaulted to []
 
 
-# --- standalone (extends: null) -------------------------------------------------------------
+# --- a profile ships the complete setup (no generators) --------------------------------------
 
 
 def test_standalone_profile_skips_the_default(tmp_path: Path) -> None:
@@ -1163,9 +1166,7 @@ def test_standalone_profile_skips_the_default(tmp_path: Path) -> None:
         tmp_path,
         "team",
         {"AGENTS.md": "# our contract\n", "x.md": "x\n"},
-        extends=None,
     )
-    assert prof.standalone
     target = tmp_path / "proj"
     target.mkdir()
     cli.build(_config(target), Scaffolder(target), prof)
@@ -1177,7 +1178,7 @@ def test_standalone_profile_skips_the_default(tmp_path: Path) -> None:
     for default_path in ("INSTRUCTION.md", ".claude/agents/code-reviewer.md", ".editorconfig"):
         assert not (target / default_path).exists()
     m = json.loads((target / MANIFEST_PATH).read_text(encoding="utf-8"))
-    assert m["profile"]["extends"] is None
+    assert "extends" not in m["profile"]  # the field is gone from the format
     assert set(m["files"]) == {"AGENTS.md", "x.md"}  # only the profile's files
 
 
@@ -1188,7 +1189,6 @@ def test_standalone_profile_emits_onboarding_and_session_start(tmp_path: Path) -
         tmp_path,
         "team",
         {"AGENTS.md": "# c\n"},
-        extends=None,
         onboarding=("Recreate the symlinks: `ln -s AGENTS.md CLAUDE.md`",),
         session_start=("echo hi",),
     )
@@ -1205,9 +1205,7 @@ def test_standalone_profile_emits_onboarding_and_session_start(tmp_path: Path) -
 
 
 def test_update_a_standalone_project_refreshes_only_profile_files(tmp_path: Path) -> None:
-    prof = _make_profile(
-        tmp_path, "team", {"AGENTS.md": "v1\n"}, version="0.1.0", extends=None, by_path=True
-    )
+    prof = _make_profile(tmp_path, "team", {"AGENTS.md": "v1\n"}, version="0.1.0", by_path=True)
     target = tmp_path / "proj"
     target.mkdir()
     cli.build(_config(target), Scaffolder(target), prof)
@@ -1222,9 +1220,9 @@ def test_update_a_standalone_project_refreshes_only_profile_files(tmp_path: Path
 def test_degraded_update_of_a_standalone_project_does_not_regenerate_the_default(
     tmp_path: Path,
 ) -> None:
-    # Regression: when a standalone profile's source is gone at update time, the recorded
-    # `extends: null` must be honored — the project must NOT regenerate the whole default scaffold.
-    prof = _make_profile(tmp_path, "team", {"AGENTS.md": "v1\n"}, extends=None, by_path=True)
+    # Regression: when a profile's source is gone at update time, the degraded path must NOT
+    # regenerate the legacy generator scaffold around the frozen files.
+    prof = _make_profile(tmp_path, "team", {"AGENTS.md": "v1\n"}, by_path=True)
     target = tmp_path / "proj"
     target.mkdir()
     cli.build(_config(target), Scaffolder(target), prof)
@@ -1340,7 +1338,7 @@ def test_profile_init_scaffolds_a_skeleton(tmp_path: Path) -> None:
     assert cli.main(["profile", "init", "myteam", "-o", str(tmp_path)]) == 0
     root = tmp_path / "myteam"
     manifest = json.loads((root / "profile.json").read_text(encoding="utf-8"))
-    assert manifest["name"] == "myteam" and manifest["extends"] == "default"
+    assert manifest["name"] == "myteam" and "extends" not in manifest
     assert (root / "templates").is_dir() and (root / "README.md").exists()
     # An agent contract for *building* the profile ships at the root (meta, never shipped).
     assert (root / "AGENTS.md").exists() and not (root / "templates" / "AGENTS.md").exists()
@@ -1365,12 +1363,10 @@ def test_init_harness_files_are_meta_never_scaffolded(tmp_path: Path) -> None:
     assert "README.md" not in m["profile"]["files"]
 
 
-def test_profile_init_standalone_writes_extends_null(tmp_path: Path) -> None:
-    assert cli.main(["profile", "init", "solo", "-o", str(tmp_path), "--standalone"]) == 0
-    root = tmp_path / "solo"
-    assert json.loads((root / "profile.json").read_text(encoding="utf-8"))["extends"] is None
-    assert profiles.load(root).standalone
-    assert "standalone" in (root / "README.md").read_text(encoding="utf-8").lower()
+def test_profile_init_rejects_the_removed_standalone_flag(tmp_path: Path) -> None:
+    # Every profile is the complete setup now — the old mode flag is gone, not ignored.
+    with pytest.raises(SystemExit):
+        cli.main(["profile", "init", "solo", "-o", str(tmp_path), "--standalone"])
 
 
 def test_profile_validate_accepts_a_good_profile(tmp_path: Path) -> None:
@@ -1448,7 +1444,6 @@ def test_profile_show_escapes_untrusted_markup(
             {
                 "name": "evil",
                 "version": "[bold]0wned[/]",  # version is untrusted remote data too
-                "extends": "default",
                 "description": "[green]VERIFIED[/]",
             }
         ),
@@ -1474,7 +1469,7 @@ def test_load_reads_and_validates_tags(tmp_path: Path) -> None:
     bad = tmp_path / "bad"
     (bad / "templates").mkdir(parents=True)
     (bad / "profile.json").write_text(
-        json.dumps({"name": "x", "version": "1.0.0", "extends": "default", "tags": "notalist"}),
+        json.dumps({"name": "x", "version": "1.0.0", "tags": "notalist"}),
         encoding="utf-8",
     )
     with pytest.raises(profiles.ProfileError, match="tags"):
@@ -1505,7 +1500,7 @@ def test_load_validates_links(tmp_path: Path) -> None:
 
     def manifest(links: object) -> None:
         (d / "profile.json").write_text(
-            json.dumps({"name": "p", "version": "1.0.0", "extends": "default", "links": links}),
+            json.dumps({"name": "p", "version": "1.0.0", "links": links}),
             encoding="utf-8",
         )
 
@@ -1918,9 +1913,7 @@ def test_empty_files_validation_and_confinement(tmp_path: Path) -> None:
 
     def manifest(entries: object) -> None:
         (d / "profile.json").write_text(
-            json.dumps(
-                {"name": "p", "version": "1.0.0", "extends": "default", "empty_files": entries}
-            ),
+            json.dumps({"name": "p", "version": "1.0.0", "empty_files": entries}),
             encoding="utf-8",
         )
 

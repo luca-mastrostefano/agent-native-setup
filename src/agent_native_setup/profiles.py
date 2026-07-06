@@ -1,12 +1,11 @@
-"""Scaffolding profiles (RFC 2026-06-23): compose a team's files on the default setup.
+"""Scaffolding profiles (RFC 2026-06-23, inverted by RFC 2026-07-05): one project = one profile.
 
-A profile is a directory with a ``profile.json`` and a ``templates/`` tree. ``extends: default``
-means the wizard generates its normal output, then the profile's template files are overlaid on
-top, superseding any base file at the same path. ``extends: null`` is **standalone** — the
-default generators are skipped and the profile provides everything from scratch (its own
-``AGENTS.md``, etc.). Each profile file is **managed** — refreshed by ``update`` when the profile
-ships a new ``version`` — unless listed in the profile's ``seed`` set (written once, then the
-user's).
+A profile is a directory with a ``profile.json`` and a ``templates/`` tree, and it ships the
+project's **complete** setup — there is no composition; to build on another profile (including
+the flagship baseline), fork its repo and take upstream improvements via ``git merge``
+(RFC 2026-07-04-profile-extends). Each profile file is **managed** — refreshed by ``update``
+when the profile ships a new ``version`` — unless listed in the profile's ``seed`` set (written
+once, then the user's).
 
 Templates ending in ``.j2`` are rendered with Jinja against the project context (the ``.j2``
 is stripped from the output path); every other file ships verbatim — so a profile can carry
@@ -23,7 +22,6 @@ import os
 import re
 import shutil
 import subprocess
-import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -57,7 +55,6 @@ INDEX_ENV = "AGENT_NATIVE_SETUP_INDEX_URL"
 # development), is trusted like any local artifact, and re-resolves identically at update.
 BUILTIN_SCHEME = "builtin:"
 BASELINE_NAME = "agent-native-baseline"
-EXTENDS_VALUES = ("default", None)  # "default" composes on the base; null = standalone
 PROMPT_TYPES = ("text", "select", "confirm", "checkbox")
 
 
@@ -96,7 +93,6 @@ class Prompt:
 class Profile:
     name: str
     version: str
-    extends: str | None  # "default" (compose on base) | None (standalone, from scratch)
     description: str
     root: Path  # the profile directory
     source: str  # the reference it was resolved from — recorded in the project manifest
@@ -127,11 +123,6 @@ class Profile:
     # mirroring prompts' — so a per-tool link ships only when its tool is targeted.
     links: tuple[tuple[str, str, str | None], ...] = ()
 
-    @property
-    def standalone(self) -> bool:
-        """A standalone profile (``extends: null``) skips the default generators entirely."""
-        return self.extends is None
-
     def template_files(self) -> list[tuple[str, Path]]:
         """``(output_rel, source_path)`` for each file under ``templates/``, with a trailing
         ``.j2`` stripped from the output path. Sorted, so application is deterministic."""
@@ -150,7 +141,6 @@ class Profile:
         block: dict[str, object] = {
             "name": self.name,
             "version": self.version,
-            "extends": self.extends,
             "source": self.source,
             # The derived safety tier (RFC 2026-07-03-profile-safety §4), so `update` can re-derive
             # and gate a safe → unsafe transition — new code the user hasn't consented to.
@@ -232,15 +222,11 @@ def load(path: Path, *, source: str | None = None) -> Profile:
     name, version = data.get("name"), data.get("version")
     if not name or not version:
         raise ProfileError(f"{manifest_path}: both 'name' and 'version' are required")
-    if "extends" not in data:
+    if "extends" in data:
         raise ProfileError(
-            f"{manifest_path}: 'extends' is required — \"default\" (compose on the default setup) "
-            "or null (standalone, from scratch)"
-        )
-    extends = data["extends"]  # explicit: "default" composes; null = standalone
-    if extends not in EXTENDS_VALUES:
-        raise ProfileError(
-            f'{manifest_path}: extends={extends!r} is invalid — use "default" or null'
+            f"{manifest_path}: 'extends' was removed (RFC 2026-07-05) — a profile ships the "
+            "complete setup. To build on another profile, fork its repo, add your templates, "
+            "and take upstream improvements via `git merge` (see docs/architecture/profiles.md)."
         )
 
     def _str_list(key: str) -> list[str]:
@@ -312,7 +298,6 @@ def load(path: Path, *, source: str | None = None) -> Profile:
     return Profile(
         name=str(name),
         version=str(version),
-        extends=extends,
         description=str(data.get("description", "")),
         root=path,
         source=source if source is not None else str(path),
@@ -426,8 +411,9 @@ def builtin_baseline_root() -> Path:
 
 
 def resolve(name_or_path: str, *, console: Any = None) -> Profile | None:
-    """Resolve a ``--profile`` reference. ``default`` (or empty) → ``None`` (the built-in
-    default, no overlay). A ``git+https://…`` / ``git+ssh://…`` URL → fetched into the cache. A path
+    """Resolve a ``--profile`` reference. ``default`` (or empty) → ``None`` (the legacy bare
+    generators, kept until stage D). A ``git+https://…`` / ``git+ssh://…`` URL → fetched into
+    the cache. A path
     containing a ``profile.json`` → that profile. A bare name → the user profiles dir
     (``~/.config/agent-native-setup/profiles/<name>``). The recorded ``source`` is the reference
     verbatim, so ``update`` re-resolves (and re-fetches a URL). Raises ``ProfileError`` when it
@@ -461,13 +447,13 @@ def _context(
     config: WizardConfig, answers: dict[str, Any], *, date_stamp: str | None = None
 ) -> dict[str, Any]:
     """The variables a ``.j2`` profile template (and a prompt's ``when``) can reference. Prompt
-    answers live under ``answers.<name>`` and detected/resolved environment facts under
-    ``env.<name>`` — both namespaced so they can never shadow a base key."""
+    answers live under ``answers.<name>`` and **sensed facts only** under ``env.<name>``
+    (RFC 2026-07-05 §2: what the user *chose* is the profile's own prompts, never echoed here;
+    the contract is add-only) — both namespaced so they can never shadow a base key."""
     return {
         "project_name": config.project_name,
         "slug": config.slug,
         "description": config.description,
-        "languages": list(config.languages),
         "answers": dict(answers),
         "env": {
             "existing_project": config.existing_project,  # brownfield repo with source?
@@ -479,17 +465,8 @@ def _context(
             "has_readme": config.has_readme,  # key files present before scaffolding
             "has_agents_md": config.has_agents_md,
             "has_ci_config": config.has_ci_config,
-            "languages": list(config.languages),  # the selected languages
             "detected_languages": list(config.detected_languages),  # what's actually in the repo
             "existing_runner": config.existing_runner,
-            "runner": config.runner,
-            "adoption": config.adoption,
-            "ai_tools": list(config.ai_tools),
-            "has_quality": config.include_quality,
-            "has_ci": config.include_ci,
-            "has_docs": config.include_docs,
-            "has_agents": config.include_agents,
-            "has_security": config.include_security,
         },
     }
 
@@ -747,8 +724,7 @@ agent-native-setup my-app -o ./my-app --profile {source_hint}
 
 ## Layout
 
-- `profile.json` — name, version (your own semver), `extends` (`"default"` to compose on the
-  base setup, or `null` to be standalone / from scratch), description, optional `tags` (freeform
+- `profile.json` — name, version (your own semver), description, optional `tags` (freeform
   discovery keywords — who/what it targets, e.g. `backend` / `frontend` / `design` / `general`),
   an optional `seed` list, an optional `transient` list (paths written once and never
   recorded — self-deleting first-run files an update must not resurrect), an optional
@@ -761,12 +737,13 @@ agent-native-setup my-app -o ./my-app --profile {source_hint}
   scaffold date, stable across updates).
 - `templates/` — the files this profile ships. Paths are relative to the project root, so
   `templates/.claude/agents/foo.md` lands at `.claude/agents/foo.md`. A file ending in
-  `.j2` is rendered (Jinja) with `project_name`, `slug`, `description`, `languages`, the
-  `answers.<name>` from your prompts, and an `env.<name>` namespace of detected facts
-  (`env.existing_project`, `env.detected_languages`, `env.is_git`, `env.os`,
-  `env.has_readme`/`has_agents_md`/`has_ci_config`, `env.runner`, `env.has_ci`, …) — and the
+  `.j2` is rendered (Jinja) with `project_name`, `slug`, `description`, the
+  `answers.<name>` from your prompts, and an `env.<name>` namespace of **sensed facts**
+  (`env.existing_project`, `env.detected_languages`, `env.existing_runner`, `env.is_git`,
+  `env.os`, `env.date`, `env.has_readme`/`has_agents_md`/`has_ci_config`) — and the
   `.j2` stripped; anything else is copied verbatim (so files containing `{{{{ ... }}}}`,
-  like GitHub Actions `${{{{ ... }}}}`, are safe).
+  like GitHub Actions `${{{{ ... }}}}`, are safe). Anything the user should *choose* is a
+  prompt of your own, read as `answers.<name>` — `env` never echoes choices.
 
 ## Prompts (a mini wizard)
 
@@ -823,8 +800,9 @@ under `templates/`. See [`README.md`](./README.md) for the full field reference.
 - **Mark write-once files as `seed`** in `profile.json` (a starter README, say): seed files are
   shipped once and never overwritten by an update. Everything else under `templates/` is
   *managed* — refreshed when the profile ships a new `version`.
-- **`extends`**: `"default"` composes on the built-in setup; `null` is standalone (from scratch —
-  then ship the project's own `AGENTS.md` under `templates/AGENTS.md`, distinct from *this* file).
+- **A profile ships the complete setup** — a scaffolded project gets *only* its files, so ship
+  the project's own `AGENTS.md` under `templates/AGENTS.md` (distinct from *this* file). To
+  build on an existing profile (e.g. the flagship baseline), fork its repo instead.
 - **Before calling it done, run `agent-native-setup profile validate .`** and fix every finding —
   it loads the profile, strict-renders every template (catching typos), and checks `seed` entries.
 """
@@ -837,11 +815,9 @@ def _init(args: argparse.Namespace, console: Any) -> int:
         return 2
     (root / TEMPLATES_DIR).mkdir(parents=True)
     (root / TEMPLATES_DIR / ".gitkeep").write_text("", encoding="utf-8")
-    standalone = args.standalone
     manifest = {
         "name": args.name,
         "version": "0.1.0",
-        "extends": None if standalone else "default",
         "description": "TODO: one line describing this profile",
         "tags": [],
         "seed": [],
@@ -850,25 +826,22 @@ def _init(args: argparse.Namespace, console: Any) -> int:
         "prompts": [],
     }
     (root / PROFILE_MANIFEST).write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
-    if standalone:
-        intro = "A **standalone** profile (`extends: null`) — it replaces the default setup."
-        result = (
-            "they get **only** the files under `templates/` (no default scaffold), so ship "
-            "your own `AGENTS.md`, etc."
-        )
-    else:
-        intro = "A profile composed on the built-in `default` setup (`extends: default`)."
-        result = "they get the normal scaffold **plus** every file under `templates/`."
     (root / "README.md").write_text(
         _SKELETON_README.format(
-            name=args.name, source_hint=f"./{args.name}", intro=intro, result=result
+            name=args.name,
+            source_hint=f"./{args.name}",
+            intro="A complete project setup, shipped as a profile.",
+            result=(
+                "they get **only** the files under `templates/`, so ship your own `AGENTS.md`, "
+                "etc. (To build on an existing profile, fork its repo instead.)"
+            ),
         ),
         encoding="utf-8",
     )
     # An agent contract for *building* the profile: it lives at the profile root (not under
     # templates/), so it's meta — never shipped — and lets an assistant help author the profile.
     (root / "AGENTS.md").write_text(_SKELETON_AGENTS.format(name=args.name), encoding="utf-8")
-    console.print(f"[green]Created {'standalone ' if standalone else ''}profile[/] {root}")
+    console.print(f"[green]Created profile[/] {root}")
     console.print(
         f"  Add files under [bold]{args.name}/templates/[/], validate with "
         f"[bold]profile validate {root}[/], then scaffold with [bold]--profile {root}[/]."
@@ -915,7 +888,7 @@ def _validate(args: argparse.Namespace, console: Any) -> int:
         return 1
     tier, reasons = classify_safety(prof)
     console.print(
-        f"[green]✓ {prof.name} {prof.version} valid[/] — extends={prof.extends!r}, "
+        f"[green]✓ {prof.name} {prof.version} valid[/] — "
         f"{len(files)} file(s), {len(prof.prompts)} prompt(s), safety: [bold]{tier}[/]."
     )
     if reasons:
@@ -1284,8 +1257,12 @@ def _parameterize(
 
 
 def _save(args: argparse.Namespace, console: Any) -> int:
-    """Extract an ``extends: default`` profile from a scaffolded project's *delta* from the default
-    (RFC 2026-07-03-profile-save). Read-only on the source; writes a review-ready draft."""
+    """Snapshot a scaffolded project's **complete** setup as a standalone profile
+    (RFC 2026-07-03-profile-save, redefined by RFC 2026-07-05 §4): every manifest-recorded file
+    as it exists on disk — the scaffold rendered for this project's configuration *plus* the
+    project's own edits, baked into one profile. Symlinks become ``links`` entries; the dated
+    bootstrap RFC is captured through ``@DATE@`` so a scaffold from the snapshot re-stamps it.
+    Read-only on the source; writes a review-ready draft."""
     from agent_native_setup import manifest as manifest_mod
     from agent_native_setup import update
 
@@ -1301,61 +1278,67 @@ def _save(args: argparse.Namespace, console: Any) -> int:
     if out.exists():
         console.print(f"[red]{out} already exists[/] — choose another name or location.")
         return 2
+    config = update._config_from_manifest(old, project)
 
     files: dict[str, str] = old.get("files", {})
     seed_set = set(old.get("seed", []))
     captured: dict[str, tuple[bytes, bool]] = {}  # rel -> (content, is_seed)
+    links: dict[str, str] = {}
     onboarding_steps: list[str] = []
-    excluded: list[str] = []
+    # The scaffold stamp, for @DATE@ re-parameterization — recorded in the manifest post-flip;
+    # for an older project, recovered from the dated bootstrap-RFC path itself.
+    stamp = str((old.get("profile") or {}).get("date") or "")
 
-    with tempfile.TemporaryDirectory() as tmp:
-        tmp_path = Path(tmp)
-        config = update._config_from_manifest(old, tmp_path)
-        update._regenerate(config, tmp_path)  # the default baseline the project was born from
-
-        for rel in sorted(files):
-            if rel == manifest_mod.MANIFEST_PATH:
-                continue
-            if _BOOTSTRAP_RFC.search(rel):  # non-deterministic → not a real delta
-                excluded.append(rel)
-                continue
-            pf = project / rel
-            if pf.is_symlink():  # templates can't carry a symlink → recreate it via onboarding
-                target = os.readlink(pf)
-                onboarding_steps.append(f"Recreate the `{rel}` symlink: `ln -s {target} {rel}`")
-                continue
-            if not pf.is_file():
-                continue  # user deleted it — nothing to capture
-            content = pf.read_bytes()
-            base = tmp_path / rel
-            if base.is_file() and base.read_bytes() == content:
-                continue  # pristine → the default provides it; the profile extends it
-            captured[rel] = (content, rel in seed_set)  # edited → the user's version
-
-        # User-added files, only where the scaffold owns the directory (else it's their source).
-        # TODO(RFC 2026-07-05): once the flagship is the base, source this set from its
-        # profile.json `transient` list instead of hardcoding.
-        transient = {"ONBOARDING.md", ".claude/commands/onboard.md"}  # one-time, self-deleting
-        added_elsewhere: list[str] = []
-        for pf in sorted(project.rglob("*")):
-            if not pf.is_file() or pf.is_symlink():
-                continue
-            rel = pf.relative_to(project).as_posix()
-            if rel in files or rel == manifest_mod.MANIFEST_PATH or rel.startswith(".git/"):
-                continue
-            if rel in transient:
-                continue  # never capture the transient first-run apparatus
-            if any(rel.startswith(d) for d in _SETUP_ADD_DIRS):
-                captured[rel] = (pf.read_bytes(), False)  # house content → managed
+    for rel in sorted(files):
+        if rel == manifest_mod.MANIFEST_PATH:
+            continue
+        pf = project / rel
+        if pf.is_symlink():
+            target = os.readlink(pf)
+            # A clean in-project relative target → a declarative `links` entry; anything
+            # else can't ship as data, so fall back to an onboarding step.
+            if not Path(target).is_absolute() and ".." not in Path(target).parts:
+                links[rel] = target
             else:
-                added_elsewhere.append(rel)
+                onboarding_steps.append(f"Recreate the `{rel}` symlink: `ln -s {target} {rel}`")
+            continue
+        if not pf.is_file():
+            continue  # user deleted it — the snapshot honors that
+        if not stamp and _BOOTSTRAP_RFC.search(rel) and (m := re.search(r"\d{4}-\d{2}-\d{2}", rel)):
+            stamp = m.group(0)
+        captured[rel] = (pf.read_bytes(), rel in seed_set)
 
-    # Write the profile: render captured files into templates/, parameterizing name/slug.
+    # User-added files, only where the scaffold owns the directory (else it's their source).
+    # The transient first-run apparatus (never recorded, self-deleting) is the baseline's own
+    # `transient` declaration — sourced from the vendored copy, not hardcoded.
+    transient = set(load(builtin_baseline_root()).transient)
+    added_elsewhere: list[str] = []
+    for pf in sorted(project.rglob("*")):
+        if not pf.is_file() or pf.is_symlink():
+            continue
+        rel = pf.relative_to(project).as_posix()
+        if rel in files or rel == manifest_mod.MANIFEST_PATH or rel.startswith(".git/"):
+            continue
+        if rel in transient:
+            continue  # never capture the transient first-run apparatus
+        if any(rel.startswith(d) for d in _SETUP_ADD_DIRS):
+            captured[rel] = (pf.read_bytes(), False)  # house content → managed
+        else:
+            added_elsewhere.append(rel)
+
+    # Write the profile: render captured files into templates/, parameterizing name/slug —
+    # and the scaffold date, so the snapshot's dated artifacts re-stamp per project.
     (out / TEMPLATES_DIR).mkdir(parents=True)
     subs: list[tuple[str, str, int]] = []
     seed_list: list[str] = []
     for rel, (content, is_seed) in sorted(captured.items()):
-        text, tmpl_name = _parameterize(content, config.project_name, config.slug, rel, subs)
+        dated = bool(stamp) and stamp in rel
+        out_rel = rel.replace(stamp, "@DATE@") if dated else rel
+        text, tmpl_name = _parameterize(content, config.project_name, config.slug, out_rel, subs)
+        if dated and text is not None and stamp in text:
+            text = text.replace(stamp, "{{ env.date }}")  # the body re-stamps with the path
+            if tmpl_name == out_rel:
+                tmpl_name = out_rel + ".j2"
         dst = out / TEMPLATES_DIR / tmpl_name
         dst.parent.mkdir(parents=True, exist_ok=True)
         if text is None:
@@ -1363,36 +1346,51 @@ def _save(args: argparse.Namespace, console: Any) -> int:
         else:
             dst.write_text(text, encoding="utf-8")
         if is_seed:
-            seed_list.append(rel)
+            seed_list.append(out_rel)
 
+    # Provenance (decided with RFC 2026-07-05 §7-B): the snapshot says what it was derived
+    # from in its description + README — human-facing, no new format field.
+    base_block = old.get("profile") or {}
+    derived = (
+        f"{base_block.get('name')} {base_block.get('version')}"
+        if base_block.get("name")
+        else f"agent-native-setup {old.get('version', '?')}"
+    )
     pj = {
         "name": args.name,
         "version": "0.1.0",
-        "extends": "default",
-        "description": f"TODO: describe this profile (saved from {project.name}).",
+        "description": f"TODO: describe this profile (snapshot of {project.name}, from {derived}).",
         "tags": [],
         "seed": sorted(seed_list),
         "onboarding": onboarding_steps,
         "session_start": [],
         "prompts": [],
     }
+    if links:
+        pj["links"] = dict(sorted(links.items()))
     (out / PROFILE_MANIFEST).write_text(json.dumps(pj, indent=2) + "\n", encoding="utf-8")
     (out / "README.md").write_text(
         _SKELETON_README.format(
             name=args.name,
             source_hint=f"./{args.name}",
-            intro="A profile composed on the built-in `default` setup (`extends: default`).",
-            result="they get the normal scaffold **plus** every file under `templates/`.",
+            intro=(
+                f"A **standalone snapshot** of `{project.name}`'s agent-native setup "
+                f"(derived from {derived}) — the complete setup, pinned to that project's "
+                "languages and choices."
+            ),
+            result="they get **exactly** the files under `templates/` (plus the `links`).",
         ),
         encoding="utf-8",
     )
     (out / "AGENTS.md").write_text(_SKELETON_AGENTS.format(name=args.name), encoding="utf-8")
 
-    console.print(f"[green]Saved profile[/] {out} — {len(captured)} file(s) from the delta.")
+    console.print(f"[green]Saved profile[/] {out} — a snapshot of {len(captured)} file(s).")
     if seed_list:
-        console.print(f"  [dim]seed (write-once):[/] {', '.join(seed_list)}")
+        console.print(f"  [dim]seed (write-once):[/] {', '.join(sorted(seed_list))}")
     for rel, token, n in subs:
         console.print(f"  [cyan]param[/] {rel}: {n} -> {token}")
+    for link, target in sorted(links.items()):
+        console.print(f"  [cyan]link[/] {link} -> {target}")
     for step in onboarding_steps:
         console.print(f"  [magenta]onboarding[/] {step}")
     if added_elsewhere:
@@ -1402,8 +1400,6 @@ def _save(args: argparse.Namespace, console: Any) -> int:
             + ", ".join(added_elsewhere[:8])
             + (" …" if len(added_elsewhere) > 8 else "")
         )
-    if excluded:
-        console.print(f"  [dim]skipped (regenerated per project):[/] {', '.join(excluded)}")
     tier, _ = classify_safety(load(out))  # the real classifier on the written draft
     console.print(f"  [yellow]safety:[/] {tier}. Review, then run [bold]profile validate {out}[/].")
     return 0
@@ -1462,10 +1458,9 @@ def _show(args: argparse.Namespace, console: Any) -> int:
         console.print("[cyan]default[/] — the built-in setup (no profile overlay).")
         return 0
     tier, reasons = classify_safety(prof)
-    kind = "standalone" if prof.standalone else "extends default"
     desc = escape(prof.description) or "(no description)"
     console.print(f"[cyan]{escape(prof.name)}[/] {escape(prof.version)} — {desc}")
-    console.print(f"  {kind}  ·  safety: [bold]{tier}[/]")
+    console.print(f"  safety: [bold]{tier}[/]")
     if prof.tags:
         console.print(f"  tags: {escape(', '.join(prof.tags))}")
     for r in reasons:
@@ -1558,11 +1553,6 @@ def run_cli(argv: list[str], console: Any) -> int:
     init = sub.add_parser("init", help="scaffold a new profile skeleton")
     init.add_argument("name", help="profile name (also the directory name)")
     init.add_argument("-o", "--output", default=".", help="parent directory (default: cwd)")
-    init.add_argument(
-        "--standalone",
-        action="store_true",
-        help="extends: null — start from scratch instead of composing on the default",
-    )
     lst = sub.add_parser("list", help="list profiles (yours, or --community from the index)")
     lst.add_argument("--community", action="store_true", help="list the community index instead")
     val = sub.add_parser("validate", help="check a profile loads and its templates render")

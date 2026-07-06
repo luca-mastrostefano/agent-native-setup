@@ -1,15 +1,18 @@
 # example-team — a reference profile
 
-A tiny `extends: default` profile that demonstrates the main authoring features in one place.
-It composes on the default scaffold and adds:
+A tiny profile that demonstrates the main authoring features in one place:
 
 | File | Shows |
 | --- | --- |
 | `profile.json` → `prompts` | a `select` question (`tier`) asked at scaffold, replayed on update |
-| `templates/docs/conventions.md.j2` | a `.j2` template reading `project_name`, `answers.tier`, `env.existing_project`, `languages` |
+| `templates/docs/conventions.md.j2` | a `.j2` template reading `project_name`, `answers.tier`, and the `env` facts (`env.existing_project`, `env.detected_languages`) |
 | `templates/docs/team-notes.md` (`seed`) | a **write-once** file — never overwritten by an update |
-| `templates/.claude/agents/example-reviewer.md` | a house `.claude/` agent added on top of the base library (managed — refreshed on update) |
 | `profile.json` → `onboarding` / `session_start` | a one-time onboarding step and an every-session reminder |
+
+It is deliberately *not* a complete setup — a scaffolded project gets exactly these files, no
+`AGENTS.md` or quality gate. A real team profile starts by **forking the flagship
+`agent-native-baseline` repo** (the complete setup) and adding house files like these; this
+example only exercises the format.
 
 This file and the layout notes are **meta** — only what's under `templates/` ships into a
 scaffolded project.

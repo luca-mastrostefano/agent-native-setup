@@ -255,7 +255,7 @@ def test_flagship_profile_loads_and_validates() -> None:
     import argparse
 
     prof = profiles.load(FLAGSHIP)
-    assert prof.standalone and prof.name == "agent-native-baseline"
+    assert prof.name == "agent-native-baseline"
 
     class _Console:
         text = ""

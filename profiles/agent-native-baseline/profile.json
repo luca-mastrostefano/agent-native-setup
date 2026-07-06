@@ -1,7 +1,6 @@
 {
   "name": "agent-native-baseline",
   "version": "0.0.1",
-  "extends": null,
   "description": "The agent-native setup this project scaffolds by default: contract + guardrails + feedback loops (WORK IN PROGRESS - stage A extraction, RFC 2026-07-05).",
   "tags": ["general", "baseline", "multi-language"],
   "seed": ["AGENTS.md", ".gitignore", "docs/architecture/overview.md", "docs/improvements.md", "docs/rfc/active/@DATE@-adopt-agent-native-setup.md", "README.md"],

@@ -53,7 +53,7 @@ def test_default_scaffold_is_byte_identical_and_builtin_provenanced(tmp_path: Pa
 
     m = json.loads((flipped / MANIFEST).read_text(encoding="utf-8"))
     assert m["profile"]["source"] == "builtin:agent-native-baseline"
-    assert m["profile"]["extends"] is None  # the flagship is standalone
+    assert "extends" not in m["profile"]  # the field is gone from the format
     assert m["profile"]["name"] == "agent-native-baseline"
 
 
@@ -146,7 +146,6 @@ def test_greenfield_composed_profile_never_folds_its_own_base(tmp_path: Path) ->
             {
                 "name": "team",
                 "version": "1.0.0",
-                "extends": "default",
                 "links": {"CLAUDE.md": "AGENTS.md"},
             }
         ),

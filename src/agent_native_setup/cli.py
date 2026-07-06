@@ -30,7 +30,11 @@ def _csv(value: str) -> list[str]:
 
 def parse_args(argv: list[str]) -> argparse.Namespace:
     p = argparse.ArgumentParser(
-        prog="agent-native-setup", description="Scaffold an agent-native project setup."
+        prog="agent-native-setup",
+        description="Scaffold an agent-native project setup.",
+        epilog="The wizard flags (--languages, --tools, --no-*, --runner, --adopt, "
+        "--no-first-run-banner) are deprecated aliases for the baseline profile's prompts — "
+        "the durable spelling is --answer NAME=VALUE (e.g. --answer runner=task).",
     )
     p.add_argument("name", nargs="?", help="project name")
     p.add_argument("-o", "--output", default=".", help="target directory (default: cwd)")
@@ -38,7 +42,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     p.add_argument(
         "--profile",
         default=None,
-        help="compose a profile on the default setup: a path, a name in "
+        help="scaffold from a profile instead of the built-in baseline: a path, a name in "
         "~/.config/agent-native-setup/profiles, or a git+https://… URL "
         "(see `agent-native-setup profile --help`)",
     )
@@ -285,20 +289,17 @@ def build(
     standalone: bool | None = None,
     profile_date: str | None = None,
 ) -> dict[str, object] | None:
-    """Scaffold ``config`` (plus ``profile``'s overlay) into ``sc``'s target and write the
+    """Scaffold ``config`` (or ``profile``'s complete setup) into ``sc``'s target and write the
     manifest. Returns the recorded ``profile`` block (or ``None``) — its `files`/`answers`
     reflect what was *actually* applied, which `update` persists instead of re-guessing. The
-    ``standalone`` override lets a *degraded* update of a `extends: null` project still skip the
-    default generators when the profile object can't be re-resolved."""
+    ``standalone`` override lets a *degraded* update (profile gone) of an old *composed*
+    manifest still run the generators its files were laid over."""
     config.target.mkdir(parents=True, exist_ok=True)
-    # A standalone profile (`extends: null`) skips the default generators entirely — it provides
-    # everything from scratch. `extends: default` (or no profile) runs the normal generators,
-    # into which a profile's startup contributions (SessionStart hooks, one-time onboarding
-    # steps) are merged. The `session_start` override lets a degraded update keep the recorded
-    # hooks when the profile object is gone.
-    is_standalone = (
-        standalone if standalone is not None else (profile is not None and profile.standalone)
-    )
+    # A profile provides the complete setup, so the legacy generators are skipped; they run
+    # only with no profile at all (`--profile default`, and updates of pre-flip manifests —
+    # both die with the generators at stage D, RFC 2026-07-05 §7). The `session_start` override
+    # lets a degraded update keep the recorded hooks when the profile object is gone.
+    is_standalone = standalone if standalone is not None else profile is not None
     hooks = (
         session_start if session_start is not None else (profile.session_start if profile else ())
     )
@@ -616,15 +617,10 @@ def main(argv: list[str] | None = None) -> int:
         ):
             return 2
         if not baseline_run:
-            kind = "standalone — from scratch" if profile.standalone else "composed on default"
-            console.print(f"[cyan]Profile:[/] {profile.name} {profile.version} ({kind}).")
-        # SessionStart hooks live in .claude/settings.json. For a composed profile that means the
-        # agents generator (Claude + agents on); for a standalone one, a minimal settings.json is
-        # written directly (Claude on). Warn rather than silently drop the hooks when neither holds.
-        hooks_have_a_home = "claude" in config.ai_tools and (
-            profile.standalone or config.include_agents
-        )
-        if profile.session_start and not hooks_have_a_home:
+            console.print(f"[cyan]Profile:[/] {profile.name} {profile.version}.")
+        # SessionStart hooks live in .claude/settings.json (written for Claude targets only).
+        # Warn rather than silently drop the hooks when that doesn't hold.
+        if profile.session_start and "claude" not in config.ai_tools:
             console.print(
                 ":warning:  [yellow]This profile defines session_start hooks, but the project "
                 "targets no Claude `.claude/` config[/] — those hooks won't be applied."

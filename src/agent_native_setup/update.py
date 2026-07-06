@@ -302,8 +302,8 @@ def _regenerate(
     ``into``. Returns ``(scaffolder, profile_block)`` — the block reflects what the profile
     *actually* applied (owned files + the answers it rendered against), which the caller persists
     so a conditionally-skipped file isn't recorded as owned. ``session_start``/``answers``/
-    ``standalone`` let a degraded update keep the recorded hooks/answers and honor a recorded
-    `extends: null` even when the profile object is gone."""
+    ``standalone`` let a degraded update keep the recorded hooks/answers and skip (or, for an
+    old composed manifest, run) the legacy generators even when the profile object is gone."""
     from agent_native_setup import cli  # lazy: cli imports this module
 
     sc = Scaffolder(into)
@@ -330,6 +330,16 @@ def _reresolve_profile(old: dict, console: Any) -> tuple[profiles.Profile | None
     block = old.get("profile")
     if not isinstance(block, dict):
         return None, None
+    if block.get("extends") == "default":
+        # A pre-B2 *composed* project. Composition is gone (RFC 2026-07-05 §4) — re-applying
+        # the profile as a complete setup would make classify strip the generated base around
+        # it. Keep its files frozen over the still-updating base until stage C's migration.
+        console.print(
+            f"[yellow]Profile {block.get('name')!r} was composed on the default setup[/] — "
+            "composition was removed (profiles now ship the complete setup; extension is a "
+            "git fork). Its files are kept as-is; the base setup still updates."
+        )
+        return None, block
     source = block.get("source")
     profile = None
     if source:
@@ -479,8 +489,9 @@ def run(target: Path, *, dry_run: bool, console: Any, assume_yes: bool = False) 
         console.print(f"  [magenta]~[/] {'would move' if dry_run else 'moved'} {action}")
 
     # Degraded (profile gone): re-inject the recorded SessionStart hooks so settings.json keeps
-    # them, and honor a recorded `extends: null` so a standalone project doesn't regenerate the
-    # whole default scaffold around its frozen files.
+    # them. Current manifests record no `extends` (every profile is the complete setup →
+    # standalone here); only a pre-B2 *composed* block (`extends: "default"`) still needs the
+    # legacy generators run beneath its frozen files — that read dies at stage C's migration.
     degraded_hooks = None
     degraded_standalone = None
     if profile is None and isinstance(degraded_block, dict):

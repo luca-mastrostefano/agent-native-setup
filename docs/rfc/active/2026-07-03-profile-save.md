@@ -5,6 +5,14 @@
 - **Author:** Luca Mastrostefano
 - [x] Implemented
 
+> **Redefined by RFC 2026-07-05 §4 (B2, 2026-07-06):** with composition removed, `save` now
+> produces a **standalone snapshot** — every manifest-recorded file as it exists on disk (the
+> setup rendered for that project *plus* its edits), not a delta against a regenerated
+> default. Symlinks become declarative `links`; the dated bootstrap RFC is captured through
+> `@DATE@`/`{{ env.date }}` so it re-stamps per project; provenance (what the snapshot was
+> derived from) is noted in the draft's description and README. The parameterization,
+> seed-preservation, and setup-owned-dirs decisions below carry over unchanged.
+
 > **Status note:** the **core landed** — `agent-native-setup profile save <project> <name>`
 > extracts the delta, parameterizes name/slug (word-boundary), preserves seed status, turns
 > symlinks into onboarding steps, excludes the non-deterministic bootstrap RFC, and discloses the

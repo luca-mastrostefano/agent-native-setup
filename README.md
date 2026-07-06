@@ -165,8 +165,9 @@ drifted from the scaffold.
 
 ### Profiles (experimental)
 
-A **profile** lets a team or community ship their *own* agent setup composed on top of the
-default one — their `.claude/` agents, MCP config, house rules, extra gates — so new projects
+A **profile** is a packaged, versioned, **complete** project setup — the built-in scaffold is
+itself just the vendored flagship profile (`agent-native-baseline`). A team or community ships
+their own — their `.claude/` agents, MCP config, house rules, extra gates — so new projects
 start from "exactly like ours," not just the generic baseline.
 
 ```bash
@@ -178,8 +179,8 @@ agent-native-setup my-app --profile git+https://github.com/acme/profile.git    #
 agent-native-setup profile add acme-profile      # …or install a search hit by its index name
 
 # Make & share your own
-agent-native-setup profile init my-team           # scaffold a skeleton (--standalone = from scratch)
-agent-native-setup profile save ./my-app team     # …or extract one from a project you tuned
+agent-native-setup profile init my-team           # scaffold a skeleton
+agent-native-setup profile save ./my-app team     # …or snapshot a project you tuned
 agent-native-setup profile validate ./my-team     # check it loads + every template renders
 agent-native-setup profile publish ./my-team      # print its shareable URL + index entry (then PR it)
 ```
@@ -199,13 +200,15 @@ remembers your consent per exact content (`profile trust --list` / `untrust` to 
 local or `~/.config` profile is trusted — the gate is for code fetched from the internet.
 
 `profile save <project> <name>` is the reverse of authoring: point it at a project you
-scaffolded and then customized, and it extracts an `extends: default` profile from that project's
-**delta** from the default — only the files you changed or added (in setup-owned dirs), with the
-project name parameterized, `seed` status preserved, and symlinks turned into onboarding steps.
-It's read-only on the source and produces a review-ready draft (run `profile validate` on it).
+scaffolded and then customized, and it **snapshots the complete setup** as a standalone profile
+— every scaffold-recorded file as it exists on disk (your edits included, plus files you added
+in setup-owned dirs), with the project name and scaffold date parameterized, `seed` status
+preserved, and symlinks captured as `links`. It's read-only on the source and produces a
+review-ready draft (run `profile validate` on it). The snapshot is pinned to your project's
+languages and choices — for a *general* reusable base, fork the flagship instead (below).
 
-**Extend.** To build on a community profile — "that base plus our house files" — fork it with
-git; there is deliberately no in-tool extension mechanism
+**Extend.** To build on any profile — the flagship baseline or a community one, "that base
+plus our house files" — fork it with git; there is deliberately no in-tool extension mechanism
 ([why](docs/rfc/active/2026-07-04-profile-extends.md): git's three-way merge beats any overlay
 we could ship, and you review base changes before releasing them to your own consumers):
 
@@ -236,7 +239,6 @@ A profile is a directory with a `profile.json` and a `templates/` tree. A full e
 {
   "name": "my-team",
   "version": "1.0.0",
-  "extends": "default",
   "description": "Our team's agent setup",
   "tags": ["backend", "python"],
   "seed": ["docs/team-notes.md"],
@@ -250,18 +252,18 @@ A profile is a directory with a `profile.json` and a `templates/` tree. A full e
 }
 ```
 
-Only `name`, `version`, and `extends` are required; `tags` (freeform discovery keywords — who/what
+Only `name` and `version` are required; `tags` (freeform discovery keywords — who/what
 it targets, surfaced by `search`/`show` and carried into the community index by `publish`), `seed`,
 `prompts`, `onboarding`, and `session_start` are optional. `agent-native-setup profile init` writes
 this skeleton **plus a README documenting every field** — start there.
 
-In short: **`extends: "default"`** overlays every file under `templates/` on the default
-scaffold; **`extends: null`** is **standalone** (the default generators are skipped and the
-profile ships everything, its own `AGENTS.md` included). `.j2` templates render (sandboxed)
+In short: a profile ships **everything** — a scaffolded project gets exactly the files under
+`templates/` (its own `AGENTS.md` included), nothing else. `.j2` templates render (sandboxed)
 against the project context — the profile's own **prompt answers** (`{{ answers.tier }}`; a
 `when` asks a question only when relevant, answers are recorded and replayed on `update`, and
-`-y` / `--answer name=value` cover headless runs) and an **`env`** namespace of detected facts
-(`{% if env.existing_project %}…`) — while every other file ships verbatim, so a literal
+`-y` / `--answer name=value` cover headless runs) and an **`env`** namespace of sensed facts
+(`{% if env.existing_project %}…`; never an echo of a wizard choice) — while every other file
+ships verbatim, so a literal
 `${{ ... }}` is safe. `onboarding` steps fold into the project's one-time `ONBOARDING.md`;
 `session_start` commands join the `.claude` SessionStart hooks (each wrapped so a failure can't
 disrupt a session). The full subsystem reference — resolution precedence, prompt types, the
