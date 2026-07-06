@@ -199,9 +199,7 @@ review-ready draft (run `profile validate` on it). The snapshot is pinned to you
 languages and choices — for a *general* reusable base, fork the flagship instead (below).
 
 **Extend.** To build on any profile — the flagship baseline or a community one, "that base
-plus our house files" — fork it with git; there is deliberately no in-tool extension mechanism
-([why](docs/rfc/active/2026-07-04-profile-extends.md): git's three-way merge beats any overlay
-we could ship, and you review base changes before releasing them to your own consumers):
+plus our house files" — fork it and publish your fork to the index:
 
 ```bash
 git clone https://github.com/acme/python-backend-profile.git my-profile
@@ -210,8 +208,7 @@ cd my-profile && git remote rename origin upstream
 git fetch upstream && git merge upstream/main   # later: take base improvements, then bump + tag
 ```
 
-Your consumers get each release through the normal `update` flow; `git diff upstream/main` stays
-the view of exactly what you changed on the base.
+Your consumers get each release through the normal `update` flow.
 
 **Safety.** Profile templates are untrusted input, so they render in a **sandbox** (a hostile
 template can't reach Python) and every output path is **confined** to the project (no `../`
