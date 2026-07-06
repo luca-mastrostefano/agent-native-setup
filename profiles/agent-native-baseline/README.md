@@ -28,5 +28,7 @@ them from the generators' own constants. The release loop is:
    (`profiles.content_hash` of the loaded profile) — the offline pin test forces this.
 
 **Do not edit built templates by hand** — parity and the pin will both catch the drift.
+Release tags on the profile repo are **immutable** (GitHub ruleset): a bad release gets a
+new tag and a pin bump, never a moved tag.
 Decided history (RFC §7-A): force means force — under `--force` a profile seed file
 overwrites; the generators' `preserve` semantics were deliberately not carried over.
