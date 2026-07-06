@@ -90,7 +90,7 @@ def test_format_hook_wired_and_helper_shipped(tmp_path: Path) -> None:
     settings = _settings(tmp_path, languages=["python", "node"])
     post = settings["hooks"]["PostToolUse"]
     assert post[0]["matcher"] == "Edit|Write"
-    assert post[0]["hooks"][0]["command"] == "python tools/checks/format_on_edit.py"
+    assert post[0]["hooks"][0]["command"] == "python3 tools/checks/format_on_edit.py"
     body = (tmp_path / "tools/checks/format_on_edit.py").read_text(encoding="utf-8")
     assert '".py": ["ruff", "format"]' in body
     assert '".ts": ["npx", "prettier", "--write"]' in body

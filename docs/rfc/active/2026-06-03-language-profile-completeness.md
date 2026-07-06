@@ -47,7 +47,8 @@ Complete the **node** profile and make the gate/CI symmetric, generically:
 - Pin `htmlhint@1.1.4` inline (html may be selected without the node toolchain,
   so it stays an `npx` invocation rather than a `package.json` dependency).
 - Keep `sync_rfc_status.py` ≤ 88 cols so it is lint-clean under any config, and
-  note in `ONBOARDING.md` that the RFC/docs hooks need `python` on PATH.
+  note in `ONBOARDING.md` that the RFC/docs hooks need `python3` on PATH
+  (switched from `python` after real-run feedback, 2026-07-06).
 
 ### Follow-up (same theme, applied after a second onboarding run)
 

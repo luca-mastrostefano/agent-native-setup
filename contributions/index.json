@@ -2,7 +2,7 @@
   "profiles": [
     {
       "name": "agent-native-baseline",
-      "url": "git+https://github.com/luca-mastrostefano/agent-native-baseline.git@v0.1.0",
+      "url": "git+https://github.com/luca-mastrostefano/agent-native-baseline.git@v0.1.2",
       "description": "The flagship profile — the complete agent-native setup the engine scaffolds by default: AGENTS.md contract, docs + RFCs, quality gates, security scanning, CI, and a .claude library. Fork it to build your own.",
       "author": "Luca Mastrostefano",
       "tags": ["general", "baseline", "multi-language"]

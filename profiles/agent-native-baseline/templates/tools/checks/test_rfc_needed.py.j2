@@ -19,7 +19,7 @@ class DepNames(unittest.TestCase):
 
 class DepNamesPackageJson(unittest.TestCase):
     def test_reads_deps_and_dev_deps(self) -> None:
-        text = '{"dependencies": {"react": "^19"}, "devDependencies": {"eslint": "^10"}}'
+        text = '{"dependencies": {"react": "19"}, "devDependencies": {"eslint": "10"}}'
         expected = {"react", "eslint"}
         self.assertEqual(rfc_needed.dep_names_package_json(text), expected)
 
@@ -54,10 +54,7 @@ class DepNamesCargo(unittest.TestCase):
         self.assertEqual(rfc_needed.dep_names_cargo(text), expected)
 
     def test_py310_fallback_matches_incl_dotted_tables(self) -> None:
-        text = (
-            '[dependencies.serde]\nversion = "1"\n\n'
-            '[dev-dependencies]\nrstest = "0.18"\n'
-        )
+        text = '[dependencies.serde]\nversion = "1"\n\n[dev-dependencies]\nrstest = "0.18"\n'
         expected = {"serde", "rstest"}
         self.assertEqual(rfc_needed._cargo_names_fallback(text), expected)
         self.assertEqual(rfc_needed.dep_names_cargo(text), expected)

@@ -24,7 +24,7 @@ The dev loop lives in [`CONTRIBUTING.md`](../CONTRIBUTING.md) at the repo root.
 
 RFCs are named `YYYY-MM-DD-short-slug.md`. You don't move them by hand: edit the
 `Status:` line and the `rfc-status` pre-commit hook relocates the file via `git mv`
-(or run `python tools/checks/sync_rfc_status.py`), preserving history.
+(or run `python3 tools/checks/sync_rfc_status.py`), preserving history.
 """
 
 IMPROVEMENTS = """\
@@ -343,8 +343,9 @@ def find_triggers(changes: list[tuple[str, str]]) -> list[str]:
 def is_satisfied(changes: list[tuple[str, str]], message: str) -> bool:
     # A new RFC accompanying the change is Proposed (-> proposed/); accept active/ too
     # for the case where it's promoted in the same commit.
+    rfc_dirs = ("docs/rfc/proposed/", "docs/rfc/active/")
     staged_rfc = any(
-        path.startswith(("docs/rfc/proposed/", "docs/rfc/active/")) and path.endswith(".md")
+        path.startswith(rfc_dirs) and path.endswith(".md")
         for status, path in changes
         if status != "D"
     )
@@ -640,7 +641,7 @@ class DepNames(unittest.TestCase):
 
 class DepNamesPackageJson(unittest.TestCase):
     def test_reads_deps_and_dev_deps(self) -> None:
-        text = '{"dependencies": {"react": "^19"}, "devDependencies": {"eslint": "^10"}}'
+        text = '{"dependencies": {"react": "19"}, "devDependencies": {"eslint": "10"}}'
         expected = {"react", "eslint"}
         self.assertEqual(rfc_needed.dep_names_package_json(text), expected)
 
@@ -675,10 +676,7 @@ class DepNamesCargo(unittest.TestCase):
         self.assertEqual(rfc_needed.dep_names_cargo(text), expected)
 
     def test_py310_fallback_matches_incl_dotted_tables(self) -> None:
-        text = (
-            '[dependencies.serde]\nversion = "1"\n\n'
-            '[dev-dependencies]\nrstest = "0.18"\n'
-        )
+        text = '[dependencies.serde]\nversion = "1"\n\n[dev-dependencies]\nrstest = "0.18"\n'
         expected = {"serde", "rstest"}
         self.assertEqual(rfc_needed._cargo_names_fallback(text), expected)
         self.assertEqual(rfc_needed.dep_names_cargo(text), expected)

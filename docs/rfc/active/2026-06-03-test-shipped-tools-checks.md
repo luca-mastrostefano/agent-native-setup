@@ -35,7 +35,8 @@ its test, and a runner enforces them at all three layers — whenever the helper
    - `tools/checks/test_sync_rfc_status.py` — always (it always ships).
    - `tools/checks/test_rfc_needed.py` + `tools/checks/test_docs_sync.py` — for Python
      projects (when those helpers ship).
-   - `unittest`, **not pytest**, so they run with only `python` on PATH — no new
+   - `unittest`, **not pytest**, so they run with only `python3` on PATH (the
+     invocation switched from `python` after real-run feedback, 2026-07-06) — no new
      dependency, and they work whether or not Python is a selected language. Kept
      ruff-clean and ≤88 cols (non-Python projects have no `line-length=100`), so they
      pass the existing `tools/` ruff guard.

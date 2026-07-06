@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -139,3 +140,55 @@ def test_next_steps_lone_contract_not_mislabelled_optional(
     assert "AGENTS.md" in out
     assert "Optional:" not in out
     assert "IMPORTANT:" not in out
+
+
+def test_git_init_lands_on_main_regardless_of_user_default(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The docs, CI triggers, and onboarding all say `main`, but a user's
+    # init.defaultBranch (or an old git default) can produce `master` — seen in a real
+    # first run. The scaffold must pin the branch name itself.
+    gitconfig = tmp_path / "gitconfig"
+    gitconfig.write_text("[init]\n\tdefaultBranch = master\n", encoding="utf-8")
+    monkeypatch.setenv("GIT_CONFIG_GLOBAL", str(gitconfig))
+    target = tmp_path / "proj"
+    assert cli.main(["demo", "-o", str(target), "-y", "--no-update-check"]) == 0
+    branch = subprocess.run(
+        ["git", "-C", str(target), "branch", "--show-current"],
+        capture_output=True,
+        text=True,
+    )
+    assert branch.stdout.strip() == "main"
+
+
+def test_git_init_fallback_lands_on_main_for_old_git(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # git <2.28 has no `init -b`; the fallback must retarget the unborn HEAD (review of
+    # the fix: `branch -m` needs git 2.30, so it failed silently on exactly the old gits).
+    # Shim: a `git` that rejects `init -b` like an old git, passing everything else through.
+    import shutil as _shutil
+
+    real_git = _shutil.which("git")
+    shim_dir = tmp_path / "bin"
+    shim_dir.mkdir()
+    shim = shim_dir / "git"
+    shim.write_text(
+        "#!/bin/sh\n"
+        'if [ "$1" = "init" ] && echo "$@" | grep -q -- "-b"; then\n'
+        '  echo "error: unknown switch \\`b\'" >&2; exit 129\n'
+        "fi\n"
+        f'exec "{real_git}" "$@"\n',
+        encoding="utf-8",
+    )
+    shim.chmod(0o755)
+    gitconfig = tmp_path / "gitconfig"
+    gitconfig.write_text("[init]\n\tdefaultBranch = master\n", encoding="utf-8")
+    monkeypatch.setenv("GIT_CONFIG_GLOBAL", str(gitconfig))
+    monkeypatch.setenv("PATH", f"{shim_dir}:{__import__('os').environ['PATH']}")
+    target = tmp_path / "proj"
+    assert cli.main(["demo", "-o", str(target), "-y", "--no-update-check"]) == 0
+    head = subprocess.run(
+        ["git", "-C", str(target), "symbolic-ref", "HEAD"], capture_output=True, text=True
+    )
+    assert head.stdout.strip() == "refs/heads/main"

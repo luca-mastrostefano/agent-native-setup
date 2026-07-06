@@ -215,8 +215,12 @@ def _onboarding_prelude() -> list[str]:
     )
     A('{% set it = "it" if ("python" not in answers.languages and _ships) else "them" %}')
     A(
+        '{% set plain = "ruff mypy pytest" if "python" in answers.languages '
+        'else ("ruff" if _ships else "") %}'
+    )
+    A(
         "{% set tools_note = "
-        + _jexpr(ob.TOOLS_NOTE, gate="gate", listed="listed", it="it")
+        + _jexpr(ob.TOOLS_NOTE, gate="gate", listed="listed", it="it", plain="plain")
         + ' if listed else "" %}'
     )
     A(
@@ -235,9 +239,11 @@ def _onboarding_prelude() -> list[str]:
         + _jexpr(ob.ADOPT_NONE, gate="gate")
         + ')) if (answers.include_quality and env.existing_project) else "" %}'
     )
-    A("{% set s_docs = " + _j(ob.S_DOCS) + ' if answers.include_docs else "" %}')
-    A("{% set ci_clause = " + _j(ob.CI_CLAUSE) + ' if has_ci else "" %}')
-    A("{% set s_uncovered = " + _jexpr(ob.S_UNCOVERED, ci_clause="ci_clause") + " %}")
+    A(
+        "{% set s_docs = "
+        + _j(ob.S_DOCS)
+        + ' if (answers.include_docs and env.existing_project) else "" %}'
+    )
     A("{% set push_clause = " + _j(ob.PUSH_CLAUSE) + ' if has_ci else "" %}')
     A("{% set harness_note = " + _j(ob.HARNESS_NOTE) + ' if has_ci else "" %}')
     A(
@@ -286,7 +292,7 @@ def _onboarding_prelude() -> list[str]:
     )
     A(
         "{% set _steps = [" + _j(ob.S_READ) + ", s_toolchain, s_baseline, s_adopt, s_docs, "
-        "s_uncovered, s_commit, s_ci, s_dep, s_cleanup] | select | list %}"
+        "s_commit, s_ci, s_dep, s_cleanup] | select | list %}"
     )
     return L
 
@@ -525,7 +531,7 @@ def _settings_port() -> list[tuple[str, str | None, str, list[str]]]:
         "{% if " + _FMT_HOOK + " %}"
         '{% set _hooks = {"SessionStart": [{"hooks": _sess}], "PostToolUse": [{"matcher": '
         '"Edit|Write", "hooks": [{"type": "command", '
-        '"command": "python tools/checks/format_on_edit.py"}]}]} %}'
+        '"command": "python3 tools/checks/format_on_edit.py"}]}]} %}'
         '{% else %}{% set _hooks = {"SessionStart": [{"hooks": _sess}]} %}{% endif %}',
         '{% set _settings = {"permissions": {"allow": _allow}, "hooks": _hooks} %}',
     ]
@@ -663,7 +669,7 @@ def _runner_ports() -> list[tuple[str, str | None, str, list[str]]]:
         + t_task(
             "rfc-sync",
             _j("move RFCs into the folder matching their Status"),
-            '["python tools/checks/sync_rfc_status.py"]',
+            '["python3 tools/checks/sync_rfc_status.py"]',
         )
         + t_task("improvement", imp_desc_task, "[" + _j(quality._IMPROVEMENT_CMD_TASK) + "]")
         + "{% endif %}"
@@ -725,7 +731,7 @@ def _runner_ports() -> list[tuple[str, str | None, str, list[str]]]:
         + t_target(
             "rfc-sync",
             _j("move RFCs into the folder matching their Status"),
-            '["python tools/checks/sync_rfc_status.py"]',
+            '["python3 tools/checks/sync_rfc_status.py"]',
         )
         + t_target("improvement", imp_desc_make, "[" + _j(quality._IMPROVEMENT_CMD_MAKE) + "]")
         + "{% endif %}"

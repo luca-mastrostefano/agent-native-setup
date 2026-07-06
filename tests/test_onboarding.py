@@ -113,24 +113,30 @@ def test_runbook_flags_the_main_push_approval_prompt(tmp_path: Path) -> None:
     assert "pause for your approval" not in _onboarding(tmp_path / "no_ci", include_ci=False)
 
 
-def test_architecture_step_is_greenfield_safe(tmp_path: Path) -> None:
-    # On a brand-new repo there's no product architecture to write; the step must say
-    # to leave it as TODOs rather than read as an action item (a real onboarding hit this).
-    assert "leave those sections as TODOs" in _onboarding(tmp_path)
+def test_architecture_step_only_for_existing_code(tmp_path: Path) -> None:
+    # On a brand-new repo there's no product architecture to write — the step always
+    # resolved to "move on" (real-run feedback), so it ships only for a brownfield repo
+    # (the doc itself says "add components as they land" for greenfield).
+    assert "docs/architecture/overview.md" not in _onboarding(tmp_path / "green")
+    assert "docs/architecture/overview.md" in _onboarding(tmp_path / "brown", existing_project=True)
 
 
-def test_wire_up_step_states_the_testing_bar(tmp_path: Path) -> None:
-    # "add it the way the existing ones are" was ambiguous on tests (the JS test is a
-    # no-op); point at the contract's bar instead of leaving it to the agent.
-    body = _onboarding(tmp_path)
-    assert "a real test where there's logic" in body
-    assert "can't be tested" in body
+def test_wire_up_step_is_gone(tmp_path: Path) -> None:
+    # The wizard already wired every selected language, so the step was always a no-op
+    # (real-run feedback); the standing rule lives in INSTRUCTION.md.
+    assert "uncovered language" not in _onboarding(tmp_path)
 
 
-def test_runbook_notes_python_prereq_for_rfc_hooks(tmp_path: Path) -> None:
-    # The RFC/docs hooks shell out to `python`; a non-Python project still needs it.
-    assert "`python` must be on your PATH" in _onboarding(tmp_path / "d")  # docs default on
-    assert "`python` must be on your PATH" not in _onboarding(tmp_path / "n", include_docs=False)
+def test_runbook_notes_python3_prereq_for_rfc_hooks(tmp_path: Path) -> None:
+    # The RFC/docs hooks shell out to `python3`; a non-Python project still needs it.
+    assert "`python3` must be on your PATH" in _onboarding(tmp_path / "d")  # docs default on
+    assert "`python3` must be on your PATH" not in _onboarding(tmp_path / "n", include_docs=False)
+
+
+def test_baseline_step_gives_the_exact_install_command(tmp_path: Path) -> None:
+    # "install them on your PATH first" left the how as a scavenger hunt (real-run
+    # feedback) — the runbook now names a copy-pasteable command for the exact tool set.
+    assert "`pipx install ruff mypy pytest`" in _onboarding(tmp_path)
 
 
 def test_runbook_has_npm_lockfile_step_for_node(tmp_path: Path) -> None:

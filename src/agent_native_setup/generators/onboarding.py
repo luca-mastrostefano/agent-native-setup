@@ -46,7 +46,7 @@ PRE_HOOKS = (
     "(`pipx install pre-commit`, or `pip install pre-commit`), then "
 )
 PY_CLAUSE = (
-    " The commit-time guard hooks run `python` helpers, so `python` must be on your PATH too."
+    " The commit-time guard hooks run `python3` helpers, so `python3` must be on your PATH too."
 )
 LYCHEE_CLAUSE = (
     " The HTML link-check hook downloads its `lychee` binary on the first "
@@ -58,8 +58,8 @@ S_TOOLCHAIN = "Set up the toolchain: {pre}run {run_phrase} — it {does}.{py_cla
 BASELINE_TAIL = " and see what the existing code trips on"
 BASELINE_SURFACE = " (see AGENTS.md's command surface; add any check your runner is missing)"
 TOOLS_NOTE = (
-    " {gate} runs {listed} directly, so install {it} on your PATH first "
-    "(e.g. `pipx install`, `uv tool install`, or pip in a venv) — the scaffold doesn't."
+    " {gate} runs {listed} directly, so install {it} on your PATH first — the scaffold "
+    "doesn't (e.g. `pipx install {plain}`, or `uv tool install` each)."
 )
 S_BASELINE = "Run {gate} once to establish a clean baseline{tail}{surface}.{tools_note}"
 ADOPT_FULL = (
@@ -79,17 +79,7 @@ ADOPT_NONE = (
 )
 S_DOCS = (
     "Flesh out `docs/architecture/overview.md` — the tooling components are "
-    "pre-filled; add the product components and dependency rules as they land. "
-    "If there's no product code yet, leave those sections as TODOs and move on."
-)
-CI_CLAUSE = ", a CI step,"
-S_UNCOVERED = (
-    "Wire up any uncovered language: if the repo uses a language not yet set up for "
-    "lint/format/test, add it the way the existing ones are (a pre-commit hook{ci_clause} "
-    "and a command-surface entry), per the contract — including a real test where there's "
-    "logic to cover, and a note on why if something genuinely can't be tested. If a "
-    "test hook shells out to git, keep the existing hooks' `env -u GIT_DIR …` prefix so "
-    "it runs against a temp repo, not this one."
+    "pre-filled; add the existing code's components and dependency rules."
 )
 PUSH_CLAUSE = ", then push — that's what triggers CI (add a git remote first if there isn't one)"
 HARNESS_NOTE = (
@@ -162,7 +152,7 @@ def _steps(config: WizardConfig, profile_steps: tuple[str, ...] = ()) -> list[st
     # there are deps to fetch (e.g. node's npm install / lockfile).
     if config.git_hooks or has_setup:
         # The pipx prereq + the hook-specific notes only apply to the hooks, which exist
-        # only with git_hooks. (The RFC/docs hooks run `python tools/checks/*.py`.)
+        # only with git_hooks. (The RFC/docs hooks run `python3 tools/checks/*.py`.)
         if config.git_hooks:
             pre = PRE_HOOKS
             py_clause = PY_CLAUSE if config.include_docs else ""
@@ -206,7 +196,8 @@ def _steps(config: WizardConfig, profile_steps: tuple[str, ...] = ()) -> list[st
                 else ", ".join(py_tools[:-1]) + ", and " + py_tools[-1]
             )
             it = "it" if len(py_tools) == 1 else "them"
-            tools_note = TOOLS_NOTE.format(gate=gate, listed=listed, it=it)
+            plain = " ".join(config.python_surface_tools)
+            tools_note = TOOLS_NOTE.format(gate=gate, listed=listed, it=it, plain=plain)
         else:
             tools_note = ""
         steps.append(
@@ -214,10 +205,8 @@ def _steps(config: WizardConfig, profile_steps: tuple[str, ...] = ()) -> list[st
         )
         if config.existing_project:
             steps.append(_adoption_step(config, gate, fmt))
-    if config.include_docs:
-        steps.append(S_DOCS)
-    ci_clause = CI_CLAUSE if has_ci else ""
-    steps.append(S_UNCOVERED.format(ci_clause=ci_clause))
+    if config.include_docs and config.existing_project:
+        steps.append(S_DOCS)  # greenfield has nothing to describe yet — the doc says so itself
     # A profile's own setup steps extend the default flow here: after the base toolchain/baseline
     # is up, but *before* the bootstrap commit — so team setup runs as part of the initial setup
     # and lands in the first commit, not as a trailing afterthought.
