@@ -52,6 +52,11 @@ INDEX_URL = (
     "contributions/index.json"
 )
 INDEX_ENV = "AGENT_NATIVE_SETUP_INDEX_URL"
+# The engine's built-in scaffold (RFC 2026-07-05 §5): the vendored flagship profile. The
+# `builtin:` source scheme resolves to the wheel's embedded copy (or the repo checkout in
+# development), is trusted like any local artifact, and re-resolves identically at update.
+BUILTIN_SCHEME = "builtin:"
+BASELINE_NAME = "agent-native-baseline"
 EXTENDS_VALUES = ("default", None)  # "default" composes on the base; null = standalone
 PROMPT_TYPES = ("text", "select", "confirm", "checkbox")
 
@@ -405,6 +410,15 @@ def _fetch_git(spec: str, console: Any) -> Path:
     return root
 
 
+def builtin_baseline_root() -> Path:
+    """The vendored flagship's directory: the wheel's package-data copy, else (editable
+    install / dev checkout) the repo's ``profiles/agent-native-baseline``."""
+    packaged = Path(__file__).resolve().parent / "_baseline"
+    if (packaged / PROFILE_MANIFEST).is_file():
+        return packaged
+    return Path(__file__).resolve().parents[2] / "profiles" / BASELINE_NAME
+
+
 def resolve(name_or_path: str, *, console: Any = None) -> Profile | None:
     """Resolve a ``--profile`` reference. ``default`` (or empty) → ``None`` (the built-in
     default, no overlay). A ``git+https://…`` / ``git+ssh://…`` URL → fetched into the cache. A path
@@ -414,6 +428,11 @@ def resolve(name_or_path: str, *, console: Any = None) -> Profile | None:
     can't be found."""
     if name_or_path in ("", "default"):
         return None
+    if name_or_path.startswith(BUILTIN_SCHEME):
+        name = name_or_path[len(BUILTIN_SCHEME) :]
+        if name != BASELINE_NAME:
+            raise ProfileError(f"unknown builtin profile {name!r} — only {BASELINE_NAME!r} ships")
+        return load(builtin_baseline_root(), source=name_or_path)
     if name_or_path.startswith("git+"):
         return load(_fetch_git(name_or_path, console or _NullConsole()), source=name_or_path)
     candidate = Path(name_or_path).expanduser()
@@ -559,6 +578,42 @@ def gather_answers(
     return answers
 
 
+def _live_text(path: Path) -> str:
+    """The stripped content of a real (non-symlink) file, else ``""``."""
+    if path.is_symlink() or not path.is_file():
+        return ""
+    return path.read_text(encoding="utf-8").strip()
+
+
+def _fold_contract(sc: Scaffolder, out_rel: str, rendered: str, link_rels: list[str]) -> str | None:
+    """Fold pre-existing contract content beneath the profile's rendered file: the target's
+    own live text plus any real file sitting where a declared link will go. Returns the
+    merged text when a fold happened (written, seeded, recorded — the pre-existing link-path
+    files are removed so the links can take their place), else ``None`` (normal path)."""
+    target_path = sc.target / out_rel
+    sources = [target_path] + [sc.target / rel for rel in link_rels]
+    preserved = [(p.name, text) for p in sources if (text := _live_text(p))]
+    if not preserved:
+        return None
+    existed = target_path.is_file()
+    blocks = [rendered.rstrip()]
+    for label, text in preserved:
+        blocks.append(f"---\n\n<!-- Preserved from your original {label} -->\n\n{text}")
+    merged = "\n\n".join(blocks) + "\n"
+    target_path.parent.mkdir(parents=True, exist_ok=True)
+    target_path.write_text(merged, encoding="utf-8")
+    names = ", ".join(label for label, _ in preserved)
+    sc.created.append(f"{out_rel} (merged existing {names})")
+    sc.track_new(target_path, existed=existed)
+    sc.record(out_rel, merged)
+    sc.seed.add(out_rel)  # the folded contract is the user's to reconcile — never refreshed
+    for rel in link_rels:  # a folded real file makes way for its symlink
+        p = sc.target / rel
+        if not p.is_symlink() and p.is_file() and _live_text(p):
+            p.unlink()
+    return merged
+
+
 def apply(
     profile: Profile,
     config: WizardConfig,
@@ -588,6 +643,14 @@ def apply(
     stamp = applied_on or f"{date.today():%Y-%m-%d}"
     ctx = _context(config, answers, date_stamp=stamp)
     target_root = sc.target.resolve()
+    # The contract fold (RFC 2026-07-05, engine mechanic decided 2026-07-06): when the
+    # profile ships a file AND declares links pointing at it, a pre-existing real file at
+    # the target or at a link path is FOLDED beneath the rendered content (never clobbered,
+    # never left to block the scaffold) — the generators' AGENTS.md behavior, now engine-side.
+    fold_targets: dict[str, list[str]] = {}
+    for link_rel, dest_rel, when in profile.links:
+        if when is None or eval_expr(when, **ctx):
+            fold_targets.setdefault(dest_rel, []).append(link_rel)
     seed_set = {s.replace("@DATE@", stamp) for s in profile.seed}
     transient_set = {t.replace("@DATE@", stamp) for t in profile.transient}
     owned: list[str] = []
@@ -608,6 +671,11 @@ def apply(
                 continue  # conditional include: a .j2 that renders empty is not shipped
         else:
             content = raw
+        if out_rel in fold_targets:
+            folded = _fold_contract(sc, out_rel, content, fold_targets[out_rel])
+            if folded is not None:
+                owned.append(out_rel)
+                continue
         if out_rel in transient_set:
             # Written but never recorded/owned — invisible to the manifest, so an update
             # can't resurrect the self-deleting file after onboarding removed it.

@@ -19,6 +19,7 @@ from pathlib import Path
 import pytest
 
 from agent_native_setup import cli, profiles
+from agent_native_setup.cli import config_to_answers
 from agent_native_setup.config import WizardConfig
 from agent_native_setup.generators import docs as docs_gen
 from agent_native_setup.scaffold import Scaffolder
@@ -185,26 +186,6 @@ def _config(target: Path, **over: object) -> WizardConfig:
     )
     base.update(over)
     return WizardConfig(**base)
-
-
-def config_to_answers(config: WizardConfig) -> dict[str, object]:
-    """The config -> answers translation (RFC 2026-07-05 §7-C, reified early): every recorded
-    config choice maps onto a flagship prompt answer. This function becomes the migration
-    table at stage C — keep it total over the choice surface."""
-    return {
-        "languages": list(config.languages),
-        "tools": list(config.ai_tools),
-        "include_agents": config.include_agents,
-        "include_docs": config.include_docs,
-        "include_quality": config.include_quality,
-        "include_ci": config.include_ci,
-        "include_security": config.include_security,
-        "github_actions": config.use_github_actions,
-        "hooks": config.git_hooks,
-        "runner": config.runner,
-        "adopt": config.adoption,
-        "first_run_banner": config.first_run_banner,
-    }
 
 
 def _tree(root: Path) -> dict[str, object]:

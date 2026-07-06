@@ -182,7 +182,10 @@ and refreshes through `cli.build`'s generators. Sequencing:
   (no scaffold-time "preserve" marking is added), landing when the flagship becomes the
   scaffold at B. The tree-parity exception list itself is **empty**. The generators remain the source of truth until
   this gate is green and stays green in CI.
-- **B. Flip scaffold; remove `extends`; rework `save`.** New scaffolds resolve the vendored
+- **B. Flip scaffold; remove `extends`; rework `save`.** *Scaffold flip + the engine
+  fold + wheel vendoring landed 2026-07-06 (byte-identical by the stage-A gate, live in
+  the CLI); `extends` removal, `save` rework, and the repo split follow in this release
+  window.* Original plan: New scaffolds resolve the vendored
   flagship through the one profile pipeline (`resolve → consent → gather_answers → apply`);
   the compose path and the `extends` field go in the same release (`profile validate`
   rejects the field with a message pointing at the fork recipe) — which forces `profile
