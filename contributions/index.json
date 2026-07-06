@@ -6,13 +6,6 @@
       "description": "The flagship profile — the complete agent-native setup the engine scaffolds by default: AGENTS.md contract, docs + RFCs, quality gates, security scanning, CI, and a .claude library. Fork it to build your own.",
       "author": "Luca Mastrostefano",
       "tags": ["general", "baseline", "multi-language"]
-    },
-    {
-      "name": "example-team",
-      "url": "git+https://github.com/luca-mastrostefano/agent-native-setup.git#subdir=examples/profiles/example-team",
-      "description": "A tiny reference profile: a prompt, the env namespace, a seed file, and startup hooks.",
-      "author": "agent-native-setup",
-      "tags": ["example", "reference"]
     }
   ]
 }
