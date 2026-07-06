@@ -158,7 +158,8 @@ both load-bearing for parity (§7):
 - **The AGENTS.md brownfield fold stays an engine mechanic** (decided, 2026-07-06): folding
   a pre-existing `AGENTS.md`/`CLAUDE.md`'s content beneath the new contract is
   generation-time I/O no template can express, and the behavior is kept rather than
-  dropped — implemented with the AGENTS.md port.
+  dropped. It lands at **stage B** (the fold only fires on real targets; the parity harness
+  builds into empty dirs and enumerates this as its one out-of-scope behavior).
 - **`@DATE@` in template *paths*** — engine-substituted scaffold date, for the dated
   bootstrap RFC (`docs/rfc/active/<date>-adopt-agent-native-setup.md`) the default writes
   today. Dated artifact names are this ecosystem's own convention; one general token beats

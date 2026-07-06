@@ -13,6 +13,7 @@
   ".gitattributes.j2",
   ".github/PULL_REQUEST_TEMPLATE.md.j2",
   ".github/copilot-instructions.md.j2",
+  "AGENTS.md.j2",
   "CONTRIBUTING.md.j2",
   "INSTRUCTION.md.j2",
   "ONBOARDING.md.j2",

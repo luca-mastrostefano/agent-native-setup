@@ -268,6 +268,112 @@ def _onboarding_prelude() -> list[str]:
     return L
 
 
+def _agents_prelude() -> list[str]:
+    """AGENTS.md's context re-expressed over answers/env — texts are ai_context's own
+    constants; per-language command data is baked from the REGISTRY at build time; the
+    label-major, cross-language cmd dedupe mirrors generate() via a namespace loop."""
+    import json as _json
+
+    ac = ai_context
+    # Per (label, language): the registry's raw quality commands, in registry field order.
+    by_label: dict[str, dict[str, list[str]]] = {}
+    for label in ("lint", "format", "typecheck", "test"):
+        by_label[label] = {
+            key: [cmd for lbl, cmd in lang.quality_commands if lbl == label]
+            for key, lang in REGISTRY.items()
+            if any(lbl == label for lbl, _ in lang.quality_commands)
+        }
+    has_tc = (
+        "("
+        + (" or ".join(f'"{k}" in answers.languages' for k in by_label["typecheck"]) or "false")
+        + ")"
+    )
+    has_test = (
+        "("
+        + (" or ".join(f'"{k}" in answers.languages' for k in by_label["test"]) or "false")
+        + ")"
+    )
+    surface_task = ac.SURFACE_NOTE_EXISTING.format(runner_name="Task", discover="task --list")
+    surface_make = ac.SURFACE_NOTE_EXISTING.format(
+        runner_name="Make", discover="grep -E '^[A-Za-z0-9_.-]+:.*## ' Makefile"
+    )
+    L = []
+    A = L.append
+    A("{% set name = project_name %}")
+    A("{% set docs = answers.include_docs %}")
+    A('{% set claude = "claude" in answers.tools %}')
+    A("{% set security = answers.include_security %}")
+    A(
+        "{% set first_run_banner = answers.first_run_banner and answers.tools "
+        "and (answers.include_quality or answers.include_ci) %}"
+    )
+    A("{% set _verb = answers.runner %}")
+    A("{% set ns = namespace(qc=[], seen=[]) %}")
+    # existing-runner branch: raw per-language commands, label-major, deduped by cmd
+    A("{% if answers.include_quality and env.existing_runner %}")
+    A(
+        "{% if answers.hooks %}"
+        '{% set ns.qc = ns.qc + [("set up git hooks (once)", "pre-commit install")] %}'
+        "{% endif %}"
+    )
+    for label in ("lint", "format", "typecheck", "test"):
+        A("{% set _by_lang = " + _json.dumps(by_label[label]) + " %}")
+        A(
+            "{% for _l in answers.languages %}{% for _c in _by_lang.get(_l, []) %}"
+            "{% if _c not in ns.seen %}{% set ns.seen = ns.seen + [_c] %}"
+            '{% set ns.qc = ns.qc + [("' + label + '", _c)] %}'
+            "{% endif %}{% endfor %}{% endfor %}"
+        )
+    A(
+        "{% set surface_note = "
+        + _j(surface_task)
+        + ' if answers.runner == "task" else '
+        + _j(surface_make)
+        + " %}"
+    )
+    # generated-runner branch: our own targets
+    A("{% elif answers.include_quality %}")
+    A(
+        "{% if answers.hooks %}"
+        '{% set ns.qc = ns.qc + [("set up git hooks (once)", _verb ~ " install")] %}'
+        "{% endif %}"
+    )
+    A(
+        '{% set ns.qc = ns.qc + [("run linters", _verb ~ " lint"), '
+        '("auto-format", _verb ~ " format")] %}'
+    )
+    A(
+        "{% if " + has_tc + ' %}{% set ns.qc = ns.qc + [("type-check", _verb ~ " typecheck")] %}'
+        "{% endif %}"
+    )
+    A(
+        "{% if " + has_test + ' %}{% set ns.qc = ns.qc + [("run tests", _verb ~ " test")] %}'
+        "{% endif %}"
+    )
+    A('{% set ns.qc = ns.qc + [("full local gate", _verb ~ " quality")] %}')
+    A(
+        "{% if answers.include_docs %}{% set ns.qc = ns.qc + ["
+        '("sync RFCs to their Status folder", _verb ~ " rfc-sync"), '
+        '("log an idea in docs/improvements.md", '
+        + _j(quality.IMPROVEMENT_USAGE["make"])
+        + ' if _verb == "make" else '
+        + _j(quality.IMPROVEMENT_USAGE["task"])
+        + ")] %}{% endif %}"
+    )
+    A(
+        "{% set surface_note = "
+        + _j(ac.SURFACE_NOTE_TASK)
+        + ' if _verb == "task" else '
+        + _j(ac.SURFACE_NOTE_MAKE)
+        + " %}"
+    )
+    A('{% else %}{% set surface_note = "" %}{% endif %}')
+    A("{% set quality_commands = ns.qc %}")
+    A('{% set _target_word = "`task`" if answers.runner == "task" else "`make` target" %}')
+    A("{% set capture_line = " + _jexpr(ac.CAPTURE_LINE, target_word="_target_word") + " %}")
+    return L
+
+
 def _rendered_ports() -> list[tuple[str, str | None, str, list[str]]]:
     """(path, gate, constant, prelude-set-lines) for generator templates that RENDER: the
     prelude maps each template variable onto answers/env (and bakes generator-computed
@@ -348,6 +454,7 @@ def _rendered_ports() -> list[tuple[str, str | None, str, list[str]]]:
             agents.CODE_REVIEWER,
             ["{% set include_docs = answers.include_docs %}"],
         ),
+        ("AGENTS.md", None, ai_context.AGENTS_MD, _agents_prelude()),
         (
             "ONBOARDING.md",
             "answers.include_quality or answers.include_ci",

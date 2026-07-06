@@ -8,6 +8,12 @@ conditional-inclusion cases). Coverage is reported on every run; stage A complet
 ``PORTED`` equals the full generated tree and the assertion flips to whole-tree equality.
 The generators remain the source of truth until then (``build.py`` derives verbatim ported
 files from their constants, so drift in either direction fails here).
+
+Known out-of-scope behavior (RFC §7-A enumeration): the **AGENTS.md brownfield fold** —
+both trees build into empty dirs, so the generators' merge of a pre-existing
+AGENTS.md/CLAUDE.md (ai_context.generate) has no counterpart here. Decided to stay an
+engine mechanic; it lands at stage B when the flagship becomes the scaffold, with its own
+tests there.
 """
 
 from __future__ import annotations
@@ -27,6 +33,7 @@ FLAGSHIP = Path(__file__).resolve().parent.parent / "profiles" / "agent-native-b
 
 # Output paths already extracted — grow this set file by file; never shrink it.
 PORTED = {
+    "AGENTS.md",
     ".claude/README.md",
     ".claude/agents/planner.md",
     ".claude/agents/rfc-reviewer.md",
@@ -177,6 +184,33 @@ def _matrix() -> list[tuple[str, dict]]:
         (
             "git-on",  # env.is_git true both sides (improvements.md's git-stamp variant)
             dict(languages=["python"], init_git=True, is_git=True),
+        ),
+        (
+            "legacy-two-langs",  # existing runner + two languages in NON-registry order:
+            # AGENTS.md's raw-command surface, label-major in SELECTED-language order (the
+            # cross-language dedupe itself is latent — no two registry languages share a
+            # command today, mirroring generate()'s equally never-firing seen set)
+            dict(languages=["node", "python"], existing_runner=True, ai_tools=["claude"]),
+        ),
+        # Mutation-proven gaps from the #52 review: each cell fails a template mutation the
+        # rest of the matrix rides through.
+        (
+            "legacy-taskful",  # task-flavored SURFACE_NOTE_EXISTING + hooks-off in that branch
+            dict(languages=["python"], existing_runner=True, runner="task", git_hooks=False),
+        ),
+        (
+            "banner-inert",  # banner requested but quality+ci off -> banner must NOT render
+            dict(
+                languages=["python"],
+                ai_tools=["claude"],
+                first_run_banner=True,
+                include_quality=False,
+                include_ci=False,
+            ),
+        ),
+        (
+            "banner-no-tools",  # banner requested but no tools targeted -> must NOT render
+            dict(languages=["python"], ai_tools=[], first_run_banner=True),
         ),
     ]
 

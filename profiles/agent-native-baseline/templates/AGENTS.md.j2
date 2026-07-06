@@ -1,0 +1,69 @@
+{% set name = project_name %}
+{% set docs = answers.include_docs %}
+{% set claude = "claude" in answers.tools %}
+{% set security = answers.include_security %}
+{% set first_run_banner = answers.first_run_banner and answers.tools and (answers.include_quality or answers.include_ci) %}
+{% set _verb = answers.runner %}
+{% set ns = namespace(qc=[], seen=[]) %}
+{% if answers.include_quality and env.existing_runner %}
+{% if answers.hooks %}{% set ns.qc = ns.qc + [("set up git hooks (once)", "pre-commit install")] %}{% endif %}
+{% set _by_lang = {"python": ["ruff check ."], "node": ["npx eslint ."], "go": ["golangci-lint run"], "rust": ["cargo clippy"], "html": ["npx --yes htmlhint@1.9.2 \"**/*.html\""]} %}
+{% for _l in answers.languages %}{% for _c in _by_lang.get(_l, []) %}{% if _c not in ns.seen %}{% set ns.seen = ns.seen + [_c] %}{% set ns.qc = ns.qc + [("lint", _c)] %}{% endif %}{% endfor %}{% endfor %}
+{% set _by_lang = {"python": ["ruff format ."], "node": ["npx prettier --write ."], "go": ["gofmt -w ."], "rust": ["cargo fmt"]} %}
+{% for _l in answers.languages %}{% for _c in _by_lang.get(_l, []) %}{% if _c not in ns.seen %}{% set ns.seen = ns.seen + [_c] %}{% set ns.qc = ns.qc + [("format", _c)] %}{% endif %}{% endfor %}{% endfor %}
+{% set _by_lang = {"python": ["mypy ."], "node": ["if git ls-files '*.ts' '*.tsx' | grep -q .; then npx tsc --noEmit; else echo \"no TypeScript yet\"; fi"], "go": ["go vet ./..."], "rust": ["cargo check"]} %}
+{% for _l in answers.languages %}{% for _c in _by_lang.get(_l, []) %}{% if _c not in ns.seen %}{% set ns.seen = ns.seen + [_c] %}{% set ns.qc = ns.qc + [("typecheck", _c)] %}{% endif %}{% endfor %}{% endfor %}
+{% set _by_lang = {"python": ["pytest"], "node": ["npm test --if-present"], "go": ["go test ./..."], "rust": ["cargo test"]} %}
+{% for _l in answers.languages %}{% for _c in _by_lang.get(_l, []) %}{% if _c not in ns.seen %}{% set ns.seen = ns.seen + [_c] %}{% set ns.qc = ns.qc + [("test", _c)] %}{% endif %}{% endfor %}{% endfor %}
+{% set surface_note = "This repo already uses **Task** \u2014 its targets are the source of truth. Run `task --list` to see them; the commands above are the standard checks this setup expects, so add any that aren't already targets." if answers.runner == "task" else "This repo already uses **Make** \u2014 its targets are the source of truth. Run `grep -E '^[A-Za-z0-9_.-]+:.*## ' Makefile` to see them; the commands above are the standard checks this setup expects, so add any that aren't already targets." %}
+{% elif answers.include_quality %}
+{% if answers.hooks %}{% set ns.qc = ns.qc + [("set up git hooks (once)", _verb ~ " install")] %}{% endif %}
+{% set ns.qc = ns.qc + [("run linters", _verb ~ " lint"), ("auto-format", _verb ~ " format")] %}
+{% if ("python" in answers.languages or "node" in answers.languages or "go" in answers.languages or "rust" in answers.languages) %}{% set ns.qc = ns.qc + [("type-check", _verb ~ " typecheck")] %}{% endif %}
+{% if ("python" in answers.languages or "node" in answers.languages or "go" in answers.languages or "rust" in answers.languages) %}{% set ns.qc = ns.qc + [("run tests", _verb ~ " test")] %}{% endif %}
+{% set ns.qc = ns.qc + [("full local gate", _verb ~ " quality")] %}
+{% if answers.include_docs %}{% set ns.qc = ns.qc + [("sync RFCs to their Status folder", _verb ~ " rfc-sync"), ("log an idea in docs/improvements.md", "make improvement TEXT=\"<idea>\"" if _verb == "make" else "task improvement -- \"<idea>\"")] %}{% endif %}
+{% set surface_note = "Run `task --list` for the full, current set." if _verb == "task" else "Run `make help` for the full, current set." %}
+{% else %}{% set surface_note = "" %}{% endif %}
+{% set quality_commands = ns.qc %}
+{% set _target_word = "`task`" if answers.runner == "task" else "`make` target" %}
+{% set capture_line = ("**When you work out a repeatable process \u2014 a build, check, migration, or fix sequence you'd otherwise rediscover \u2014 capture it as a " ~ _target_word ~ " with a one-line description, so the next contributor runs it deterministically instead of leaving the knowledge in a chat or a throwaway script.**") %}
+{% if first_run_banner %}<!-- agent-native-setup:first-run — remove this block once ONBOARDING.md is done -->
+> **First run — setup pending.** This repo was scaffolded by the `agent-native-setup` wizard
+> (an agent-native setup); the tooling is in place but the one-time onboarding hasn't run
+> yet. **Before other work, complete [`ONBOARDING.md`](./ONBOARDING.md)** — then delete
+> it and remove this block.
+<!-- /agent-native-setup:first-run -->
+
+{% endif %}# {{ name }} — Agent Contract
+
+{% if description %}{{ description }}
+
+{% endif %}**Read [`INSTRUCTION.md`](./INSTRUCTION.md) first** — the standard engineering contract{% if docs %} (the four execution principles, when to write an RFC, how this repo stays agent-native){% else %} (the four execution principles){% endif %}, kept current by `agent-native-setup update`. This file is the project-specific map; `CLAUDE.md`, `GEMINI.md`,
+`.cursor/rules/`, and `.github/copilot-instructions.md` all point here.
+{% if claude %}
+@INSTRUCTION.md
+{% endif %}
+
+## Navigation
+
+| Topic | Where |
+| --- | --- |
+| Project entry point | [`README.md`](./README.md) |
+{% if docs %}| Architecture & decisions | `docs/architecture/` |
+| Proposals & decisions | `docs/rfc/` (`proposed/` → `active/`) |
+| How to contribute | [`CONTRIBUTING.md`](./CONTRIBUTING.md) |
+{% endif %}{% if security %}| Security policy | [`SECURITY.md`](./SECURITY.md) |
+{% endif %}
+
+## Command surface
+
+{% if quality_commands %}```bash
+{% for label, cmd in quality_commands %}{{ cmd }}{{ "  # " + label }}
+{% endfor %}```
+
+{{ surface_note }}
+
+{{ capture_line }}
+{% else %}_No quality tooling configured yet._
+{% endif %}
