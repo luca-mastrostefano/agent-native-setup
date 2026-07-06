@@ -5,6 +5,14 @@
 - **Author:** Luca Mastrostefano
 - [x] Implemented
 
+> **Amended by RFC 2026-07-05 §2 (B2, 2026-07-06):** the `env` namespace this RFC introduced
+> now carries **sensed facts only** — the choice-echo keys (`env.languages`, `env.runner`,
+> `env.adoption`, `env.ai_tools`, `env.has_quality`/`has_ci`/`has_docs`/`has_agents`/
+> `has_security`) and the top-level `languages` context key were removed with composition
+> (they existed so an overlay could read the base's choices; a profile asks its own prompt
+> instead). The determinism rule here — record the environment, re-render against the *same*
+> one on update — is carried forward as the engine's env-replay contract.
+
 ## Context
 
 Profiles (RFC 2026-06-23) compose a fixed setup on the default scaffold. They're **static**:

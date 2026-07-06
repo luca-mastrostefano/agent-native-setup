@@ -112,9 +112,7 @@ def test_publish_validates_infers_url_and_tag_and_emits_entry(tmp_path: Path) ->
     prof = tmp_path / "myprof"
     (prof / "templates").mkdir(parents=True)
     (prof / "profile.json").write_text(
-        json.dumps(
-            {"name": "myprof", "version": "1.0.0", "extends": "default", "description": "My setup"}
-        ),
+        json.dumps({"name": "myprof", "version": "1.0.0", "description": "My setup"}),
         encoding="utf-8",
     )
     (prof / "templates/x.md").write_text("hi\n", encoding="utf-8")
@@ -152,7 +150,7 @@ def _local_profile(tmp_path: Path, name: str = "acme-backend") -> Path:
     (d / "templates" / "docs").mkdir(parents=True)
     (d / "templates" / "docs" / "x.md").write_text("hi\n", encoding="utf-8")
     (d / "profile.json").write_text(
-        json.dumps({"name": name, "version": "1.0.0", "extends": "default", "description": "d"}),
+        json.dumps({"name": name, "version": "1.0.0", "description": "d"}),
         encoding="utf-8",
     )
     return d

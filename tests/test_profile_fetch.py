@@ -43,7 +43,6 @@ def _make_git_profile(root: Path, name: str, extra: dict | None = None) -> str:
     pj = {
         "name": name,
         "version": "1.0.0",
-        "extends": "default",
         "description": "x",
         **(extra or {}),
     }
@@ -61,7 +60,6 @@ def _local_profile(root: Path, name: str, extra: dict | None = None) -> profiles
     pj = {
         "name": name,
         "version": "1.0.0",
-        "extends": "default",
         "description": "x",
         **(extra or {}),
     }

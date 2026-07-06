@@ -46,8 +46,8 @@ def _guarded(command: str) -> str:
 
 
 def write_session_start_settings(sc: Scaffolder, session_start: tuple[str, ...]) -> None:
-    """Write a minimal ``.claude/settings.json`` for a standalone profile (``extends: null``),
-    which skips the full `generate` above. Carries the version-check nudge — so a standalone
+    """Write a minimal ``.claude/settings.json`` for a profile-scaffolded project, which
+    skips the full `generate` above. Carries the version-check nudge — so a profile-scaffolded
     project still learns when its profile ships a newer version — followed by the profile's own
     guarded SessionStart hooks. If the profile also ships its own ``settings.json`` template, that
     overlay supersedes this (single-owner)."""

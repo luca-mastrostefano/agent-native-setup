@@ -22,7 +22,7 @@ def _write_profile(root: Path, name: str, *, template: str = "hi\n") -> Path:
     (d / "templates" / "docs").mkdir(parents=True)
     (d / "templates" / "docs" / "note.md.j2").write_text(template, encoding="utf-8")
     (d / "profile.json").write_text(
-        json.dumps({"name": name, "version": "1.0.0", "extends": "default", "description": "d"}),
+        json.dumps({"name": name, "version": "1.0.0", "description": "d"}),
         encoding="utf-8",
     )
     return d

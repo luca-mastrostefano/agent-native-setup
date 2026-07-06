@@ -8,4 +8,4 @@ Service tier: **{{ answers.tier }}**.
 
 - Open a PR for every change; the `code-reviewer` runs before merge.
 - Keep `docs/architecture/` current when you add a component.
-- Languages in play: {{ languages | join(", ") or "none selected" }}.
+- Languages detected in this repo: {{ env.detected_languages | join(", ") or "none" }}.

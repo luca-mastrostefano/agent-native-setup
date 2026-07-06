@@ -184,8 +184,12 @@ and refreshes through `cli.build`'s generators. Sequencing:
   this gate is green and stays green in CI.
 - **B. Flip scaffold; remove `extends`; rework `save`.** *Scaffold flip + the engine
   fold + wheel vendoring landed 2026-07-06 (byte-identical by the stage-A gate, live in
-  the CLI); `extends` removal, `save` rework, and the repo split follow in this release
-  window.* Original plan: New scaffolds resolve the vendored
+  the CLI). `extends` removal + `save` snapshot rework + the env choice-echo drop landed
+  in the same window (B2, 2026-07-06): `load` rejects the field pointing at the fork
+  recipe, every profile is the complete setup, `save` snapshots the whole recorded tree
+  (symlinks as `links`, the dated RFC via `@DATE@`), pre-B2 composed manifests degrade to
+  frozen-overlay-over-updating-base until C's migration, and the wizard flags are marked
+  as deprecated `--answer` aliases. The repo split remains.* Original plan: New scaffolds resolve the vendored
   flagship through the one profile pipeline (`resolve → consent → gather_answers → apply`);
   the compose path and the `extends` field go in the same release (`profile validate`
   rejects the field with a message pointing at the fork recipe) — which forces `profile
@@ -310,6 +314,7 @@ and refreshes through `cli.build`'s generators. Sequencing:
   warn-and-ignore, revisit at D).
 - **Classifier treatment of `links`** — a link is not inert (it redirects reads/writes);
   proposal: any `links` entry ⇒ not `safe` (fail-closed), revisit if it proves too blunt.
-- **`save` snapshot mechanics** — how a snapshot pins the flagship version it embedded, so
-  a saved profile can still say what it was derived from (provenance in its README vs. a
-  manifest field). Must be decided by **B** (save's rework ships there — §7-B).
+- **`save` snapshot mechanics** — **decided (B2, 2026-07-06): provenance goes in the
+  draft's description + README** ("snapshot of <project>, from <profile name version>"),
+  human-facing, with no new format field — the format stays minimal and a field can be
+  added later if tooling ever needs to read it.

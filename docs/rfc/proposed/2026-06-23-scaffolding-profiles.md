@@ -5,6 +5,12 @@
 - **Author:** Luca Mastrostefano
 - [ ] Implemented
 
+> **Composition superseded by RFC 2026-07-05 §4 (B2, 2026-07-06):** the `extends:
+> "default"` overlay model this umbrella proposed was removed — a profile now ships the
+> project's **complete** setup, and building on another profile (including the flagship
+> baseline, the old "default") is a git fork (RFC 2026-07-04-profile-extends). The rest of
+> the umbrella (prompts, safety, fetch/trust, discovery, save) landed via the child RFCs.
+
 ## Context
 
 The wizard has exactly one generator: ours. It scaffolds *our* opinion of an

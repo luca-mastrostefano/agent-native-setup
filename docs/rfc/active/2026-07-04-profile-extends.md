@@ -5,6 +5,13 @@
 - **Author:** Luca Mastrostefano
 - [x] Implemented
 
+> **Extended by RFC 2026-07-05 (engine-and-flagship, B2 2026-07-06):** the git-native decision
+> here now applies **uniformly** — the `extends` field was removed from the format entirely
+> ("the stack stays `[default, profile]`" became "the stack is one profile"; every profile
+> ships the complete setup, and the old default is itself a forkable profile). This RFC's
+> decision is extended, not changed: fork + `git merge` is *the* extension model, with no
+> special case left.
+
 ## Context
 
 The mission is a community that **converges** on good scaffolding: profiles that are adopted,
