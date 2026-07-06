@@ -1651,7 +1651,11 @@ def test_link_target_resolving_outside_is_refused(tmp_path: Path) -> None:
         profiles.apply(prof, _config(target), Scaffolder(target), {})
 
 
-def test_link_never_clobbers_a_preexisting_user_file(tmp_path: Path) -> None:
+def test_link_over_preexisting_file_folds_the_contract(tmp_path: Path) -> None:
+    # The engine fold (RFC 2026-07-05, decided 2026-07-06): the profile ships AGENTS.md and
+    # links CLAUDE.md at it — a user's real CLAUDE.md is FOLDED beneath the rendered contract
+    # (content preserved, seeded as the user's) and the symlink takes its place. This
+    # supersedes the pre-fold behavior (skip the link, leave the file).
     prof = _make_profile(tmp_path, "team", {"AGENTS.md": "contract\n"})
     data = json.loads((prof.root / "profile.json").read_text(encoding="utf-8"))
     data["links"] = {"CLAUDE.md": "AGENTS.md"}
@@ -1661,9 +1665,28 @@ def test_link_never_clobbers_a_preexisting_user_file(tmp_path: Path) -> None:
     target.mkdir()
     (target / "CLAUDE.md").write_text("the user's own file\n", encoding="utf-8")
     owned = profiles.apply(prof, _config(target), Scaffolder(target), {})
-    assert (target / "CLAUDE.md").read_text(encoding="utf-8") == "the user's own file\n"
-    assert not (target / "CLAUDE.md").is_symlink()  # skipped, byte-identical
-    assert "CLAUDE.md" not in owned  # and never claimed
+    agents_md = (target / "AGENTS.md").read_text(encoding="utf-8")
+    assert agents_md.startswith("contract")
+    assert "Preserved from your original CLAUDE.md" in agents_md
+    assert "the user's own file" in agents_md  # nothing lost
+    assert (target / "CLAUDE.md").is_symlink()  # the link took the file's place
+    assert "AGENTS.md" in owned and "CLAUDE.md" in owned
+
+
+def test_fold_preserves_a_preexisting_contract_itself(tmp_path: Path) -> None:
+    prof = _make_profile(tmp_path, "team", {"AGENTS.md": "new contract\n"})
+    data = json.loads((prof.root / "profile.json").read_text(encoding="utf-8"))
+    data["links"] = {"CLAUDE.md": "AGENTS.md"}
+    (prof.root / "profile.json").write_text(json.dumps(data), encoding="utf-8")
+    prof = profiles.load(prof.root, source="team")
+    target = tmp_path / "proj"
+    target.mkdir()
+    (target / "AGENTS.md").write_text("the team's old rules\n", encoding="utf-8")
+    sc = Scaffolder(target)
+    profiles.apply(prof, _config(target), sc, {})
+    merged = (target / "AGENTS.md").read_text(encoding="utf-8")
+    assert merged.startswith("new contract") and "the team's old rules" in merged
+    assert "AGENTS.md" in sc.seed  # the folded contract is the user's — never refreshed
 
 
 def test_dated_seed_entry_stays_write_once(tmp_path: Path) -> None:

@@ -89,3 +89,4 @@ that needs a real decision into an RFC in `docs/rfc/proposed/`.
   `contributions/index.json`, `profile search`/`list --community`/`publish`). Remaining:
   `profile show` and **code-plugin** profiles (the ecosystem-core stage-D one-way door) — see the
   `ecosystem-core` RFC, not here.*
+- 4714a97 (2026-07-06) dry-run doesn't preview the contract fold: staging can't reproduce live target files, so a brownfield AGENTS.md shows 'would skip' though a real run folds it. Fix: stage copies of fold-relevant files (or simulate the fold read-only) so the preview matches. (review of #55)

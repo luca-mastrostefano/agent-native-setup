@@ -26,6 +26,13 @@ source = "vcs"
 [tool.hatch.build.targets.wheel]
 packages = ["src/agent_native_setup"]
 
+# Vendor the flagship profile (RFC 2026-07-05 §5): the wheel ships the exact artifact the
+# engine scaffolds by default — installing the tool is consenting to it. Once the flagship
+# moves to its own repo, this becomes a release-time pin-and-embed.
+[tool.hatch.build.targets.wheel.force-include]
+"profiles/agent-native-baseline/profile.json" = "agent_native_setup/_baseline/profile.json"
+"profiles/agent-native-baseline/templates" = "agent_native_setup/_baseline/templates"
+
 [tool.ruff]
 line-length = 100
 target-version = "py310"

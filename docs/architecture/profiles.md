@@ -46,7 +46,9 @@ a refresh.
 
 `--profile` / `profile add` / `profile show` accept, in this order of precedence:
 
-1. `default` / empty → `None` (no overlay);
+1. `default` / empty → `None` (no overlay) — and with **no `--profile` at all, the engine
+   scaffolds the vendored flagship** (`builtin:agent-native-baseline`, trusted like any
+   local artifact, wheel-embedded; the wizard's flags/questions translate onto its prompts);
 2. a `git+https://…` / `git+ssh://…` URL (optionally `@ref`, `#subdir=dir`) → fetched into
    `~/.cache/agent-native-setup/profiles/` (pinned refs cached forever, branches re-fetched,
    stale cache reused on fetch failure with a warning);
@@ -98,6 +100,14 @@ per-type) default; the repeatable **`--answer NAME=VALUE`** flag answers any pro
 For `extends: default` they merge into the base's onboarding/hooks; standalone profiles get a
 profile-only `ONBOARDING.md` and a minimal hooks `settings.json`. Hooks are recorded in the
 manifest so a *degraded* update (profile unresolvable) keeps them.
+
+## The contract fold (engine mechanic)
+
+When a profile ships a file **and** declares links pointing at it (the AGENTS.md pattern), a
+pre-existing real file at the target or at a link path is **folded** beneath the rendered
+content — preserved verbatim under a `Preserved from your original <name>` marker, seeded as
+the user's to reconcile, with the link then taking the file's place. Never clobbered, never
+left to block the scaffold (RFC 2026-07-05, decided 2026-07-06).
 
 ## Safety and trust
 

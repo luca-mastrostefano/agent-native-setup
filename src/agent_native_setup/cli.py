@@ -413,7 +413,11 @@ def _dry_run(
     """Preview a scaffold without writing. Builds into throwaway dirs so the real generators
     (and a composed profile, if any) decide the file set *and* the real ``Scaffolder`` decides
     create-vs-skip against what the target already contains — so the preview matches a real run
-    (including the files it would skip), instead of pretending every path is new."""
+    (including the files it would skip), instead of pretending every path is new.
+    Known preview gap: the contract fold keys on live target files, which the staging can't
+    reproduce — a brownfield AGENTS.md/CLAUDE.md shows as 'would skip' though a real run
+    folds it (content preserved). Tracked in docs/improvements.md.
+    """
     with tempfile.TemporaryDirectory() as tmp:
         root = Path(tmp)
         # Pass 1: discover every path a run would write (empty dir → `recorded` holds them all,
@@ -487,6 +491,27 @@ def _intro() -> None:
         )
     else:  # terminal too narrow to span both — show the heading alone
         console.print(Panel.fit(body, title=label, border_style="cyan"))
+
+
+def config_to_answers(config: WizardConfig) -> dict[str, object]:
+    """The config -> flagship-answers translation (RFC 2026-07-05 §7-C): every wizard choice
+    maps onto a prompt of the vendored baseline, so the flags and interactive questions keep
+    working unchanged while scaffolding flows through the profile pipeline. This same table
+    becomes the stage-C manifest migration."""
+    return {
+        "languages": list(config.languages),
+        "tools": list(config.ai_tools),
+        "include_agents": config.include_agents,
+        "include_docs": config.include_docs,
+        "include_quality": config.include_quality,
+        "include_ci": config.include_ci,
+        "include_security": config.include_security,
+        "github_actions": config.use_github_actions,
+        "hooks": config.git_hooks,
+        "runner": config.runner,
+        "adopt": config.adoption,
+        "first_run_banner": config.first_run_banner,
+    }
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -567,13 +592,20 @@ def main(argv: list[str] | None = None) -> int:
             "See CONTRIBUTING.md."
         )
 
+    # The flip (RFC 2026-07-05 §7-B): with no --profile, the engine scaffolds the vendored
+    # flagship through the one profile pipeline — the wizard's flags/questions are unchanged
+    # and translate onto its prompts, so the output is byte-identical (the stage-A gate).
+    baseline_run = not args.profile
     try:
-        profile = profiles.resolve(args.profile, console=console) if args.profile else None
+        profile = profiles.resolve(
+            args.profile if args.profile else f"{profiles.BUILTIN_SCHEME}{profiles.BASELINE_NAME}",
+            console=console,
+        )
     except profiles.ProfileError as exc:
         console.print(f"[red]{exc}[/]")
         return 2
-    if args.answer and profile is None:
-        console.print("[red]--answer needs --profile[/] — answers belong to a profile's prompts.")
+    if args.answer and profile is None:  # --profile default: no prompts to answer
+        console.print("[red]--answer has no target[/] — 'default' is the bare engine baseline.")
         return 2
     answers: dict[str, object] | None = None
     if profile is not None:
@@ -583,8 +615,9 @@ def main(argv: list[str] | None = None) -> int:
             profile, allow_code=args.allow_code, interactive=interactive, console=console
         ):
             return 2
-        kind = "standalone — from scratch" if profile.standalone else "composed on default"
-        console.print(f"[cyan]Profile:[/] {profile.name} {profile.version} ({kind}).")
+        if not baseline_run:
+            kind = "standalone — from scratch" if profile.standalone else "composed on default"
+            console.print(f"[cyan]Profile:[/] {profile.name} {profile.version} ({kind}).")
         # SessionStart hooks live in .claude/settings.json. For a composed profile that means the
         # agents generator (Claude + agents on); for a standalone one, a minimal settings.json is
         # written directly (Claude on). Warn rather than silently drop the hooks when neither holds.
@@ -601,13 +634,18 @@ def main(argv: list[str] | None = None) -> int:
         except profiles.ProfileError as exc:
             console.print(f"[red]{exc}[/]")
             return 2
-        try:
-            answers = profiles.gather_answers(
-                profile, config, interactive=interactive, overrides=overrides
-            )
-        except (KeyboardInterrupt, EOFError):
-            console.print("\n[yellow]Cancelled.[/]")
-            return 130
+        if baseline_run:
+            # The wizard already asked its questions (flags or interactive) — the baseline's
+            # prompts mirror them, so translate rather than re-ask. --answer still wins.
+            answers = {**config_to_answers(config), **overrides}
+        else:
+            try:
+                answers = profiles.gather_answers(
+                    profile, config, interactive=interactive, overrides=overrides
+                )
+            except (KeyboardInterrupt, EOFError):
+                console.print("\n[yellow]Cancelled.[/]")
+                return 130
 
     if args.dry_run:
         _dry_run(config, force=args.force, profile=profile, answers=answers)

@@ -8,7 +8,6 @@ from pathlib import Path
 import pytest
 
 from agent_native_setup import cli
-from agent_native_setup.config import WizardConfig
 from agent_native_setup.scaffold import Scaffolder
 
 
@@ -92,11 +91,25 @@ def test_rollback_restores_replaced_symlink_target(tmp_path: Path) -> None:
 
 
 def test_main_rolls_back_on_interrupt(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    def boom(config: WizardConfig, sc: Scaffolder) -> None:
-        raise KeyboardInterrupt
+    # Post-flip (RFC 2026-07-05 §7-B) the default path scaffolds the flagship profile, so
+    # the mid-build interrupt fires inside profiles.apply after some files landed.
+    real_apply = cli.profiles.apply
+    state = {"n": 0}
 
-    # ai_context runs first and creates AGENTS.md; docs blows up mid-build.
-    monkeypatch.setattr(cli.docs, "generate", boom)
+    def boom(*a: object, **k: object) -> object:
+        state["n"] += 1
+        if state["n"] == 1:
+            orig_overlay = a[2].overlay
+
+            def exploding_overlay(rel: str, content: str, **kw: object) -> bool:
+                if rel.startswith("docs/"):
+                    raise KeyboardInterrupt
+                return orig_overlay(rel, content, **kw)
+
+            a[2].overlay = exploding_overlay  # type: ignore[method-assign]
+        return real_apply(*a, **k)
+
+    monkeypatch.setattr(cli.profiles, "apply", boom)
 
     rc = cli.main(["demo", "-o", str(tmp_path), "-y", "--no-git"])
 
