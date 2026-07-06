@@ -316,3 +316,7 @@ task quality   # lint + typecheck + tests
 
 Add a language by appending one `Language` entry to `src/agent_native_setup/languages.py` —
 the generators stay generic.
+
+## License
+
+[MIT](./LICENSE) — the engine, the flagship [`agent-native-baseline`](https://github.com/luca-mastrostefano/agent-native-baseline) profile, and everything they scaffold into your project are yours to use, fork, and redistribute.
