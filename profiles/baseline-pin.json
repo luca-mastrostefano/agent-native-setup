@@ -1,7 +1,7 @@
 {
   "name": "agent-native-baseline",
   "repo": "https://github.com/luca-mastrostefano/agent-native-baseline",
-  "url": "git+https://github.com/luca-mastrostefano/agent-native-baseline.git@v0.1.1",
-  "tag": "v0.1.1",
-  "content_hash": "40616a77f57edcd372afa9070606f721886149fc948dbdb9ab641b3cb4e0ad9b"
+  "url": "git+https://github.com/luca-mastrostefano/agent-native-baseline.git@v0.1.2",
+  "tag": "v0.1.2",
+  "content_hash": "3999796712d2a57ddef7a3319841f46ba53446a4f8d7671ef15b3ee9e5ec3351"
 }

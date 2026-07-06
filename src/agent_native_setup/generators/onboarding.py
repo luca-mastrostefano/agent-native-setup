@@ -152,7 +152,7 @@ def _steps(config: WizardConfig, profile_steps: tuple[str, ...] = ()) -> list[st
     # there are deps to fetch (e.g. node's npm install / lockfile).
     if config.git_hooks or has_setup:
         # The pipx prereq + the hook-specific notes only apply to the hooks, which exist
-        # only with git_hooks. (The RFC/docs hooks run `python tools/checks/*.py`.)
+        # only with git_hooks. (The RFC/docs hooks run `python3 tools/checks/*.py`.)
         if config.git_hooks:
             pre = PRE_HOOKS
             py_clause = PY_CLAUSE if config.include_docs else ""

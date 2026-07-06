@@ -64,7 +64,7 @@ CHECKS_JOB_HEAD = """\
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      pull-requests: read  # gitleaks-action lists PR commits via the API; 403s without it
+      pull-requests: read # gitleaks-action lists PR commits via the API; 403s without it
     steps:
       - uses: actions/checkout@v6
         with:
@@ -73,10 +73,10 @@ CHECKS_JOB_HEAD = """\
 CHECKS_JOB_HEAD_NONBLOCKING = """\
   checks:
     runs-on: ubuntu-latest
-    continue-on-error: true  # existing repo: report vulns/secrets, don't block
+    continue-on-error: true # existing repo: report vulns/secrets, don't block
     permissions:
       contents: read
-      pull-requests: read  # gitleaks-action lists PR commits via the API; 403s without it
+      pull-requests: read # gitleaks-action lists PR commits via the API; 403s without it
     steps:
       - uses: actions/checkout@v6
         with:

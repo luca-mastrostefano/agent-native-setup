@@ -343,8 +343,9 @@ def find_triggers(changes: list[tuple[str, str]]) -> list[str]:
 def is_satisfied(changes: list[tuple[str, str]], message: str) -> bool:
     # A new RFC accompanying the change is Proposed (-> proposed/); accept active/ too
     # for the case where it's promoted in the same commit.
+    rfc_dirs = ("docs/rfc/proposed/", "docs/rfc/active/")
     staged_rfc = any(
-        path.startswith(("docs/rfc/proposed/", "docs/rfc/active/")) and path.endswith(".md")
+        path.startswith(rfc_dirs) and path.endswith(".md")
         for status, path in changes
         if status != "D"
     )
@@ -640,7 +641,7 @@ class DepNames(unittest.TestCase):
 
 class DepNamesPackageJson(unittest.TestCase):
     def test_reads_deps_and_dev_deps(self) -> None:
-        text = '{"dependencies": {"react": "^19"}, "devDependencies": {"eslint": "^10"}}'
+        text = '{"dependencies": {"react": "19"}, "devDependencies": {"eslint": "10"}}'
         expected = {"react", "eslint"}
         self.assertEqual(rfc_needed.dep_names_package_json(text), expected)
 

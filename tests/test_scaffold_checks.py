@@ -274,14 +274,20 @@ def test_generated_python_passes_the_generated_format_check(tmp_path: Path) -> N
     # must already pass the shipped formatter (a fresh scaffold failed ruff format on
     # tools/checks/test_rfc_needed.py in the wild).
     pytest.importorskip("ruff", reason="ruff not installed in this environment")
-    root = _build(tmp_path, languages=["python"])
-    result = subprocess.run(
-        [sys.executable, "-m", "ruff", "format", "--check", "."],
-        cwd=root,
-        capture_output=True,
-        text=True,
-    )
-    assert result.returncode == 0, f"shipped files fail their own format gate:\n{result.stdout}"
+    # Two cells on purpose: with Python selected, pyproject sets line-length 100; without
+    # it (node + docs → the helpers still ship) ruff runs at its default 88 — the shipped
+    # files must be stable under BOTH (a real node-only run failed the 88 case).
+    for langs in (["python"], ["node"]):
+        root = _build(tmp_path / langs[0], languages=langs)
+        result = subprocess.run(
+            [sys.executable, "-m", "ruff", "format", "--check", "."],
+            cwd=root,
+            capture_output=True,
+            text=True,
+        )
+        assert result.returncode == 0, (
+            f"{langs}: shipped files fail their own format gate:\n{result.stdout}"
+        )
 
 
 def test_manifest_is_prettier_ignored(tmp_path: Path) -> None:
@@ -303,12 +309,11 @@ def test_no_bare_python_invocations_in_local_surfaces(tmp_path: Path) -> None:
     # On modern macOS only `python3` is on PATH — every local invocation the scaffold
     # ships (runner targets, hook entries, the settings hook, the runbook) must use it.
     # CI steps may keep `python`: setup-python guarantees both there.
-    root = _build(tmp_path, languages=["python", "node"])
-    for rel in ("Makefile", ".pre-commit-config.yaml", ".claude/settings.json", "ONBOARDING.md"):
-        body = (root / rel).read_text(encoding="utf-8")
-        bare = [
-            line
-            for line in body.splitlines()
-            if "python " in line and "python3 " not in line and "python -u" not in line
-        ]
-        assert not bare, f"{rel} still invokes bare `python`: {bare}"
+    for runner, surface in (("make", "Makefile"), ("task", "Taskfile.yml")):
+        root = _build(tmp_path / runner, languages=["python", "node"], runner=runner)
+        for rel in (surface, ".pre-commit-config.yaml", ".claude/settings.json", "ONBOARDING.md"):
+            body = (root / rel).read_text(encoding="utf-8")
+            bare = [
+                line for line in body.splitlines() if "python " in line and "python3 " not in line
+            ]
+            assert not bare, f"[{runner}] {rel} still invokes bare `python`: {bare}"

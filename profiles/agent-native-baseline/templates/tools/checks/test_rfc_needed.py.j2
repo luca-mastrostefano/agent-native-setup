@@ -19,7 +19,7 @@ class DepNames(unittest.TestCase):
 
 class DepNamesPackageJson(unittest.TestCase):
     def test_reads_deps_and_dev_deps(self) -> None:
-        text = '{"dependencies": {"react": "^19"}, "devDependencies": {"eslint": "^10"}}'
+        text = '{"dependencies": {"react": "19"}, "devDependencies": {"eslint": "10"}}'
         expected = {"react", "eslint"}
         self.assertEqual(rfc_needed.dep_names_package_json(text), expected)
 
