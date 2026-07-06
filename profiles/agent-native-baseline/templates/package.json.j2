@@ -1,0 +1,14 @@
+{% if answers.include_quality and "node" in answers.languages %}
+{% set name = project_name %}
+{
+  "name": "{{ slug }}",
+  "version": "0.1.0",
+  "private": true,
+  "devDependencies": {
+    "eslint": "^10.4.1",
+    "prettier": "^3.8.4",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.61.0"
+  }
+}
+{% endif %}

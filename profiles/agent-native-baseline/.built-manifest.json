@@ -13,6 +13,12 @@
   ".gitattributes.j2",
   ".github/PULL_REQUEST_TEMPLATE.md.j2",
   ".github/copilot-instructions.md.j2",
+  ".github/dependabot.yml.j2",
+  ".gitignore.j2",
+  ".golangci.yml.j2",
+  ".htmlhintrc.j2",
+  ".prettierignore.j2",
+  ".prettierrc.json.j2",
   "AGENTS.md.j2",
   "CONTRIBUTING.md.j2",
   "INSTRUCTION.md.j2",
@@ -23,6 +29,11 @@
   "docs/architecture/overview.md.j2",
   "docs/improvements.md.j2",
   "docs/rfc/TEMPLATE.md.j2",
+  "eslint.config.mjs.j2",
+  "package.json.j2",
+  "pyproject.toml.j2",
+  "rustfmt.toml.j2",
+  "tests/test_architecture.py.j2",
   "tools/checks/docs_sync.py.j2",
   "tools/checks/rfc_needed.py.j2",
   "tools/checks/sync_rfc_status.py.j2",
@@ -30,5 +41,6 @@
   "tools/checks/test_rfc_needed.py.j2",
   "tools/checks/test_sync_rfc_status.py.j2",
   "tools/checks/test_tests_needed.py.j2",
-  "tools/checks/tests_needed.py.j2"
+  "tools/checks/tests_needed.py.j2",
+  "tsconfig.json.j2"
 ]

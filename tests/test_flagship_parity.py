@@ -44,6 +44,18 @@ PORTED = {
     ".editorconfig",
     ".git-blame-ignore-revs",
     ".gitattributes",
+    ".gitignore",
+    ".github/dependabot.yml",
+    "pyproject.toml",
+    "tests/test_architecture.py",
+    "package.json",
+    "tsconfig.json",
+    "eslint.config.mjs",
+    ".prettierrc.json",
+    ".prettierignore",
+    ".golangci.yml",
+    "rustfmt.toml",
+    ".htmlhintrc",
     ".github/PULL_REQUEST_TEMPLATE.md",
     ".github/copilot-instructions.md",
     "SECURITY.md",
@@ -184,6 +196,10 @@ def _matrix() -> list[tuple[str, dict]]:
         (
             "git-on",  # env.is_git true both sides (improvements.md's git-stamp variant)
             dict(languages=["python"], init_git=True, is_git=True),
+        ),
+        (
+            "rusty",  # rust's config files + cargo ecosystem
+            dict(languages=["rust"], ai_tools=["gemini"]),
         ),
         (
             "legacy-two-langs",  # existing runner + two languages in NON-registry order:

@@ -1,0 +1,9 @@
+{% if answers.include_quality %}
+{% set ns = namespace(g=[".DS_Store", ".env", ".env.local", "*.log"]) %}
+{% set _gi = {"python": ["__pycache__/", "*.py[cod]", ".venv/", ".ruff_cache/", ".mypy_cache/", ".pytest_cache/"], "node": ["node_modules/", "dist/", ".next/", "*.tsbuildinfo"], "go": ["bin/", "*.test", "vendor/"], "rust": ["target/", "Cargo.lock"]} %}
+{% for _l in answers.languages %}{% set ns.g = ns.g + _gi.get(_l, []) %}{% endfor %}
+{% if answers.include_docs and "python" not in answers.languages %}{% set ns.g = ns.g + ["__pycache__/", "*.pyc", ".ruff_cache/"] %}{% endif %}
+{% if "claude" in answers.tools %}{% set ns.g = ns.g + [".claude/settings.local.json"] %}{% endif %}
+{{ ns.g | join("
+") }}
+{% endif %}

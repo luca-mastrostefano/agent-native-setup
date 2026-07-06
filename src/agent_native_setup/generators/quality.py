@@ -98,6 +98,9 @@ PY_LAYOUT_COMMIT_HOOKS = """\
 """
 
 BASE_GITIGNORE = [".DS_Store", ".env", ".env.local", "*.log"]
+# Extracted for the flagship build step (RFC 2026-07-05 stage A) — same strings, one source.
+TOOLS_PY_GITIGNORE = ["__pycache__/", "*.pyc", ".ruff_cache/"]
+CLAUDE_LOCAL_SETTINGS_LINE = ".claude/settings.local.json"
 
 # Scaffolded only for existing repos: lets a one-time formatter sweep stay out of
 # `git blame`. See the "Adopting on an existing codebase" section in CONTRIBUTING.md.
@@ -397,9 +400,9 @@ def generate(config: WizardConfig, sc: Scaffolder) -> None:
 
     gitignore = BASE_GITIGNORE + [line for lang in langs for line in lang.gitignore]
     if config.ships_tools_python:  # tools/checks/*.py: ruff + unittest drop caches/bytecode
-        gitignore += ["__pycache__/", "*.pyc", ".ruff_cache/"]
+        gitignore += TOOLS_PY_GITIGNORE
     if "claude" in config.ai_tools:
-        gitignore.append(".claude/settings.local.json")  # Claude Code's per-user local settings
+        gitignore.append(CLAUDE_LOCAL_SETTINGS_LINE)  # Claude Code's per-user local settings
     # preserve=True: never overwrite a repo's existing .gitignore, even with --force.
     sc.write(".gitignore", "\n".join(gitignore) + "\n", preserve=True)
     sc.write(".editorconfig", EDITORCONFIG)
