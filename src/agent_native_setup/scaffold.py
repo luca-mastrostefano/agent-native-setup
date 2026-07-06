@@ -25,6 +25,18 @@ _strict_env = SandboxedEnvironment(
 )
 
 
+def _to_json(value: object) -> str:
+    """Byte-stable JSON for templates: exactly ``json.dumps(value, indent=2)`` — unlike
+    Jinja's ``tojson``, no HTML escaping (a hook command's ``>`` must survive verbatim)."""
+    import json
+
+    return json.dumps(value, indent=2)
+
+
+_env.filters["to_json"] = _to_json
+_strict_env.filters["to_json"] = _to_json
+
+
 def render(template: str, **ctx: object) -> str:
     return _env.from_string(template).render(**ctx)
 

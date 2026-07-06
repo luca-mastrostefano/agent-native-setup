@@ -432,7 +432,9 @@ class _NullConsole:
     def print(self, *args: object, **kwargs: object) -> None: ...
 
 
-def _context(config: WizardConfig, answers: dict[str, Any]) -> dict[str, Any]:
+def _context(
+    config: WizardConfig, answers: dict[str, Any], *, date_stamp: str | None = None
+) -> dict[str, Any]:
     """The variables a ``.j2`` profile template (and a prompt's ``when``) can reference. Prompt
     answers live under ``answers.<name>`` and detected/resolved environment facts under
     ``env.<name>`` — both namespaced so they can never shadow a base key."""
@@ -444,6 +446,9 @@ def _context(config: WizardConfig, answers: dict[str, Any]) -> dict[str, Any]:
         "answers": dict(answers),
         "env": {
             "existing_project": config.existing_project,  # brownfield repo with source?
+            # The scaffold date — the same stamp @DATE@ paths use; recorded as profile.date
+            # (always) and replayed on update, so dated content never drifts.
+            "date": date_stamp or f"{__import__('datetime').date.today():%Y-%m-%d}",
             "is_git": config.is_git,  # is (or will be, this run) a git repo
             "os": config.os_name,  # "darwin" | "linux" | "windows" ("" = unsensed)
             "has_readme": config.has_readme,  # key files present before scaffolding
@@ -580,9 +585,9 @@ def apply(
     project manifest records exactly them and ``update`` re-applies the profile to refresh them."""
     from datetime import date
 
-    ctx = _context(config, answers)
-    target_root = sc.target.resolve()
     stamp = applied_on or f"{date.today():%Y-%m-%d}"
+    ctx = _context(config, answers, date_stamp=stamp)
+    target_root = sc.target.resolve()
     seed_set = {s.replace("@DATE@", stamp) for s in profile.seed}
     transient_set = {t.replace("@DATE@", stamp) for t in profile.transient}
     owned: list[str] = []
@@ -795,6 +800,7 @@ def _validate(args: argparse.Namespace, console: Any) -> int:
     ctx = _context(
         WizardConfig(project_name="example", output_dir=root, languages=[]),
         default_answers(prof),
+        date_stamp="0000-00-00",  # apply() provides the real stamp
     )
     files = prof.template_files()
     for out_rel, src in files:
