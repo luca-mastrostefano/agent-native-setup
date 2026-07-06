@@ -119,21 +119,6 @@ S_CLEANUP = (
 )
 
 
-ONBOARD_COMMAND_CLAUDE = """\
----
-description: Walk through first-run setup (ONBOARDING.md), then delete it
----
-
-Read `ONBOARDING.md` at the repo root and work through its steps. Per its note on
-working concurrently: kick the slow one-time installs off in the background up
-front, and fan out genuinely independent work to subagents (e.g. drafting the
-architecture doc while wiring an uncovered language) — but keep the
-baseline → commit → push → CI chain serial, and keep a single mutually-dependent
-change (like one language's lint/format/CI wiring) with one author so it can't
-drift. Stop to confirm with me on anything needing a human decision (adding
-secrets, repo-wide reformatting). When every step passes, delete `ONBOARDING.md`.
-"""
-
 # One prompt, four containers (RFC 2026-07-07-cross-tool-onboarding-triggers): every
 # targeted tool gets a /onboard trigger for the same runbook, each in its tool's own
 # project-scoped command format. All transient — written, never recorded, deleted by the
@@ -150,6 +135,13 @@ drift. Stop to confirm with me on anything needing a human decision (adding
 secrets, repo-wide reformatting). When every step passes, delete `ONBOARDING.md`.
 """
 ONBOARD_COMMAND_CURSOR = _ONBOARD_BODY  # Cursor: plain markdown, filename = command
+# Claude and Copilot both take frontmatter markdown — one container, two paths.
+ONBOARD_COMMAND_CLAUDE = f"""\
+---
+description: {_ONBOARD_DESCRIPTION}
+---
+
+{_ONBOARD_BODY}"""
 ONBOARD_COMMAND_COPILOT = f"""\
 ---
 description: {_ONBOARD_DESCRIPTION}

@@ -322,7 +322,17 @@ def build(
         if hooks and "claude" in config.ai_tools:
             agents.write_session_start_settings(sc, hooks)
         if onboarding_steps:
-            onboarding.generate(config, sc, profile_steps=onboarding_steps, base=False)
+            # A profile-owned path at a trigger location wins (RFC 2026-07-07 §5): the
+            # engine must not shadow a managed profile file with an unrecorded transient —
+            # the runbook would then tell the agent to delete a file `update` restores.
+            owned = (
+                frozenset(rel for rel, _ in profile.template_files())
+                if profile is not None
+                else frozenset()
+            )
+            onboarding.generate(
+                config, sc, profile_steps=onboarding_steps, base=False, profile_paths=owned
+            )
     # A profile composes on top: its files overlay the default output (managed by default,
     # seed when listed), before git/manifest so they're committed and recorded as provenance.
     # The recorded block carries the exact paths the profile owns + the answers it rendered

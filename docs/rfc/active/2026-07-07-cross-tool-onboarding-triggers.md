@@ -96,6 +96,12 @@ Concretely:
   accepted, they're transient and inert where the tool isn't installed.
 - Triggers being transient, updates never create them retroactively (accepted: the new
   experience is for new scaffolds).
+- **§4 holds on the generator path only.** The flagship's templates re-derive the cleanup
+  enumeration from `answers.tools` (a template cannot see write results), so on the default
+  scaffold path a pre-existing user file at a trigger path is correctly *preserved* but
+  still *listed* in the runbook's cleanup line — the same pre-existing limitation the
+  parity harness documents for generation-time I/O. Accepted for now; the failure mode is
+  one wrong line in a transient runbook the agent reads while looking at the tree.
 
 ## Alternatives considered
 

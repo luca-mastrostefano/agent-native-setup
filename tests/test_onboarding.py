@@ -295,6 +295,56 @@ def test_triggers_ship_per_tool_and_parse(tmp_path: Path) -> None:
         assert rel not in m["files"], rel
 
 
+def test_profile_owned_trigger_path_wins_through_the_real_cli(tmp_path: Path) -> None:
+    # Integration for RFC 2026-07-07 §5 through cli.main (review of the first cut: the
+    # generator honored profile_paths but no call site passed it): a profile shipping its
+    # own file at a trigger path must get no engine trigger there and no cleanup listing —
+    # else onboarding deletes a managed file that `update` then resurrects.
+    import json
+
+    prof = tmp_path / "prof"
+    (prof / "templates" / ".gemini" / "commands").mkdir(parents=True)
+    (prof / "templates" / ".gemini" / "commands" / "onboard.toml").write_text(
+        'description = "mine"\nprompt = "custom onboarding"\n', encoding="utf-8"
+    )
+    (prof / "profile.json").write_text(
+        json.dumps(
+            {
+                "name": "own-trigger",
+                "version": "1.0.0",
+                "description": "d",
+                "onboarding": ["Do the one thing."],
+            }
+        ),
+        encoding="utf-8",
+    )
+    target = tmp_path / "proj"
+    rc = cli.main(
+        [
+            "demo",
+            "-o",
+            str(target),
+            "-y",
+            "--no-git",
+            "--no-update-check",
+            "--tools",
+            "gemini,cursor",
+            "--profile",
+            str(prof),
+        ]
+    )
+    assert rc == 0
+    # The profile's managed copy is what lands (and is recorded); no engine transient.
+    body = (target / ".gemini" / "commands" / "onboard.toml").read_text(encoding="utf-8")
+    assert "custom onboarding" in body
+    m = json.loads((target / ".agent-native-setup.json").read_text(encoding="utf-8"))
+    assert ".gemini/commands/onboard.toml" in m["files"]  # profile-owned, managed
+    # The cleanup enumerates only the engine's own trigger — never the profile's file.
+    runbook = (target / "ONBOARDING.md").read_text(encoding="utf-8")
+    assert "`.cursor/commands/onboard.md`" in runbook
+    assert ".gemini" not in runbook
+
+
 def test_trigger_skips_profile_owned_and_preexisting_paths(tmp_path: Path) -> None:
     from agent_native_setup.generators import onboarding
 
