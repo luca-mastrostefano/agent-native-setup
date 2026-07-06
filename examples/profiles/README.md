@@ -30,7 +30,7 @@ agent-native-setup demo -o /tmp/demo --profile ./examples/profiles/example-team 
    the profile, strict-renders every template (catching typos), and checks `seed` entries.
 
 See any profile's generated `AGENTS.md` for the full authoring contract, and the
-[main README's Profiles section](../../README.md#profiles-experimental) for the field reference.
+[main README's Profiles section](../../README.md#profiles--the-community-loop-experimental) for the field reference.
 
 **Already have a customized project?** `agent-native-setup profile save <project> <name>`
 snapshots that project's complete setup (your edits included) as a standalone profile,
