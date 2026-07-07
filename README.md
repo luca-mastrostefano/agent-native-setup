@@ -34,7 +34,7 @@ shared, all of it drifting the moment it lands, every lesson re-learned one repo
 This project turns that private, perishable effort into a **community asset**:
 
 - A setup is a **profile** — a versioned, inspectable, forkable package. The built-in
-  scaffold is itself just the flagship profile,
+  scaffold is itself just the default profile,
   [`agent-native-baseline`](https://github.com/luca-mastrostefano/agent-native-baseline);
   it has no special powers your profile can't have.
 - You **adopt** one in a command, **tune** it to your stack, **snapshot** what you built
@@ -74,7 +74,7 @@ Then run `agent-native-setup` and answer the prompts — or go non-interactive (
 
 This repo is the **manager** — resolve, prompt, trust-gate, apply, update, discover. The
 *content* comes from whichever profile you scaffold, and with no `--profile` that's the
-flagship, [`agent-native-baseline`](https://github.com/luca-mastrostefano/agent-native-baseline)
+default, [`agent-native-baseline`](https://github.com/luca-mastrostefano/agent-native-baseline)
 (vendored in the wheel, hash-pinned to a tagged release of its repo). In one run it lays
 down a complete agent-native setup: the `AGENTS.md` contract every tool follows (Claude,
 Cursor, Copilot, Gemini — never forking), a `.claude/` library of review subagents and
@@ -120,7 +120,7 @@ The manager's own flags — they work the same for every profile:
 | --- | --- |
 | `-o, --output` | Target directory (default: current dir). |
 | `--description "..."` | One-line project description (used by profile templates). |
-| `--profile <name\|path\|git+url>` | Scaffold from a [profile](#profiles--the-community-loop) instead of the flagship baseline. |
+| `--profile <name\|path\|git+url>` | Scaffold from a [profile](#profiles--the-community-loop) instead of the default baseline. |
 | `--answer NAME=VALUE` | Answer a profile prompt headlessly (repeatable) — e.g. `--answer languages=python,node`. |
 | `-y, --yes` | Non-interactive; unanswered prompts take their defaults. |
 | `--dry-run` | Preview what would be created (and what would be skipped as already-present) — writes nothing. |
@@ -171,7 +171,7 @@ drifted from the scaffold.
 ### Profiles — the community loop
 
 A **profile** is a packaged, versioned, **complete** project setup — the built-in scaffold is
-itself just the flagship profile. A team or community ships their own (`.claude/` agents, MCP
+itself just the default profile. A team or community ships their own (`.claude/` agents, MCP
 config, house rules, extra gates), so new projects start from "exactly like ours," not just
 the generic baseline. The loop: **discover → adopt → tune → snapshot or fork → publish** —
 and every release you cut flows to your consumers through `update`.
@@ -223,7 +223,7 @@ to open the community-index listing PR for you.
   with outputs confined to the project, and each profile is classified **safe**/**unsafe**
   from its content. A fetched code-carrying profile asks for consent once per exact content
   (`--allow-code`; review or revoke with `profile trust --list` / `untrust`).
-- **Extend** — fork the profile's repo (the flagship included), add your templates, and
+- **Extend** — fork the profile's repo (the default baseline included), add your templates, and
   publish your fork to the index; `git fetch upstream && git merge` takes base improvements
   later.
 - **Update** — bump your profile's `version`, and your consumers' `agent-native-setup update`
@@ -237,4 +237,4 @@ a skeleton whose README documents every field.
 
 ## License
 
-[MIT](./LICENSE) — the engine, the flagship [`agent-native-baseline`](https://github.com/luca-mastrostefano/agent-native-baseline) profile, and everything they scaffold into your project are yours to use, fork, and redistribute.
+[MIT](./LICENSE) — the engine, the default [`agent-native-baseline`](https://github.com/luca-mastrostefano/agent-native-baseline) profile, and everything they scaffold into your project are yours to use, fork, and redistribute.
