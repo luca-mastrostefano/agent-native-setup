@@ -8,6 +8,13 @@
       "tags": ["tauri", "react", "rust", "typescript", "tdd", "codescene", "adr", "desktop"]
     },
     {
+      "name": "andrej-karpathy-skills-setup",
+      "url": "git+https://github.com/luca-mastrostefano/andrej-karpathy-skills-setup.git@v0.1.0",
+      "description": "Karpathy-inspired LLM coding guidelines extracted from forrestchang/andrej-karpathy-skills: one behavioral contract (CLAUDE.md) plus the same guidelines as a Claude Code skill and a Cursor project rule",
+      "author": "Luca Mastrostefano",
+      "tags": ["guidelines", "best-practices", "coding", "karpathy", "claude-code", "cursor", "general"]
+    },
+    {
       "name": "agent-native-baseline",
       "url": "git+https://github.com/luca-mastrostefano/agent-native-baseline.git@v0.2.0",
       "description": "The flagship profile — the complete agent-native setup the engine scaffolds by default: AGENTS.md contract, docs + RFCs, quality gates, security scanning, CI, and a .claude library. Fork it to build your own.",
