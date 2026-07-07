@@ -11,6 +11,8 @@ version into your repo, without touching what you've customized.
 ![Python](https://img.shields.io/badge/python-3.10%2B-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
+🌐 **[lucamastrostefano.com/agent-native-setup](https://lucamastrostefano.com/agent-native-setup/)** — the website, with the live profile registry
+
 </div>
 
 ---
