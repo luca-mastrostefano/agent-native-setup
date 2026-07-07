@@ -170,6 +170,9 @@ agent-native-setup my-app --profile acme-profile   # scaffold from it (also: a p
 # Make & share your own
 agent-native-setup profile init my-team            # scaffold a skeleton…
 agent-native-setup profile save ./my-app my-team   # …or snapshot a project you've tuned
+# …or have your AI agent extract one from any well-structured repo: the
+# `extract-profile` skill (works in Claude Code, Codex, Cursor, Copilot, Gemini —
+# see .agents/skills/extract-profile/)
 agent-native-setup profile validate ./my-team      # check it loads + every template renders
 agent-native-setup profile publish ./my-team --release  # attach the release asset + print URL/entry
 ```

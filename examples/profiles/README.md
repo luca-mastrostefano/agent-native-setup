@@ -32,6 +32,14 @@ agent-native-setup demo -o /tmp/demo --profile ./examples/profiles/example-team 
 See any profile's generated `AGENTS.md` for the full authoring contract, and the
 [main README's Profiles section](../../README.md#profiles--the-community-loop) for the field reference.
 
+**Extracting from an existing repo** (one that wasn't scaffolded by this tool): use the
+[`extract-profile` skill](../../.agents/skills/extract-profile/SKILL.md) — a runbook any
+coding agent can execute (Codex reads it natively from `.agents/skills/`; Claude Code,
+Cursor, Copilot, and Gemini get `/extract-profile` triggers in this repo; any other agent
+can be pointed at the file's URL). It codifies the proven procedure: inventory and
+classify the repo's agent surface, gate on license, parameterize identity and
+instance-bound values, prove fidelity with a byte-diff, and ship.
+
 **Already have a customized project?** `agent-native-setup profile save <project> <name>`
 snapshots that project's complete setup (your edits included) as a standalone profile,
 read-only on the source — a shortcut to a review-ready draft.

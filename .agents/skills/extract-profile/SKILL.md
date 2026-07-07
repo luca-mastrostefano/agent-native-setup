@@ -1,0 +1,93 @@
+---
+name: extract-profile
+description: Extract a complete agent-native-setup profile from an existing repo's agent setup (contracts, .claude/.cursor/.gemini tooling, MCP, docs conventions, git gates) — inventory, classify, parameterize, verify by byte-diff, and ship. Use when someone wants to turn a well-structured repo into a shareable profile.
+---
+
+
+Extract the **agent-native setup surface** of the repo at the source repo path given in the task into a complete, standalone
+agent-native-setup profile (working name: as given, default `<repo>-setup`), following the
+proven procedure below. The profile must reproduce the source's agent workflow faithfully —
+parameterized, verified, and ready to publish. Work in a sibling directory, never inside
+the source repo.
+
+## 1. Inventory (fan out, classify everything)
+
+Sweep the source repo for its agent-native surface — not its product code:
+
+- **Contracts**: AGENTS.md / CLAUDE.md / GEMINI.md (symlinks or shim files?), CONTRIBUTING,
+  SECURITY, code-of-conduct.
+- **Agent tooling**: `.claude/` (agents, commands, skills, settings), `.cursor/`,
+  `.gemini/`, `.github/prompts/`, MCP config (`.mcp.json` — and check whether tools the
+  contract *references* (e.g. `mcp__x__*` allowlists) are actually **registered**
+  anywhere; a permission allowlist is not a registration).
+- **Docs conventions**: ADR/RFC systems (index, template, lifecycle rules), architecture
+  docs, onboarding/getting-started docs — separate the *conventions and structure*
+  (reusable) from the *product content* (not).
+- **Gates**: git hooks (and **how they're armed** — husky prepare script? pre-commit
+  install? core.hooksPath?), linter/scanner configs, quality-ratchet files, CI workflows
+  that enforce the contract (vs product build/release pipelines).
+- **Env surface**: `.env.example`, secret *names* in workflows.
+
+Classify every file: **VERBATIM** (ships as-is), **PARAMETERIZE** (project name/slug,
+instance-bound IDs, org URLs), **SKIP** (product code, fixtures, lockfiles, generated
+artifacts, product-specific doc content). Red-flag pass: embedded secrets/tokens, absolute
+paths, personal instance IDs (ticket-system section IDs, dashboards), non-English docs.
+
+## 2. License gate (before writing anything)
+
+Check the source repo's LICENSE. If the requesting user is the copyright holder, they may
+relicense the extracted profile (ask which license; note the relicense in the profile's
+LICENSE). Otherwise the profile is a derivative work: it must carry the source's license
+and attribution — and if that license is copyleft, say plainly what that means for
+adopters' repos before proceeding.
+
+## 3. Author the profile
+
+- `profile.json`: name, version `0.1.0`, honest description naming the source, discovery
+  `tags`, `seed` for files the adopter owns after day one (contracts, doc skeletons,
+  ratchet floors, `.env.example`), `transient` never (that's the engine's onboarding
+  apparatus), `links` for symlink contracts.
+- **Prompts for instance-bound values** (the Todoist-section-ID pattern): anything tied to
+  the author's accounts becomes a `text` prompt with a placeholder default, gated by a
+  `confirm` prompt (`when:`) so the whole feature is opt-in and the files render empty —
+  and don't ship — when declined.
+- **Parameterize identity only**: source project name → `{{ project_name }}` in `.j2`
+  files. Before renaming any file to `.j2`, grep it for literal `{{`/`{%`/`${{` — GitHub
+  workflows and anything Jinja-hazardous ship **verbatim** (never `.j2`).
+- **Reset earned state**: quality-ratchet thresholds restart at an attainable floor (the
+  source *earned* its numbers; a fresh repo inheriting them would be unbuildable). Dated
+  artifacts use `@DATE@`.
+- **Genericize structural docs**: keep the source's section structure as seeded skeletons
+  with TODOs; never copy product-truth prose into another project's docs. Reset ADR/RFC
+  indexes to empty starters (the source's decisions are its history, not the adopter's).
+- **Make referenced tooling real**: if the contract references MCP tools, ship the
+  `.mcp.json` registration (env-var token expansion, never a secret) and pre-approve it in
+  settings. If the contract describes git gates, ship a **self-silencing `session_start`
+  guard** that warns every session until the hooks are actually armed (versioned hooks
+  can't self-arm — git's security model), and an `onboarding` step with the exact arming
+  commands. Every "the repo has X" claim in the shipped contract must be true in a fresh
+  scaffold or guarded until made true.
+- Meta files at the profile root (never shipped): README.md with attribution, what's
+  reusable vs adapted and why, an adopter checklist (external services, secrets to map);
+  AGENTS.md for maintaining the profile; LICENSE per step 2.
+
+## 4. Verify (the fidelity proof)
+
+- `agent-native-setup profile validate <profile>` — zero findings.
+- Scaffold a throwaway project named **exactly like the source repo** and byte-diff it
+  against the source: every VERBATIM file must be identical (this catches accidental
+  mangling); PARAMETERIZE files must round-trip the name; list the deliberate deltas and
+  check each has a reason (fresh ratchet, genericized doc, placeholder ID).
+- Scaffold both paths of every `confirm` prompt (feature on/off) and check the off-path
+  ships nothing dangling.
+- Read the scaffolded ONBOARDING.md end to end: could a fresh agent actually complete it?
+
+## 5. Ship
+
+`git init -b main`, commit, tag `v0.1.0`, and hand the user the `gh repo create … --push`
+command (repo creation needs their say). After it's public:
+`agent-native-setup profile publish <profile> --release` (attaches the countable release
+asset), then add the printed entry to `contributions/index.json` via PR.
+
+Throughout: fidelity first — when unsure whether something is setup or product, ask the
+user rather than guessing; the source repo is read-only.

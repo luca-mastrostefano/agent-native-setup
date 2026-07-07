@@ -1,0 +1,5 @@
+---
+description: Extract a complete agent-native-setup profile from an existing repo
+---
+
+Read `.agents/skills/extract-profile/SKILL.md` in this repo and execute it: extract a complete agent-native-setup profile from the source repo given as the argument ($ARGUMENTS). Follow every step — inventory + classification, the license gate, authoring with prompts for instance-bound values, the byte-diff fidelity proof, and the ship checklist.
