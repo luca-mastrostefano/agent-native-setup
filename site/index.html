@@ -14,7 +14,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400..700;1,6..72,400..700&family=IBM+Plex+Sans:wght@400;600&family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="style.css?v=6" />
+  <link rel="stylesheet" href="style.css?v=7" />
 </head>
 <body>
 
@@ -35,7 +35,7 @@
     <div class="wrap">
       <div>
         <p class="eyebrow">// a package manager for agent setups</p>
-        <h1>Agent setups should <em>compound</em>.</h1>
+        <h1>One command to make any repo <em>agent&#8209;native</em></h1>
         <p class="tagline">
           Your contract, prompts, subagents, and guardrails install like a package and
           update like one. Adopt a community profile, tune it to your stack — and every
@@ -45,6 +45,7 @@
           <a class="btn btn-primary" href="#profiles">Browse profiles</a>
           <a class="btn btn-ghost" href="https://github.com/luca-mastrostefano/agent-native-setup">View on GitHub</a>
         </div>
+        <p class="hero-note">Want to contribute with a profile? <a href="#contribute">Contribute →</a></p>
       </div>
       <figure>
         <svg class="release-graph" viewBox="0 0 440 320" aria-hidden="true">
@@ -67,7 +68,7 @@
           <circle class="tip-ring n7" cx="400" cy="52" r="12" />
           <circle class="node-tip n7" cx="400" cy="52" r="7" />
         </svg>
-        <figcaption>forks flow back · releases flow down · every repo runs the best current setup</figcaption>
+        <figcaption>Agent setups should compound.</figcaption>
       </figure>
     </div>
   </div>
@@ -181,7 +182,7 @@ uvx --from git+https://github.com/luca-mastrostefano/agent-native-setup agent-na
       </div>
       <button class="show-more" id="show-more" hidden>Show more</button>
 
-      <p style="margin-top:1.75rem">
+      <p style="margin-top:1.75rem" id="contribute">
         Built a setup your team is proud of? Share it as a profile — the next team with your
         use case starts where you finished, not from zero. Two ways in:
       </p>
