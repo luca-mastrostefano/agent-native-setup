@@ -909,17 +909,50 @@ under `templates/`. See [`README.md`](./README.md) for the full field reference.
   every project scaffolded from this profile. Your own scratch stays **outside** `templates/` so
   it never ships.
 - **Use `.j2` for anything project-specific.** A file ending in `.j2` is rendered (Jinja) with
-  `project_name` / `slug` / `description` / `languages`, the profile's `answers.<name>`, and an
-  `env.<name>` namespace (detected facts) — then the `.j2` is stripped. Everything else ships
-  verbatim (so a literal `${{{{ ... }}}}` is safe).
+  `project_name` / `slug` / `description`, your prompts' answers under `answers.<name>`, and
+  **sensed facts** under `env.<name>` — `env.existing_project`, `env.detected_languages`,
+  `env.existing_runner`, `env.is_git`, `env.os`, `env.date`,
+  `env.has_readme` / `has_agents_md` / `has_ci_config` (README "Layout" documents each) — then
+  the `.j2` is stripped. Everything else ships **verbatim** — and some files must: before
+  renaming anything to `.j2`, check it for literal `{{{{` / `{{%` / `${{{{` (GitHub workflows!);
+  Jinja-hazardous files ship verbatim, never `.j2`.
+- **Ask, don't hardcode.** Anything the adopter should choose — a feature toggle, a tier, an
+  instance-bound value (a ticket-system section ID, an org URL) — is a `prompts` entry in
+  `profile.json` (`text` / `select` / `confirm` / `checkbox`; syntax in README "Prompts").
+  Read it as `{{{{ answers.<name> }}}}`; gate a whole feature behind a `confirm` and give its
+  dependent prompts `"when": "answers.use_x"`. A `.j2` that renders **empty is skipped** —
+  wrap a whole file in `{{% if answers.use_x %}}…{{% endif %}}` and it doesn't ship when
+  declined. Keep every `default` sensible: `-y`/CI runs take defaults unasked.
 - **Mark write-once files as `seed`** in `profile.json` (a starter README, say): seed files are
   shipped once and never overwritten by an update. Everything else under `templates/` is
   *managed* — refreshed when the profile ships a new `version`.
 - **A profile ships the complete setup** — a scaffolded project gets *only* its files, so ship
   the project's own `AGENTS.md` under `templates/AGENTS.md` (distinct from *this* file). To
   build on an existing profile (e.g. the flagship baseline), fork its repo instead.
-- **Before calling it done, run `agent-native-setup profile validate .`** and fix every finding —
-  it loads the profile, strict-renders every template (catching typos), and checks `seed` entries.
+
+## Gates and safety
+
+- `onboarding` steps, `session_start` hooks (README "Startup instructions"), and shipped
+  git-hook machinery make the profile **unsafe** — it runs code on adopters' machines, so
+  every adopter gets a consent prompt. That cost is fine when the feature earns it; don't
+  pay it for an echo.
+- Versioned git hooks can't arm themselves (git's security model): if you ship hooks, also
+  ship a self-silencing `session_start` guard that warns until they're armed, plus an
+  `onboarding` step with the exact arming commands. Every "this repo has X" claim in the
+  shipped contract must be true in a fresh scaffold — or guarded until made true.
+- Reset earned state: quality-ratchet thresholds restart at an attainable floor; dated
+  artifacts use `@DATE@` in template paths (becomes the scaffold date, stable across updates).
+
+## Verify, then ship
+
+1. `agent-native-setup profile validate .` — fix every finding (it loads the manifest,
+   strict-renders every template catching typos, and checks `seed`/`transient` entries).
+2. Scaffold a throwaway project with `--profile .` and read the result end to end; scaffold
+   **both paths of every `confirm`** and check the declined path leaves nothing dangling.
+3. Ship: `git init -b main`, commit, tag `v0.1.0`,
+   `gh repo create … --public --source=. --push`, then
+   `agent-native-setup profile publish . --release` — it attaches the release asset and
+   offers to open the community-index listing PR for you.
 """
 
 

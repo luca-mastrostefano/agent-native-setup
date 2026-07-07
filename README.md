@@ -181,7 +181,8 @@ agent-native-setup profile show acme-profile       # inspect before adopting: fi
 agent-native-setup my-app --profile acme-profile   # scaffold from it (also: a path or git+https://… URL)
 
 # Make & share your own
-agent-native-setup profile init my-team            # scaffold a skeleton…
+agent-native-setup profile init my-team            # scaffold a skeleton, then tell your agent
+                                                   #   what you want — its AGENTS.md guides it…
 agent-native-setup profile save ./my-app my-team   # …or snapshot a project you've tuned
 # …or have your AI agent extract one from any well-structured repo (below)
 agent-native-setup profile validate ./my-team      # check it loads + every template renders

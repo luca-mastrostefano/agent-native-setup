@@ -1396,6 +1396,18 @@ def test_profile_init_scaffolds_a_skeleton(tmp_path: Path) -> None:
     assert (root / "templates").is_dir() and (root / "README.md").exists()
     # An agent contract for *building* the profile ships at the root (meta, never shipped).
     assert (root / "AGENTS.md").exists() and not (root / "templates" / "AGENTS.md").exists()
+    # The contract teaches what an authoring assistant can't guess: the template context the
+    # manager injects, the prompts mechanism (questions -> answers.<name> -> conditional
+    # files), and the verify/ship tail.
+    agents = (root / "AGENTS.md").read_text(encoding="utf-8")
+    for hook in (
+        "env.detected_languages",
+        "answers.<name>",
+        '"when": "answers.use_x"',
+        "empty is skipped",
+        "profile publish . --release",
+    ):
+        assert hook in agents, f"authoring contract lost its guidance hook: {hook!r}"
     # It's immediately loadable as a (empty) profile.
     assert profiles.load(root).name == "myteam"
     # Re-running onto an existing dir refuses rather than clobbering.
