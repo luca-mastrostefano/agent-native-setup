@@ -469,3 +469,5 @@ footer {
   color: var(--ink-soft);
 }
 footer .wrap { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 0.5rem; }
+footer .credit { display: block; margin-top: 0.75rem; }
+footer .heart { color: var(--spring); }
