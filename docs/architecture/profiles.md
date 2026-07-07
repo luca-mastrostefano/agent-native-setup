@@ -152,7 +152,10 @@ re-passes consent on its new hash.
 
 `contributions/index.json` is a curated, PR-gated list of `{name, url, description, author,
 tags}` entries — a phone book, not a registry: profiles live in their own repos and a listing
-grants no trust (RFC 2026-07-04-community-index). `profile search <query>` and
+grants no trust (RFC 2026-07-04-community-index). Names are unique (the offline shape test
+refuses a duplicate at PR time — bare-name resolution would otherwise silently first-wins)
+and must match the fetched profile's own `name` (`check_index` flags a mismatch as possible
+impersonation). `profile search <query>` and
 `list --community` read it via a bounded, daily-cached, silent-on-failure HTTP GET
 (`AGENT_NATIVE_SETUP_INDEX_URL` points a team at a private index). `profile publish` prints a
 profile's shareable URL (pinned `@<tag>` when the commit is tagged — else it nudges you to

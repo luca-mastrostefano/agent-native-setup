@@ -140,6 +140,12 @@ def test_the_committed_index_is_well_formed() -> None:
     for e in profs:
         assert e.get("name") and e.get("description"), e
         assert e.get("url", "").startswith("git+http"), e  # a git+https/ssh URL
+    # Names are the bare-name resolution key (`add <name>`): a duplicate would silently
+    # shadow one entry with the other (first-in-file wins) — refuse at PR time.
+    names = [e["name"] for e in profs]
+    assert len(names) == len(set(names)), f"duplicate profile names in the index: {names}"
+    urls = [e["url"] for e in profs]
+    assert len(urls) == len(set(urls)), f"duplicate URLs in the index: {urls}"
 
 
 # --- adopt-by-name: `add <name>` / `show <name>` fall back to the index (RFC §6) ---------------
