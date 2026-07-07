@@ -35,6 +35,10 @@ tasks:
     desc: fetch + validate every community-index entry (needs network)
     cmds:
       - python tools/checks/check_index.py
+  build-stats:
+    desc: recompute contributions/stats.json from the public GitHub API (needs network)
+    cmds:
+      - python tools/checks/build_index_stats.py
   check-baseline:
     desc: verify the vendored flagship matches its pinned tag (needs network; --offline in tests)
     cmds:

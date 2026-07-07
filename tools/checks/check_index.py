@@ -23,6 +23,36 @@ sys.path.insert(0, str(REPO_ROOT / "src"))  # find the package from a checkout (
 from agent_native_setup import profiles  # noqa: E402
 
 
+def _asset_equivalence(url: str, console) -> str | None:
+    """The poisoning tripwire (RFC 2026-07-07): when a listed pinned GitHub entry publishes
+    a release asset, fetch the entry through BOTH transports into throwaway caches and
+    compare content hashes. Returns an error string on mismatch, ``None`` when equivalent
+    or when no asset exists (clone-only entries are fine)."""
+    import tempfile
+
+    hashes: dict[str, str] = {}
+    for transport in ("asset", "clone"):
+        with tempfile.TemporaryDirectory() as tmp:
+            old_root = profiles.CACHE_ROOT
+            profiles.CACHE_ROOT = Path(tmp)
+            try:
+                root = profiles._fetch_git(url, console, transport=transport)
+                hashes[transport] = profiles.content_hash(profiles.load(root))
+            except profiles.ProfileError as exc:
+                if transport == "asset":
+                    return None  # no release asset — clone-only entry, nothing to compare
+                return f"clone transport failed during equivalence check: {exc}"
+            finally:
+                profiles.CACHE_ROOT = old_root
+    if hashes["asset"] != hashes["clone"]:
+        return (
+            f"asset != tag ({hashes['asset'][:12]}… vs {hashes['clone'][:12]}…): possible "
+            "poisoning — the release asset does not match the tag's tree. Delist the entry "
+            "and notify the author."
+        )
+    return None
+
+
 def check_index(index_path: Path) -> int:
     from rich.console import Console  # a hard dep of the package — render markup, don't leak it
 
@@ -38,6 +68,10 @@ def check_index(index_path: Path) -> int:
             rc = profiles._validate(argparse.Namespace(path=str(prof.root)), console)
             if rc != 0:
                 raise profiles.ProfileError("profile validate failed (see above)")
+            if url.startswith("git+https://github.com/"):
+                mismatch = _asset_equivalence(url, console)
+                if mismatch:
+                    raise profiles.ProfileError(mismatch)
             print(f"ok: {name} ({prof.name} {prof.version})")
         except profiles.ProfileError as exc:
             failures.append(f"{name}: {exc}")

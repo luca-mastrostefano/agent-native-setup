@@ -22,6 +22,7 @@ import os
 import re
 import shutil
 import subprocess
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -50,9 +51,24 @@ INDEX_URL = (
     "contributions/index.json"
 )
 INDEX_ENV = "AGENT_NATIVE_SETUP_INDEX_URL"
+# Stats sidecar (RFC 2026-07-07): CI-precomputed public metadata (stars, asset downloads),
+# served from a data-only branch and fetched like the index — cached, silent-on-failure,
+# advisory/display-only. A listing's stats grant no trust.
+STATS_URL = (
+    "https://raw.githubusercontent.com/luca-mastrostefano/agent-native-setup/stats/"
+    "contributions/stats.json"
+)
+STATS_ENV = "AGENT_NATIVE_SETUP_STATS_URL"
 # The engine's built-in scaffold (RFC 2026-07-05 §5): the vendored flagship profile. The
 # `builtin:` source scheme resolves to the wheel's embedded copy (or the repo checkout in
 # development), is trusted like any local artifact, and re-resolves identically at update.
+# Release-asset transport (RFC 2026-07-07-profile-releases-and-stats): a pinned GitHub tag
+# is fetched as this release asset first (one HTTPS GET, publicly countable downloads),
+# falling back to clone. The name+URL scheme is a compatibility contract once shipped.
+ASSET_NAME = "agent-native-profile.tar.gz"
+_ASSET_MAX_BYTES = 20_000_000  # archive download cap
+_ASSET_MAX_EXTRACTED = 60_000_000  # decompressed total cap (bombs)
+_ASSET_MAX_MEMBERS = 2_000  # member-count cap (bombs)
 BUILTIN_SCHEME = "builtin:"
 BASELINE_NAME = "agent-native-baseline"
 PROMPT_TYPES = ("text", "select", "confirm", "checkbox")
@@ -349,7 +365,67 @@ def _pinned(ref: str) -> bool:
     return bool(re.match(r"^[0-9a-f]{7,40}$", ref) or re.match(r"^v?\d", ref))
 
 
-def _fetch_git(spec: str, console: Any) -> Path:
+def _extract_asset(archive: Path, into: Path) -> None:
+    """Unpack a release asset with the stdlib data filter (rejects absolute paths,
+    traversal, links, devices, permission escalation) plus bomb caps and duplicate-member
+    rejection — the asset is untrusted input (RFC 2026-07-07)."""
+    import tarfile
+
+    with tarfile.open(archive, "r:gz") as tar:
+        members: list[tarfile.TarInfo] = []
+        seen: set[str] = set()
+        total = 0
+        for m in tar:
+            if len(members) >= _ASSET_MAX_MEMBERS:
+                raise ProfileError(f"profile asset has too many members (> {_ASSET_MAX_MEMBERS})")
+            if m.name in seen:
+                raise ProfileError(f"profile asset has duplicate member {m.name!r}")
+            seen.add(m.name)
+            if m.isdir():
+                members.append(m)
+                continue
+            if not m.isreg():
+                raise ProfileError(f"profile asset member {m.name!r} is not a regular file")
+            total += m.size
+            if total > _ASSET_MAX_EXTRACTED:
+                raise ProfileError(
+                    "profile asset expands too large — refusing (decompression bomb?)"
+                )
+            members.append(m)
+        tar.extractall(into, members=members, filter="data")
+
+
+def _try_release_asset(clone_url: str, ref: str, staging: Path) -> bool:
+    """Fetch the pinned tag's release asset into ``staging``. GitHub-only, pinned-refs-only;
+    any failure (no release, no asset, bad archive) returns False and the caller clones —
+    the asset is an optimization + public-count transport, never the only path."""
+    if not clone_url.startswith("https://github.com/"):
+        return False
+    repo_path = clone_url.removeprefix("https://github.com/").removesuffix(".git").strip("/")
+    if repo_path.count("/") != 1:
+        return False
+    url = f"https://github.com/{repo_path}/releases/download/{ref}/{ASSET_NAME}"
+    import urllib.request
+
+    archive = staging.with_suffix(".tar.gz")
+    try:
+        with urllib.request.urlopen(url, timeout=10) as resp:
+            data = resp.read(_ASSET_MAX_BYTES + 1)
+        if len(data) > _ASSET_MAX_BYTES:
+            return False
+        archive.write_bytes(data)
+        staging.mkdir(parents=True, exist_ok=True)
+        _extract_asset(archive, staging)
+        return (staging / PROFILE_MANIFEST).is_file()
+    except ProfileError:
+        raise  # a hostile archive is an error, not a silent fallback
+    except Exception:
+        return False  # 404 / network / not a tarball → clone path
+    finally:
+        archive.unlink(missing_ok=True)
+
+
+def _fetch_git(spec: str, console: Any, *, transport: str = "auto") -> Path:
     """Clone (or reuse) a git-URL profile into the cache and return its directory. **Data-only**:
     the transport allowlist (`_parse_git_url`) + ``--no-recurse-submodules`` mean nothing runs at
     fetch time (RFC 2026-07-04 §1). A pinned ref is cached forever; a moving ref re-fetches; on a
@@ -363,6 +439,21 @@ def _fetch_git(spec: str, console: Any) -> Path:
     staging = cache_dir.with_name(cache_dir.name + ".new")
     if staging.exists():
         shutil.rmtree(staging)
+    # Asset-first for pinned GitHub tags (RFC 2026-07-07): one HTTPS GET beats a clone and
+    # the download is publicly countable. Any failure falls through to the clone below.
+    if (
+        transport in ("auto", "asset")
+        and ref
+        and _pinned(ref)
+        and not subdir
+        and _try_release_asset(clone_url, ref, staging)
+    ):
+        if cache_dir.exists():
+            shutil.rmtree(cache_dir)
+        staging.rename(cache_dir)
+        return root
+    if transport == "asset":
+        raise ProfileError(f"no release asset {ASSET_NAME!r} for {spec!r}")
     try:
         subprocess.run(
             ["git", "clone", "--quiet", "--no-recurse-submodules", clone_url, str(staging)],
@@ -1092,13 +1183,67 @@ def _fetch_index(now: float) -> list[dict]:
     return entries or []
 
 
+def _stats_cache_path() -> Path:
+    base = os.environ.get("XDG_CACHE_HOME") or os.path.expanduser("~/.cache")
+    return Path(base) / "agent-native-setup" / "community-stats.json"
+
+
+def _fetch_stats(now: float) -> dict[str, dict]:
+    """Per-profile public stats (``{name: {"stars": n, "downloads": n}}``), daily-cached and
+    silent on any failure → ``{}`` — display data only, mirroring ``_fetch_index``."""
+    url = os.environ.get(STATS_ENV) or STATS_URL
+    path = _stats_cache_path()
+    try:
+        cached = json.loads(path.read_text(encoding="utf-8"))
+        if cached.get("url") == url:
+            ttl = _INDEX_CACHE_TTL if cached.get("stats") else _INDEX_FAILURE_TTL
+            if now - cached.get("checked_at", 0) < ttl:
+                return cached.get("stats") or {}
+    except (OSError, ValueError):
+        pass
+    stats: dict[str, dict] | None = None
+    try:
+        if url.startswith(("https://", "http://")):
+            import urllib.request
+
+            with urllib.request.urlopen(url, timeout=2.0) as resp:
+                data = json.loads(resp.read(1_000_000))
+            raw = data.get("profiles") if isinstance(data, dict) else None
+            if isinstance(raw, dict):
+                stats = {str(k): v for k, v in raw.items() if isinstance(v, dict)}
+    except Exception:  # advisory only — never raise
+        stats = None
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(
+            json.dumps({"checked_at": now, "url": url, "stats": stats}), encoding="utf-8"
+        )
+    except OSError:
+        pass
+    return stats or {}
+
+
+def _stats_suffix(name: str, stats: dict[str, dict]) -> str:
+    s = stats.get(name) or {}
+    parts = []
+    if isinstance(s.get("stars"), int):
+        parts.append(f"★ {s['stars']}")
+    if isinstance(s.get("downloads"), int):
+        parts.append(f"⬇ {s['downloads']}")
+    return f"  ·  {' · '.join(parts)}" if parts else ""
+
+
 def _print_index_entries(entries: list[dict], console: Any) -> None:
+    import time
+
     from rich.markup import escape  # entry fields are attacker-controlled remote data — never let
 
+    stats = _fetch_stats(time.time())
     for e in entries:  # them inject console markup (a forged "verified" line, hidden text, …)
         name, url = escape(str(e["name"])), escape(str(e["url"]))
         desc = escape(str(e.get("description", "")))
-        console.print(f"  [bold]{name}[/]{' — ' + desc if desc else ''}")
+        suffix = escape(_stats_suffix(str(e["name"]), stats))  # remote numbers are data too
+        console.print(f"  [bold]{name}[/]{suffix}{' — ' + desc if desc else ''}")
         console.print(f"    [dim]{url}[/]")
     console.print(
         "\n[dim]A listing isn't vetting — `profile add <name>` (or `show <name>` to inspect "
@@ -1171,6 +1316,10 @@ def _search(args: argparse.Namespace, console: Any) -> int:
     if not hits:
         console.print(f"[yellow]No community profiles match {args.query!r}.[/]")
         return 0
+    # Rank by the public download count when stats are available (RFC 2026-07-07) —
+    # convergence needs a signal; ties and unstated entries stay in index order.
+    stats = _fetch_stats(time.time())
+    hits.sort(key=lambda e: -(stats.get(e["name"], {}).get("downloads") or 0))
     console.print(f"[cyan]Community profiles matching {args.query!r}:[/]")
     _print_index_entries(hits, console)
     return 0
@@ -1194,6 +1343,10 @@ def _publish(args: argparse.Namespace, console: Any) -> int:
             "listing."
         )
     url = url or "git+https://<your-repo>.git@v1.0.0"
+    if getattr(args, "release", False):
+        rc = _publish_release(root, tag, console)
+        if rc != 0:
+            return rc
     entry = {
         "name": prof.name,
         "url": url,
@@ -1204,6 +1357,71 @@ def _publish(args: argparse.Namespace, console: Any) -> int:
     console.print(f"\n[green]Shareable URL:[/] [bold]--profile {url}[/]")
     console.print("[green]Add this entry[/] to a PR against `contributions/index.json`:")
     console.print(json.dumps(entry, indent=2))
+    return 0
+
+
+def _publish_release(root: Path, tag: str | None, console: Any) -> int:
+    """Attach the consented surface as a release asset on ``tag`` (RFC 2026-07-07). Packed
+    from the **tag's committed tree** (`git archive`), never the working tree — a dirty
+    checkout must not ship an asset that fails the index's asset-vs-tag equivalence check."""
+    if not tag:
+        console.print(
+            "[red]--release needs the current commit tagged[/] — `git tag vX.Y.Z` first "
+            "(the asset hangs on the tag adopters pin)."
+        )
+        return 2
+    with tempfile.TemporaryDirectory() as tmp:
+        asset = Path(tmp) / ASSET_NAME
+        pack = subprocess.run(
+            [
+                "git",
+                "-C",
+                str(root),
+                "archive",
+                "--format=tar.gz",
+                "-o",
+                str(asset),
+                tag,
+                "--",
+                PROFILE_MANIFEST,
+                TEMPLATES_DIR,
+            ],
+            capture_output=True,
+            text=True,
+        )
+        if pack.returncode != 0:
+            console.print(f"[red]git archive {tag} failed:[/] {pack.stderr.strip()[:300]}")
+            return 1
+        up = subprocess.run(
+            [
+                "gh",
+                "release",
+                "create",
+                tag,
+                str(asset),
+                "--notes",
+                f"Profile release {tag} — asset fetched by agent-native-setup "
+                "(public download counts).",
+            ],
+            cwd=root,
+            capture_output=True,
+            text=True,
+        )
+        if up.returncode != 0 and "already exists" in (up.stderr or ""):
+            up = subprocess.run(
+                ["gh", "release", "upload", tag, str(asset), "--clobber"],
+                cwd=root,
+                capture_output=True,
+                text=True,
+            )
+        if up.returncode != 0:
+            err = (up.stderr or "").strip()[:200]
+            console.print(
+                f"[yellow]Couldn't create the GitHub release[/] ({err}) — the tarball is "
+                "correct; run `gh release create` by hand or re-run with gh set up."
+            )
+            return 1
+    console.print(f"[green]Release asset published:[/] {tag} / {ASSET_NAME}")
     return 0
 
 
@@ -1603,6 +1821,12 @@ def run_cli(argv: list[str], console: Any) -> int:
     pub = sub.add_parser("publish", help="validate + print a profile's shareable URL and entry")
     pub.add_argument("path", help="path to the profile directory")
     pub.add_argument("--url", help="the git+https://… URL it's published at (else inferred)")
+    pub.add_argument(
+        "--release",
+        action="store_true",
+        help=f"also attach {ASSET_NAME} to a GitHub Release on the current tag "
+        "(public download counts; fetched preferentially by adopters)",
+    )
     untrust = sub.add_parser("untrust", help="revoke consent for a fetched profile")
     untrust.add_argument("ref", help="a trusted content hash (or prefix) or profile name")
     trust = sub.add_parser("trust", help="manage consent for fetched profiles")

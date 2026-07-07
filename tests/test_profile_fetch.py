@@ -209,3 +209,197 @@ def test_update_regates_when_a_fetched_profile_advances_to_unsafe(tmp_path: Path
 
     assert update.run(target, dry_run=False, console=_Console()) == 2  # re-gated, not applied
     assert update.run(target, dry_run=False, console=_Console(), assume_yes=True) == 0  # consented
+
+
+# --- release-asset transport (RFC 2026-07-07-profile-releases-and-stats) --------------------
+
+
+def _tar_bytes(members: dict[str, bytes], **kw: object) -> bytes:
+    import io
+    import tarfile
+
+    buf = io.BytesIO()
+    with tarfile.open(fileobj=buf, mode="w:gz") as tar:
+        for name, data in members.items():
+            info = tarfile.TarInfo(name)
+            info.size = len(data)
+            tar.addfile(info, io.BytesIO(data))
+    return buf.getvalue()
+
+
+def _good_asset() -> bytes:
+    return _tar_bytes(
+        {
+            "profile.json": b'{"name": "assetprof", "version": "1.0.0", "description": "d"}',
+            "templates/docs/x.md": b"hi\n",
+        }
+    )
+
+
+def _serve(monkeypatch: pytest.MonkeyPatch, payload: bytes) -> list[str]:
+    """Fake urllib for _try_release_asset; records requested URLs."""
+    import io
+    import urllib.request
+
+    urls: list[str] = []
+
+    class _Resp(io.BytesIO):
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a: object) -> None: ...
+
+    def fake_urlopen(url, timeout=None):
+        urls.append(str(url))
+        return _Resp(payload)
+
+    monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
+    return urls
+
+
+def test_asset_transport_preferred_for_pinned_github_tags(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    urls = _serve(monkeypatch, _good_asset())
+
+    def no_git(*a: object, **k: object):
+        raise AssertionError("clone must not run when the asset succeeds")
+
+    monkeypatch.setattr(profiles.subprocess, "run", no_git)
+    root = profiles._fetch_git("git+https://github.com/acme/prof.git@v1.0.0", _Console())
+    assert (root / "profile.json").is_file() and (root / "templates/docs/x.md").is_file()
+    assert urls == [
+        "https://github.com/acme/prof/releases/download/v1.0.0/agent-native-profile.tar.gz"
+    ]
+    # Pinned → cached forever: a second resolve touches neither network nor git.
+    urls.clear()
+    root2 = profiles._fetch_git("git+https://github.com/acme/prof.git@v1.0.0", _Console())
+    assert root2 == root and urls == []
+
+
+def test_asset_transport_skipped_for_branches_subdirs_and_other_hosts(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    called: list[str] = []
+    monkeypatch.setattr(profiles, "_try_release_asset", lambda *a, **k: called.append("x") or False)
+    for spec in (
+        "git+https://github.com/acme/prof.git@main",  # moving ref
+        "git+https://gitlab.com/acme/prof.git@v1.0.0",  # other host (checked inside helper)
+        "git+https://github.com/acme/mono.git@v1.0.0#subdir=p",  # monorepo
+    ):
+        with pytest.raises(profiles.ProfileError):
+            profiles._fetch_git(spec, _Console(), transport="asset")
+    # branch + subdir never even consult the asset path; the host check lives in the helper
+    assert len(called) == 1  # only the gitlab case reached the helper
+
+
+def test_asset_falls_back_to_clone_on_404(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    import urllib.error
+    import urllib.request
+
+    def raise_404(url, timeout=None):
+        raise urllib.error.HTTPError(str(url), 404, "nf", {}, None)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(urllib.request, "urlopen", raise_404)
+    src = _make_git_profile(tmp_path, "fallback")  # git+file:// → helper rejects host, clone wins
+    prof = profiles.resolve(src, console=_Console())
+    assert prof is not None and prof.name == "fallback"
+
+
+def test_hostile_asset_is_an_error_not_a_fallback(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Traversal member: refuse loudly — silently cloning would mask an attack.
+    _serve(monkeypatch, _tar_bytes({"../escape.txt": b"x"}))
+    with pytest.raises(profiles.ProfileError):
+        profiles._fetch_git("git+https://github.com/acme/evil.git@v1.0.0", _Console())
+
+
+def test_extract_asset_rejects_bombs_links_and_duplicates(tmp_path: Path) -> None:
+    import io
+    import tarfile
+
+    # symlink member
+    buf = io.BytesIO()
+    with tarfile.open(fileobj=buf, mode="w:gz") as tar:
+        info = tarfile.TarInfo("profile.json")
+        info.type = tarfile.SYMTYPE
+        info.linkname = "/etc/passwd"
+        tar.addfile(info)
+    link_tar = tmp_path / "link.tar.gz"
+    link_tar.write_bytes(buf.getvalue())
+    with pytest.raises(profiles.ProfileError, match="not a regular file"):
+        profiles._extract_asset(link_tar, tmp_path / "o1")
+
+    # duplicate members
+    dup = tmp_path / "dup.tar.gz"
+    buf = io.BytesIO()
+    with tarfile.open(fileobj=buf, mode="w:gz") as tar:
+        for _ in range(2):
+            info = tarfile.TarInfo("profile.json")
+            info.size = 2
+            tar.addfile(info, io.BytesIO(b"{}"))
+    dup.write_bytes(buf.getvalue())
+    with pytest.raises(profiles.ProfileError, match="duplicate"):
+        profiles._extract_asset(dup, tmp_path / "o2")
+
+    # member-count bomb
+    many = tmp_path / "many.tar.gz"
+    many.write_bytes(_tar_bytes({f"templates/f{i}.md": b"x" for i in range(2_001)}))
+    with pytest.raises(profiles.ProfileError, match="too many members"):
+        profiles._extract_asset(many, tmp_path / "o3")
+
+    # extracted-size bomb (small archive, big declared payload)
+    big = tmp_path / "big.tar.gz"
+    big.write_bytes(_tar_bytes({"templates/a.bin": b"\0" * 61_000_000}))
+    with pytest.raises(profiles.ProfileError, match="expands too large"):
+        profiles._extract_asset(big, tmp_path / "o4")
+
+
+def test_publish_release_packs_the_tag_tree_not_the_working_tree(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import tarfile
+
+    prof = tmp_path / "myprof"
+    (prof / "templates").mkdir(parents=True)
+    (prof / "templates/x.md").write_text("tagged\n", encoding="utf-8")
+    (prof / "profile.json").write_text(
+        json.dumps({"name": "myprof", "version": "1.0.0", "description": "d"}),
+        encoding="utf-8",
+    )
+    for a in (
+        ["init", "-q", "-b", "main"],
+        ["add", "-A"],
+        ["-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "x"],
+        ["tag", "v1.0.0"],
+    ):
+        subprocess.run(["git", "-C", str(prof), *a], check=True, capture_output=True)
+    (prof / "templates/x.md").write_text("DIRTY — must not ship\n", encoding="utf-8")
+
+    captured: dict[str, bytes] = {}
+    real_run = profiles.subprocess.run
+
+    def fake_run(cmd, **kw):
+        if cmd[0] == "gh":  # capture the asset instead of talking to GitHub
+            captured["asset"] = Path(cmd[4]).read_bytes()
+            return subprocess.CompletedProcess(cmd, 0, "", "")
+        return real_run(cmd, **kw)
+
+    monkeypatch.setattr(profiles.subprocess, "run", fake_run)
+    c = _Console()
+    assert profiles._publish_release(prof, "v1.0.0", c) == 0
+    assert "Release asset published" in c.text
+    asset = tmp_path / "got.tar.gz"
+    asset.write_bytes(captured["asset"])
+    with tarfile.open(asset) as tar:
+        names = tar.getnames()
+        body = tar.extractfile("templates/x.md").read()  # type: ignore[union-attr]
+    assert "profile.json" in names
+    assert body == b"tagged\n"  # the tag's tree — the dirty edit didn't ship
+
+
+def test_publish_release_requires_a_tag(tmp_path: Path) -> None:
+    c = _Console()
+    assert profiles._publish_release(tmp_path, None, c) == 2
+    assert "needs the current commit tagged" in c.text

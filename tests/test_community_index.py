@@ -243,3 +243,123 @@ def test_pathlike_and_unknown_refs_never_consult_the_index(tmp_path: Path) -> No
         profiles._resolve_ref("some/dir", _Console())  # path-shaped → no index lookup
     with pytest.raises(profiles.ProfileError, match="not found"):
         profiles._resolve_ref("not-listed", _Console())  # bare name, no entry → original error
+
+
+# --- public stats sidecar (RFC 2026-07-07-profile-releases-and-stats) -----------------------
+
+
+def _tmp_stats(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, payload: dict | None) -> None:
+    monkeypatch.setattr(profiles, "_stats_cache_path", lambda: tmp_path / "stats-cache.json")
+    if payload is None:
+        monkeypatch.setattr(profiles, "_fetch_stats", lambda now: {})
+    else:
+        monkeypatch.setattr(profiles, "_fetch_stats", lambda now: payload)
+
+
+def test_search_ranks_by_downloads_and_shows_stats(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    entries = [
+        {"name": "small", "url": "git+https://x/a.git", "description": "python d", "tags": []},
+        {"name": "big", "url": "git+https://x/b.git", "description": "python d", "tags": []},
+    ]
+    monkeypatch.setattr(profiles, "_fetch_index", lambda now: entries)
+    _tmp_stats(
+        tmp_path, monkeypatch, {"big": {"stars": 7, "downloads": 340}, "small": {"stars": 1}}
+    )
+    c = _Console()
+    assert profiles._search(argparse.Namespace(query="python"), c) == 0
+    assert c.text.index("big") < c.text.index("small")  # downloads rank first
+    assert "340" in c.text and "★ 7" in c.text and "★ 1" in c.text
+
+
+def test_stats_are_advisory_display_only(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    # No stats reachable → listings render exactly as before, nothing raises.
+    entries = [{"name": "a", "url": "git+https://x/a.git", "description": "d", "tags": []}]
+    monkeypatch.setattr(profiles, "_fetch_index", lambda now: entries)
+    _tmp_stats(tmp_path, monkeypatch, None)
+    c = _Console()
+    assert profiles._search(argparse.Namespace(query="d"), c) == 0
+    assert "a" in c.text and "★" not in c.text
+
+
+def test_fetch_stats_caches_and_fails_silent(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import urllib.request
+
+    monkeypatch.setattr(profiles, "_stats_cache_path", lambda: tmp_path / "stats-cache.json")
+    calls: list[str] = []
+
+    class _Resp:
+        def __init__(self, data: bytes) -> None:
+            self._d = data
+
+        def read(self, n: int) -> bytes:
+            return self._d
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a: object) -> None: ...
+
+    def fake_urlopen(url, timeout=None):
+        calls.append(str(url))
+        return _Resp(json.dumps({"profiles": {"p": {"stars": 3, "downloads": 9}}}).encode())
+
+    monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
+    assert profiles._fetch_stats(1000.0) == {"p": {"stars": 3, "downloads": 9}}
+    assert profiles._fetch_stats(1000.0 + 60) == {"p": {"stars": 3, "downloads": 9}}
+    assert len(calls) == 1  # served from the daily cache
+
+    def broken(url, timeout=None):
+        raise OSError("offline")
+
+    monkeypatch.setattr(urllib.request, "urlopen", broken)
+    assert profiles._fetch_stats(1000.0 + 90_000) == {}  # stale → refetch fails → silent {}
+
+
+def test_check_index_flags_asset_tag_mismatch(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import importlib.util
+    import sys as _sys
+
+    spec = importlib.util.spec_from_file_location(
+        "check_index", Path(__file__).parent.parent / "tools/checks/check_index.py"
+    )
+    check_index = importlib.util.module_from_spec(spec)  # type: ignore[arg-type]
+    assert spec and spec.loader
+    _sys.modules["check_index"] = check_index
+    spec.loader.exec_module(check_index)
+
+    # Two transports resolving to different content → the poisoning diagnosis.
+    a, b = tmp_path / "a", tmp_path / "b"
+    for d, body in ((a, "one\n"), (b, "two\n")):
+        (d / "templates").mkdir(parents=True)
+        (d / "templates/x.md").write_text(body, encoding="utf-8")
+        (d / "profile.json").write_text(
+            json.dumps({"name": "p", "version": "1.0.0", "description": "d"}), encoding="utf-8"
+        )
+
+    def fake_fetch(url, console, *, transport="auto"):
+        return a if transport == "asset" else b
+
+    monkeypatch.setattr(check_index.profiles, "_fetch_git", fake_fetch)
+    err = check_index._asset_equivalence("git+https://github.com/x/y.git@v1", _Console())
+    assert err and "possible poisoning" in err
+
+    # Equivalent content → no finding; missing asset → no finding.
+    def same_fetch(url, console, *, transport="auto"):
+        return a
+
+    monkeypatch.setattr(check_index.profiles, "_fetch_git", same_fetch)
+    assert check_index._asset_equivalence("git+https://github.com/x/y.git@v1", _Console()) is None
+
+    def no_asset(url, console, *, transport="auto"):
+        if transport == "asset":
+            raise check_index.profiles.ProfileError("no release asset")
+        return a
+
+    monkeypatch.setattr(check_index.profiles, "_fetch_git", no_asset)
+    assert check_index._asset_equivalence("git+https://github.com/x/y.git@v1", _Console()) is None
