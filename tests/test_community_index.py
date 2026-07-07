@@ -371,6 +371,30 @@ def test_check_index_flags_asset_tag_mismatch(
     assert check_index._asset_equivalence("git+https://github.com/x/y.git@v1", _Console()) is None
 
 
+def test_rank_breaks_download_ties_by_stars_then_forks(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    entries = [
+        {"name": "forky", "url": "git+https://x/f.git", "description": "python", "tags": []},
+        {"name": "starry", "url": "git+https://x/s.git", "description": "python", "tags": []},
+    ]
+    monkeypatch.setattr(profiles, "_fetch_index", lambda now: entries)
+    _tmp_stats(
+        tmp_path,
+        monkeypatch,
+        {
+            "starry": {"downloads": 5, "stars": 9, "forks": 0},
+            "forky": {"downloads": 5, "stars": 1, "forks": 30},
+        },
+    )
+    c = _Console()
+    assert profiles._search(argparse.Namespace(query="python"), c) == 0
+    # Equal downloads: stars break the tie (forks only after stars — no multiplication,
+    # so a zero-fork profile is never zeroed out by a popularity product).
+    assert c.text.index("[bold]starry[/]") < c.text.index("[bold]forky[/]")
+    assert "⑂ 30" in c.text
+
+
 def test_search_survives_hostile_stats_types(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

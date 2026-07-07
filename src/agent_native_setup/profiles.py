@@ -1247,6 +1247,8 @@ def _stats_suffix(name: str, stats: dict[str, dict]) -> str:
     parts = []
     if isinstance(s.get("stars"), int):
         parts.append(f"★ {s['stars']}")
+    if isinstance(s.get("forks"), int) and s["forks"]:
+        parts.append(f"⑂ {s['forks']}")  # forks = extensions, this ecosystem's fork model
     if isinstance(s.get("downloads"), int):
         parts.append(f"⬇ {s['downloads']}")
     return f"  ·  {' · '.join(parts)}" if parts else ""
@@ -1339,11 +1341,17 @@ def _search(args: argparse.Namespace, console: Any) -> int:
     # convergence needs a signal; ties and unstated entries stay in index order.
     stats = _fetch_stats(time.time())
 
-    def _downloads(e: dict) -> int:  # hostile stats must never crash search (display-only)
-        d = stats.get(e["name"], {}).get("downloads")
-        return -d if isinstance(d, int) else 0
+    def _rank(e: dict) -> tuple[int, int, int]:
+        # downloads (adoption), then stars (awareness), then forks (extension) — plain
+        # tie-breaks, no weights; hostile stats types must never crash search.
+        s = stats.get(e["name"], {})
 
-    hits.sort(key=_downloads)
+        def neg(v: object) -> int:
+            return -v if isinstance(v, int) else 0
+
+        return (neg(s.get("downloads")), neg(s.get("stars")), neg(s.get("forks")))
+
+    hits.sort(key=_rank)
     console.print(f"[cyan]Community profiles matching {args.query!r}:[/]")
     _print_index_entries(hits, console)
     return 0
