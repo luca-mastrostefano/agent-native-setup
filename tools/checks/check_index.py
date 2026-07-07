@@ -73,6 +73,12 @@ def check_index(index_path: Path) -> int:
             rc = profiles._validate(argparse.Namespace(path=str(prof.root)), console)
             if rc != 0:
                 raise profiles.ProfileError("profile validate failed (see above)")
+            if prof.name != name:
+                raise profiles.ProfileError(
+                    f"listed as {name!r} but the fetched profile.json says {prof.name!r} — "
+                    "a listing must carry the profile's own name (possible impersonation "
+                    "or a stale entry)"
+                )
             if url.startswith("git+https://github.com/"):
                 mismatch = _asset_equivalence(url, console)
                 if mismatch:
