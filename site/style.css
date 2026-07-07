@@ -44,7 +44,8 @@
 @media (prefers-reduced-motion: no-preference) {
   html { scroll-behavior: smooth; }
 }
-#contribute { scroll-margin-top: 2rem; }
+/* anchor targets clear the sticky header */
+#profiles, #contribute { scroll-margin-top: 4.5rem; }
 
 /* keep the hidden attribute authoritative over display:flex/block rules */
 [hidden] { display: none !important; }
@@ -73,7 +74,15 @@ a:hover { text-decoration: underline; text-underline-offset: 3px; }
 
 /* ---------- header ---------- */
 
-header { border-bottom: 1px solid var(--rule); }
+header {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  border-bottom: 1px solid var(--rule);
+  background: color-mix(in srgb, var(--paper) 88%, transparent);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
 header .wrap {
   display: flex;
   align-items: center;
