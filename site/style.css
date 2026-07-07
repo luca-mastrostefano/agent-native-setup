@@ -321,20 +321,17 @@ p code, li code {
 }
 .row h3 a { color: var(--ink); }
 .row h3 a:hover { color: var(--accent); }
+/* quiet marker for the engine's default profile — informative, not promotional */
 .badge {
   font-family: "IBM Plex Mono", ui-monospace, monospace;
-  font-size: 0.68rem;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--pine);
-  border: 1px solid var(--pine);
+  font-size: 0.7rem;
+  color: var(--ink-soft);
+  border: 1px solid var(--rule-strong);
   border-radius: 999px;
   padding: 0.05rem 0.5rem;
   margin-left: 0.5rem;
   vertical-align: 0.12em;
 }
-@media (prefers-color-scheme: dark) { .badge { color: var(--accent); border-color: var(--accent); } }
 .row p { margin: 0 0 0.55rem; font-size: 0.92rem; color: var(--ink-soft); max-width: 60em; }
 .row .tags { display: flex; flex-wrap: wrap; gap: 0.35rem; }
 .row .tags .chip { padding: 0.05rem 0.6rem; }
