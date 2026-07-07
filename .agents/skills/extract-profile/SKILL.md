@@ -91,10 +91,15 @@ adopters' repos before proceeding.
 
 ## 5. Ship
 
-`git init -b main`, commit, tag `v0.1.0`, and hand the user the `gh repo create … --push`
-command (repo creation needs their say). After it's public:
-`agent-native-setup profile publish <profile> --release` (attaches the countable release
-asset), then add the printed entry to `contributions/index.json` via PR.
+`git init -b main`, commit, tag `v0.1.0`, then hand the user **one copy-pasteable
+command** chaining everything that needs their say (repo creation) — not a list of steps:
+
+```bash
+cd <profile-dir> && gh repo create <name> --public --source=. --push && git push origin v0.1.0 && agent-native-setup profile publish . --release
+```
+
+(`publish --release` attaches the countable release asset.) Once it has run, add the
+printed entry to `contributions/index.json` via PR.
 
 Throughout: fidelity first — when unsure whether something is setup or product, ask the
 user rather than guessing; the source repo is read-only.
