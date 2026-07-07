@@ -1455,7 +1455,9 @@ def _offer_index_pr(entry: dict, console: Any) -> int:
             "add the entry above by hand."
         )
         return 1
-    except ProfileError as exc:
+    except (ProfileError, subprocess.SubprocessError, OSError) as exc:
+        # SubprocessError covers a hung clone/push (TimeoutExpired); OSError a failed spawn —
+        # the degrade contract holds for all of them, never a traceback.
         console.print(
             f"[yellow]Couldn't open the index PR[/] — {exc}\n"
             "The entry above is still valid; add it by hand."
@@ -1507,6 +1509,9 @@ def _open_index_pr(
         urls = [e.get("url") for e in spliced]
         if len(set(names)) != len(names) or len(set(urls)) != len(urls):
             raise ProfileError("splice would produce duplicate names/urls")
+        mine = next((e for e in spliced if e.get("name") == entry["name"]), None)
+        if mine is None or mine.get("url") != entry["url"]:
+            raise ProfileError("splice didn't land the entry where expected")
         target.write_text(new_text, encoding="utf-8")
         safe = re.sub(r"[^A-Za-z0-9._-]", "-", f"{entry['name']}-{entry['url'].rsplit('@', 1)[-1]}")
         pr_branch = f"index-{safe}"
@@ -1615,7 +1620,13 @@ def _spliced_index(text: str, listed: list, entry: dict) -> tuple[str, str, str]
             "`agent-native-setup profile publish`. Description/tags are left as listed and "
             "may have drifted from the profile; review against the tag."
         )
-        return text.replace(old_url, entry["url"], 1), title, body
+        # Swap the *quoted field*, not the bare string — a bare replace(old_url, …, 1) can hit
+        # an earlier entry whose url has this one as a prefix, or the url quoted in a
+        # description, and rewrite the wrong line (review finding).
+        old_field = f'"url": {json.dumps(old_url)}'
+        if text.count(old_field) != 1:
+            raise ProfileError(f"couldn't locate the listed url field for {entry['name']!r}")
+        return text.replace(old_field, f'"url": {json.dumps(entry["url"])}', 1), title, body
     anchor = '"profiles": ['
     i = text.find(anchor)
     nl = text.find("\n", i) if i != -1 else -1

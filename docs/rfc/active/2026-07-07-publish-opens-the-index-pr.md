@@ -46,8 +46,10 @@ Three changes to `_publish`, in increasing order of machinery:
    can't fetch it), instead of leaving `check-index` to discover the rot later.
 2. **Autofill `author`**: `gh api user` login, falling back to `git config user.name`,
    falling back to today's TODO. Best-effort, never fails publish.
-3. **Offer to open the listing PR** after the release step, gated on an interactive
-   confirm (default yes). Mechanics — git-native, clone-based:
+3. **Offer to open the listing PR** after the release step — and on any tagged publish,
+   with or without `--release`: a listing is valid without an asset (clone fallback), so
+   the offer shouldn't be gated on one. Interactive confirm (default yes). Mechanics —
+   git-native, clone-based:
    - Derive `owner/repo`, branch, and file path from the *effective* index URL (env
      override respected) when it is a `raw.githubusercontent.com` URL; otherwise skip
      silently (private/non-GitHub index → printed entry, as today).

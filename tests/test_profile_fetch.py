@@ -510,7 +510,8 @@ def _index_bare(tmp_path: Path) -> Path:
     _git(work, "init", "-q", "-b", "main")
     _git(work, "add", "-A")
     _git(work, "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "seed")
-    bare = tmp_path / "index.git"
+    bare = tmp_path / "o" / "index.git"  # owner dir: the fork path swaps /o/ -> /<login>/
+    bare.parent.mkdir()
     subprocess.run(
         ["git", "clone", "-q", "--bare", str(work), str(bare)], check=True, capture_output=True
     )
@@ -785,3 +786,109 @@ def test_publish_author_prefers_gh_login_then_git_config(
 
     monkeypatch.setattr(profiles.subprocess, "run", no_gh)
     assert profiles._publish_author(repo) == "Tess"
+
+
+def test_index_pr_forks_when_push_is_refused(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # No write access to the canonical repo: fork, push there, open the PR cross-fork.
+    bare = _index_bare(tmp_path)
+    hook = bare / "hooks" / "pre-receive"
+    hook.write_text("#!/bin/sh\nexit 1\n", encoding="utf-8")
+    hook.chmod(0o755)
+    fork = tmp_path / "someone" / "index.git"  # what the owner-swap must resolve to
+    fork.parent.mkdir()
+    subprocess.run(["git", "init", "-q", "--bare", str(fork)], check=True, capture_output=True)
+    pr_calls: list = []
+    _fake_gh(monkeypatch, bare, pr_calls)
+    c = _Console()
+    profiles._open_index_pr(
+        _entry("newprof", "git+https://github.com/me/newprof.git@v0.1.0"),
+        "o",
+        "r",
+        "main",
+        "contributions/index.json",
+        c,
+    )
+    (call,) = pr_calls
+    assert call[call.index("--head") + 1] == "someone:index-newprof-v0.1.0"  # cross-fork head
+    shown = subprocess.run(
+        ["git", "-C", str(fork), "show", "index-newprof-v0.1.0:contributions/index.json"],
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout
+    assert "newprof" in shown  # the branch landed on the fork, not the canonical repo
+
+
+def test_index_pr_refuses_a_new_name_reusing_a_listed_url(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    bare = _index_bare(tmp_path)
+    pr_calls: list = []
+    _fake_gh(monkeypatch, bare, pr_calls)
+    with pytest.raises(profiles.ProfileError, match="duplicate"):
+        profiles._open_index_pr(
+            _entry("impostor", "git+https://github.com/o/existing.git@v1.0.0"),
+            "o",
+            "r",
+            "main",
+            "contributions/index.json",
+            _Console(),
+        )
+    assert not pr_calls
+
+
+def test_index_pr_bump_does_not_touch_a_prefix_sibling(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Review finding: a bare replace(old_url, ...) hit the first entry whose url has the
+    # target's as a prefix (…@v1.0.0 vs …@v1.0.0-beta) and rewrote the wrong line.
+    bare = _index_bare(tmp_path)
+    work = tmp_path / "index-work"
+    idx = work / "contributions" / "index.json"
+    text = idx.read_text(encoding="utf-8")
+    beta = (
+        "    {\n"
+        '      "name": "existing-beta",\n'
+        '      "url": "git+https://github.com/o/existing.git@v1.0.0-beta",\n'
+        '      "description": "listed before its prefix sibling",\n'
+        '      "author": "a",\n'
+        '      "tags": ["x"]\n'
+        "    },\n"
+    )
+    at = text.index("\n", text.index('"profiles": [')) + 1
+    idx.write_text(text[:at] + beta + text[at:], encoding="utf-8")
+    _git(work, "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-aqm", "beta first")
+    _git(work, "push", "-q", str(bare), "main")
+    _fake_gh(monkeypatch, bare, [])
+    profiles._open_index_pr(
+        _entry("existing", "git+https://github.com/o/existing.git@v2.0.0"),
+        "o",
+        "r",
+        "main",
+        "contributions/index.json",
+        _Console(),
+    )
+    shown = subprocess.run(
+        ["git", "-C", str(bare), "show", "index-existing-v2.0.0:contributions/index.json"],
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout
+    assert '"url": "git+https://github.com/o/existing.git@v1.0.0-beta"' in shown  # untouched
+    assert '"url": "git+https://github.com/o/existing.git@v2.0.0"' in shown
+
+
+def test_offer_degrades_on_a_hung_subprocess(monkeypatch: pytest.MonkeyPatch) -> None:
+    # A hung clone/push (TimeoutExpired is a SubprocessError) must degrade to the printed
+    # entry, never a traceback (review finding).
+    monkeypatch.setattr(profiles, "_confirm_index_pr", lambda name, slug: True)
+
+    def hang(cmd, **kw):
+        raise subprocess.TimeoutExpired(cmd, 120)
+
+    monkeypatch.setattr(profiles.subprocess, "run", hang)
+    c = _Console()
+    assert profiles._offer_index_pr(_entry("p", "git+https://github.com/me/p.git@v1.0.0"), c) == 1
+    assert "Couldn't open the index PR" in c.text
