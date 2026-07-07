@@ -363,3 +363,24 @@ def test_check_index_flags_asset_tag_mismatch(
 
     monkeypatch.setattr(check_index.profiles, "_fetch_git", no_asset)
     assert check_index._asset_equivalence("git+https://github.com/x/y.git@v1", _Console()) is None
+
+
+def test_search_survives_hostile_stats_types(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Anyone who can write the stats branch (or override STATS_ENV) controls this JSON —
+    # display-only means it must never crash search (review: the sort key trusted the
+    # type and raised TypeError on a string).
+    entries = [
+        {"name": "a", "url": "git+https://x/a.git", "description": "python", "tags": []},
+        {"name": "b", "url": "git+https://x/b.git", "description": "python", "tags": []},
+    ]
+    monkeypatch.setattr(profiles, "_fetch_index", lambda now: entries)
+    _tmp_stats(
+        tmp_path,
+        monkeypatch,
+        {"a": {"downloads": "lots", "stars": ["x"]}, "b": {"downloads": 5}},
+    )
+    c = _Console()
+    assert profiles._search(argparse.Namespace(query="python"), c) == 0
+    assert c.text.index("[bold]b[/]") < c.text.index("[bold]a[/]")  # the honest int ranks

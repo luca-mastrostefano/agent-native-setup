@@ -47,7 +47,11 @@ fetch RFC's open `@sha` question is unaffected.
 - **Extraction is a new untrusted-input surface**: stdlib `tarfile` with
   `filter="data"` (rejects absolute paths, traversal, symlinks/hardlinks, devices,
   permission escalation) **plus** an extracted-size cap and a member-count cap (bombs),
-  with duplicate members rejected; unpacked into the cache staging dir. Ships with
+  with duplicate members rejected after path normalization. Refusals are two-class
+  (security review of the implementation): an **escape attempt or name-spoofing** errors
+  loudly and is treated by `check_index` as a poisoning signal; a merely **ineligible**
+  asset (too big, too many members, non-regular members) falls back to the clone, which
+  reproduces the same tag safely — so a benign large profile stays resolvable. Ships with
   `/security-review`.
 - **Security honesty — what the asset transport changes.** Release assets are *mutable
   even on an immutable tag*: anyone with release-write can silently repoint what a pinned

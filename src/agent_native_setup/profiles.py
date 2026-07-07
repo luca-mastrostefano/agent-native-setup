@@ -365,10 +365,20 @@ def _pinned(ref: str) -> bool:
     return bool(re.match(r"^[0-9a-f]{7,40}$", ref) or re.match(r"^v?\d", ref))
 
 
+class _AssetIneligible(Exception):
+    """The asset can't be used but isn't hostile (too big, too many members, non-regular
+    members) — the caller falls back to the clone transport, which reproduces the same
+    tag content safely. Distinct from ``ProfileError``: an *escape attempt* is an attack
+    and must fail loudly, never silently fall back (review of RFC 2026-07-07)."""
+
+
 def _extract_asset(archive: Path, into: Path) -> None:
-    """Unpack a release asset with the stdlib data filter (rejects absolute paths,
-    traversal, links, devices, permission escalation) plus bomb caps and duplicate-member
-    rejection — the asset is untrusted input (RFC 2026-07-07)."""
+    """Unpack a release asset — untrusted input (RFC 2026-07-07). Escape attempts
+    (absolute paths, traversal, links pointing out) and name-spoofing (duplicate members
+    after normalization) raise ``ProfileError`` loudly; oversize/over-count/non-regular
+    archives raise ``_AssetIneligible`` (→ clone fallback). The stdlib ``data`` filter is
+    the enforcement layer for everything path-shaped."""
+    import posixpath
     import tarfile
 
     with tarfile.open(archive, "r:gz") as tar:
@@ -377,22 +387,27 @@ def _extract_asset(archive: Path, into: Path) -> None:
         total = 0
         for m in tar:
             if len(members) >= _ASSET_MAX_MEMBERS:
-                raise ProfileError(f"profile asset has too many members (> {_ASSET_MAX_MEMBERS})")
-            if m.name in seen:
+                raise _AssetIneligible(f"more than {_ASSET_MAX_MEMBERS} members")
+            norm = posixpath.normpath(m.name)
+            if norm in seen:  # './x' vs 'x', 'a//b' vs 'a/b' — spoofing, not sloppiness
                 raise ProfileError(f"profile asset has duplicate member {m.name!r}")
-            seen.add(m.name)
+            seen.add(norm)
             if m.isdir():
                 members.append(m)
                 continue
             if not m.isreg():
-                raise ProfileError(f"profile asset member {m.name!r} is not a regular file")
+                raise _AssetIneligible(f"member {m.name!r} is not a regular file")
             total += m.size
             if total > _ASSET_MAX_EXTRACTED:
-                raise ProfileError(
-                    "profile asset expands too large — refusing (decompression bomb?)"
-                )
+                raise _AssetIneligible("expands past the extraction cap")
             members.append(m)
-        tar.extractall(into, members=members, filter="data")
+        try:
+            tar.extractall(into, members=members, filter="data")
+        except tarfile.FilterError as exc:
+            # The canonical attack: a member trying to land outside the extraction dir.
+            raise ProfileError(f"profile asset member refused (escape attempt?): {exc}") from None
+        except (tarfile.TarError, OSError) as exc:
+            raise ProfileError(f"profile asset failed to extract: {exc}") from None
 
 
 def _try_release_asset(clone_url: str, ref: str, staging: Path) -> bool:
@@ -404,6 +419,8 @@ def _try_release_asset(clone_url: str, ref: str, staging: Path) -> bool:
     repo_path = clone_url.removeprefix("https://github.com/").removesuffix(".git").strip("/")
     if repo_path.count("/") != 1:
         return False
+    if "/" in ref or ".." in ref:
+        return False  # a ref that could reshape the download path is never asset-eligible
     url = f"https://github.com/{repo_path}/releases/download/{ref}/{ASSET_NAME}"
     import urllib.request
 
@@ -418,7 +435,9 @@ def _try_release_asset(clone_url: str, ref: str, staging: Path) -> bool:
         _extract_asset(archive, staging)
         return (staging / PROFILE_MANIFEST).is_file()
     except ProfileError:
-        raise  # a hostile archive is an error, not a silent fallback
+        raise  # an attacking archive is an error, not a silent fallback
+    except _AssetIneligible:
+        return False  # big/odd but not hostile — the clone reproduces the tag safely
     except Exception:
         return False  # 404 / network / not a tarball → clone path
     finally:
@@ -1319,7 +1338,12 @@ def _search(args: argparse.Namespace, console: Any) -> int:
     # Rank by the public download count when stats are available (RFC 2026-07-07) —
     # convergence needs a signal; ties and unstated entries stay in index order.
     stats = _fetch_stats(time.time())
-    hits.sort(key=lambda e: -(stats.get(e["name"], {}).get("downloads") or 0))
+
+    def _downloads(e: dict) -> int:  # hostile stats must never crash search (display-only)
+        d = stats.get(e["name"], {}).get("downloads")
+        return -d if isinstance(d, int) else 0
+
+    hits.sort(key=_downloads)
     console.print(f"[cyan]Community profiles matching {args.query!r}:[/]")
     _print_index_entries(hits, console)
     return 0
@@ -1343,10 +1367,6 @@ def _publish(args: argparse.Namespace, console: Any) -> int:
             "listing."
         )
     url = url or "git+https://<your-repo>.git@v1.0.0"
-    if getattr(args, "release", False):
-        rc = _publish_release(root, tag, console)
-        if rc != 0:
-            return rc
     entry = {
         "name": prof.name,
         "url": url,
@@ -1357,6 +1377,9 @@ def _publish(args: argparse.Namespace, console: Any) -> int:
     console.print(f"\n[green]Shareable URL:[/] [bold]--profile {url}[/]")
     console.print("[green]Add this entry[/] to a PR against `contributions/index.json`:")
     console.print(json.dumps(entry, indent=2))
+    if getattr(args, "release", False):
+        # After the entry — a failed release must not cost the user the printout above.
+        return _publish_release(root, tag, console)
     return 0
 
 
@@ -1370,6 +1393,18 @@ def _publish_release(root: Path, tag: str | None, console: Any) -> int:
             "(the asset hangs on the tag adopters pin)."
         )
         return 2
+    try:
+        return _release_steps(root, tag, console)
+    except FileNotFoundError as exc:  # git or gh not installed — degrade legibly
+        console.print(
+            f"[yellow]--release needs {exc.filename or 'a required tool'} on PATH[/] — "
+            "the entry above is still valid; attach the asset later with "
+            "`profile publish --release`."
+        )
+        return 1
+
+
+def _release_steps(root: Path, tag: str, console: Any) -> int:
     with tempfile.TemporaryDirectory() as tmp:
         asset = Path(tmp) / ASSET_NAME
         pack = subprocess.run(

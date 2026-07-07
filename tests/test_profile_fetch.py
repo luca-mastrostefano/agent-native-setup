@@ -306,20 +306,61 @@ def test_asset_falls_back_to_clone_on_404(tmp_path: Path, monkeypatch: pytest.Mo
     assert prof is not None and prof.name == "fallback"
 
 
-def test_hostile_asset_is_an_error_not_a_fallback(
+def test_traversal_asset_errors_loudly_and_writes_nothing_outside(tmp_path: Path) -> None:
+    # The canonical attack, proven at the extraction layer (review: the first cut let the
+    # stdlib FilterError fall through to a silent clone fallback — and the old test only
+    # passed because an unmocked real clone failed).
+    hostile = tmp_path / "evil.tar.gz"
+    hostile.write_bytes(_tar_bytes({"../escape.txt": b"x"}))
+    into = tmp_path / "jail" / "extract"
+    into.parent.mkdir()
+    with pytest.raises(profiles.ProfileError, match="escape attempt"):
+        profiles._extract_asset(hostile, into)
+    assert not (tmp_path / "jail" / "escape.txt").exists()  # nothing landed outside
+    assert not (tmp_path / "escape.txt").exists()
+
+
+def test_hostile_asset_via_fetch_is_loud_never_a_silent_clone(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    # Traversal member: refuse loudly — silently cloning would mask an attack.
     _serve(monkeypatch, _tar_bytes({"../escape.txt": b"x"}))
-    with pytest.raises(profiles.ProfileError):
+
+    def no_git(*a: object, **k: object):
+        raise AssertionError("an attacking asset must never silently fall back to clone")
+
+    monkeypatch.setattr(profiles.subprocess, "run", no_git)
+    with pytest.raises(profiles.ProfileError, match="escape attempt"):
         profiles._fetch_git("git+https://github.com/acme/evil.git@v1.0.0", _Console())
 
 
-def test_extract_asset_rejects_bombs_links_and_duplicates(tmp_path: Path) -> None:
+def test_ineligible_asset_falls_back_to_clone(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Big/odd-but-not-hostile assets must not make a benign profile unresolvable: the
+    # clone reproduces the same tag safely (review: two-class refusal policy).
+    _serve(monkeypatch, _tar_bytes({f"templates/f{i}.md": b"x" for i in range(2_001)}))
+    cloned: list[str] = []
+
+    def fake_clone(cmd, **kw):
+        cloned.append(cmd[1])
+        if cmd[1] == "clone":
+            dest = Path(cmd[-1])
+            (dest / "templates").mkdir(parents=True)
+            (dest / "profile.json").write_text(
+                '{"name": "big", "version": "1.0.0", "description": "d"}', encoding="utf-8"
+            )
+        return subprocess.CompletedProcess(cmd, 0, "", "")
+
+    monkeypatch.setattr(profiles.subprocess, "run", fake_clone)
+    root = profiles._fetch_git("git+https://github.com/acme/big.git@v1.0.0", _Console())
+    assert (root / "profile.json").is_file() and "clone" in cloned
+
+
+def test_extract_asset_two_class_refusals(tmp_path: Path) -> None:
     import io
     import tarfile
 
-    # symlink member
+    # Ineligible (→ clone fallback): symlink member, member-count bomb, size bomb.
     buf = io.BytesIO()
     with tarfile.open(fileobj=buf, mode="w:gz") as tar:
         info = tarfile.TarInfo("profile.json")
@@ -328,32 +369,36 @@ def test_extract_asset_rejects_bombs_links_and_duplicates(tmp_path: Path) -> Non
         tar.addfile(info)
     link_tar = tmp_path / "link.tar.gz"
     link_tar.write_bytes(buf.getvalue())
-    with pytest.raises(profiles.ProfileError, match="not a regular file"):
+    with pytest.raises(profiles._AssetIneligible, match="not a regular file"):
         profiles._extract_asset(link_tar, tmp_path / "o1")
 
-    # duplicate members
+    many = tmp_path / "many.tar.gz"
+    many.write_bytes(_tar_bytes({f"templates/f{i}.md": b"x" for i in range(2_001)}))
+    with pytest.raises(profiles._AssetIneligible, match="members"):
+        profiles._extract_asset(many, tmp_path / "o3")
+
+    big = tmp_path / "big.tar.gz"
+    big.write_bytes(_tar_bytes({"templates/a.bin": b"\0" * 61_000_000}))
+    with pytest.raises(profiles._AssetIneligible, match="extraction cap"):
+        profiles._extract_asset(big, tmp_path / "o4")
+
+    # Attacks (→ loud ProfileError): duplicates, including normalization-equal spoofing.
     dup = tmp_path / "dup.tar.gz"
     buf = io.BytesIO()
     with tarfile.open(fileobj=buf, mode="w:gz") as tar:
-        for _ in range(2):
-            info = tarfile.TarInfo("profile.json")
+        for name in ("profile.json", "./profile.json"):
+            info = tarfile.TarInfo(name)
             info.size = 2
             tar.addfile(info, io.BytesIO(b"{}"))
     dup.write_bytes(buf.getvalue())
     with pytest.raises(profiles.ProfileError, match="duplicate"):
         profiles._extract_asset(dup, tmp_path / "o2")
 
-    # member-count bomb
-    many = tmp_path / "many.tar.gz"
-    many.write_bytes(_tar_bytes({f"templates/f{i}.md": b"x" for i in range(2_001)}))
-    with pytest.raises(profiles.ProfileError, match="too many members"):
-        profiles._extract_asset(many, tmp_path / "o3")
-
-    # extracted-size bomb (small archive, big declared payload)
-    big = tmp_path / "big.tar.gz"
-    big.write_bytes(_tar_bytes({"templates/a.bin": b"\0" * 61_000_000}))
-    with pytest.raises(profiles.ProfileError, match="expands too large"):
-        profiles._extract_asset(big, tmp_path / "o4")
+    # Weird-but-handled: a member path through a file raises legibly, not a traceback.
+    odd = tmp_path / "odd.tar.gz"
+    odd.write_bytes(_tar_bytes({"profile.json": b"{}", "profile.json/..": b"x"}))
+    with pytest.raises((profiles.ProfileError, profiles._AssetIneligible)):
+        profiles._extract_asset(odd, tmp_path / "o5")
 
 
 def test_publish_release_packs_the_tag_tree_not_the_working_tree(
@@ -403,3 +448,39 @@ def test_publish_release_requires_a_tag(tmp_path: Path) -> None:
     c = _Console()
     assert profiles._publish_release(tmp_path, None, c) == 2
     assert "needs the current commit tagged" in c.text
+
+
+def test_publish_degrades_gracefully_without_gh(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # RFC: --release without gh must still print the shareable entry (review: the first
+    # cut aborted before printing and raised a raw FileNotFoundError).
+    prof = tmp_path / "p"
+    (prof / "templates").mkdir(parents=True)
+    (prof / "templates/x.md").write_text("hi\n", encoding="utf-8")
+    (prof / "profile.json").write_text(
+        json.dumps({"name": "p", "version": "1.0.0", "description": "d"}), encoding="utf-8"
+    )
+    for a in (
+        ["init", "-q", "-b", "main"],
+        ["add", "-A"],
+        ["-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "x"],
+        ["tag", "v1.0.0"],
+    ):
+        subprocess.run(["git", "-C", str(prof), *a], check=True, capture_output=True)
+
+    real_run = profiles.subprocess.run
+
+    def no_gh(cmd, **kw):
+        if cmd[0] == "gh":
+            raise FileNotFoundError(2, "not found", "gh")
+        return real_run(cmd, **kw)
+
+    monkeypatch.setattr(profiles.subprocess, "run", no_gh)
+    c = _Console()
+    rc = profiles._publish(
+        argparse.Namespace(path=str(prof), url="git+https://x/p.git", release=True), c
+    )
+    assert rc == 1  # failure signalled…
+    assert "Add this entry" in c.text  # …but the entry printed first
+    assert "needs gh on PATH" in c.text or "--release needs" in c.text

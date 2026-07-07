@@ -40,7 +40,12 @@ def _asset_equivalence(url: str, console) -> str | None:
                 hashes[transport] = profiles.content_hash(profiles.load(root))
             except profiles.ProfileError as exc:
                 if transport == "asset":
-                    return None  # no release asset — clone-only entry, nothing to compare
+                    if str(exc).startswith("no release asset"):
+                        return None  # clone-only entry, nothing to compare
+                    return (  # a refused (hostile) asset is itself the poisoning signal
+                        f"asset transport refused: {exc} — possible poisoning. Delist the "
+                        "entry and notify the author."
+                    )
                 return f"clone transport failed during equivalence check: {exc}"
             finally:
                 profiles.CACHE_ROOT = old_root

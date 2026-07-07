@@ -59,9 +59,10 @@ a refresh.
    `~/.cache/agent-native-setup/profiles/` (pinned refs cached forever, branches re-fetched,
    stale cache reused on fetch failure with a warning). For a **pinned GitHub tag**, the
    release asset `agent-native-profile.tar.gz` is tried first (one HTTPS GET, hardened
-   stdlib-filter extraction with bomb caps, publicly countable downloads — RFC 2026-07-07)
-   and any failure falls back to the clone; a hostile archive is a loud error, never a
-   silent fallback;
+   stdlib-filter extraction with bomb caps, publicly countable downloads — RFC 2026-07-07).
+   A missing/oversized/odd asset falls back to the clone (which reproduces the same tag
+   safely); an archive **attempting to escape** the extraction dir or spoof member names
+   is an attack and errors loudly, never a silent fallback;
 3. a path containing `profile.json`;
 4. a bare name under `~/.config/agent-native-setup/profiles/`;
 5. (`add`/`show` only) a bare name that matches nothing local → exact-name lookup in the
