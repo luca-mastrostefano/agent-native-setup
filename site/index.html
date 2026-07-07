@@ -12,7 +12,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400..700;1,6..72,400..700&family=IBM+Plex+Sans:wght@400;600&family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="style.css?v=2" />
+  <link rel="stylesheet" href="style.css?v=3" />
 </head>
 <body>
 
@@ -139,8 +139,8 @@ uvx --from git+https://github.com/luca-mastrostefano/agent-native-setup agent-na
         <!-- Static fallback for no-JS readers; replaced from the live index + stats on load. -->
         <article class="row">
           <div>
-            <h3><a href="https://github.com/luca-mastrostefano/agent-native-baseline">agent-native-baseline</a><span class="badge">flagship</span></h3>
-            <p>The flagship profile — the complete agent-native setup the engine scaffolds by default: AGENTS.md contract, docs + RFCs, quality gates, security scanning, CI, and a .claude library. Fork it to build your own.</p>
+            <h3><a href="https://github.com/luca-mastrostefano/agent-native-baseline">agent-native-baseline</a><span class="badge">default</span></h3>
+            <p>The default profile — the complete agent-native setup the engine scaffolds when you don't pick one: AGENTS.md contract, docs + RFCs, quality gates, security scanning, CI, and a .claude library. Fork it to build your own.</p>
             <div class="tags"><span class="chip">general</span><span class="chip">baseline</span><span class="chip">multi-language</span></div>
           </div>
           <div class="stats">
@@ -218,7 +218,7 @@ uvx --from git+https://github.com/luca-mastrostefano/agent-native-setup agent-na
 // The static rows above stay as-is for no-JS readers or if both fetches fail.
 (function () {
   const REPO_RAW = "https://raw.githubusercontent.com/luca-mastrostefano/agent-native-setup";
-  const FLAGSHIP = "agent-native-baseline";
+  const DEFAULT_PROFILE = "agent-native-baseline"; // what the engine scaffolds with no --profile
   const PAGE = 60; // rows rendered per "Show more" — keeps the DOM sane at thousands of profiles
 
   // Snapshot of contributions/index.json + the stats branch, so the toolbar works even
@@ -227,7 +227,7 @@ uvx --from git+https://github.com/luca-mastrostefano/agent-native-setup agent-na
   const FALLBACK = {
     index: { profiles: [
       { name: "agent-native-baseline", url: "git+https://github.com/luca-mastrostefano/agent-native-baseline.git@v0.2.0",
-        description: "The flagship profile — the complete agent-native setup the engine scaffolds by default: AGENTS.md contract, docs + RFCs, quality gates, security scanning, CI, and a .claude library. Fork it to build your own.",
+        description: "The default profile — the complete agent-native setup the engine scaffolds when you don't pick one: AGENTS.md contract, docs + RFCs, quality gates, security scanning, CI, and a .claude library. Fork it to build your own.",
         tags: ["general", "baseline", "multi-language"] },
       { name: "tolaria-setup", url: "git+https://github.com/luca-mastrostefano/tolaria-setup.git@v0.1.1",
         description: "Tolaria's agent-native engineering setup: direct-to-main TDD contract, CodeScene ratchet gates + MCP wiring, ADR system with /create-adr, two-tier husky gates, Codacy/Semgrep, optional Chunk sidecar lanes and Todoist task-loop commands.",
@@ -278,7 +278,7 @@ uvx --from git+https://github.com/luca-mastrostefano/agent-native-setup agent-na
       return {
         name: p.name, description: p.description || "", tags,
         hay: (p.name + " " + (p.description || "") + " " + tags.join(" ")).toLowerCase(),
-        repo: repoLink(p.url), flagship: p.name === FLAGSHIP,
+        repo: repoLink(p.url), isDefault: p.name === DEFAULT_PROFILE,
         stars: s.stars || 0, forks: s.forks || 0, downloads: s.downloads || 0,
       };
     });
@@ -295,14 +295,14 @@ uvx --from git+https://github.com/luca-mastrostefano/agent-native-setup agent-na
       words.every(w => p.hay.includes(w)) &&
       [...state.tags].every(t => p.tags.includes(t))
     ).sort((a, b) => {
-      // honest directory order — no flagship pin (v1 pinned it; the badge marks it now)
+      // honest directory order — no pin for the default profile (its badge marks it)
       if (state.sort === "name") return a.name.localeCompare(b.name);
       return (b[state.sort] - a[state.sort]) || a.name.localeCompare(b.name);
     });
   }
 
   function rowHtml(p) {
-    const badge = p.flagship ? '<span class="badge">flagship</span>' : "";
+    const badge = p.isDefault ? '<span class="badge">default</span>' : "";
     const tags = p.tags.map(t =>
       `<button class="chip" data-tag="${esc(t)}" aria-pressed="${state.tags.has(t)}">${esc(t)}</button>`).join("");
     return `<article class="row">

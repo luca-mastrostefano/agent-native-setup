@@ -2,37 +2,39 @@
    Tokens: paper/ink greens, pine primary, spring growth accent.
    Type: Newsreader (display) · IBM Plex Sans (body) · IBM Plex Mono (registry material). */
 
+/* Neutral surfaces and text; green appears only as the accent
+   (buttons, links, selected states, the release graph). */
 :root {
-  --paper: #f4f6f0;
-  --card: #fbfcf9;
-  --ink: #152218;
-  --ink-soft: #4c5c50;
+  --paper: #fafaf9;
+  --card: #ffffff;
+  --ink: #1c1c1c;
+  --ink-soft: #5a5a58;
   --pine: #1c5b40;
   --accent: #177a4b;      /* interactive text on paper */
   --spring: #35c47c;      /* growth accent — fills, never body text */
-  --rule: #dbe2d6;
-  --rule-strong: #c3cdbd;
-  --chip-bg: #e8eee4;
-  --code-bg: #0f1a14;
-  --code-text: #d9e8dc;
-  --code-comment: #7fa68c;
+  --rule: #e6e6e3;
+  --rule-strong: #cfcfca;
+  --chip-bg: #f0f0ee;
+  --code-bg: #16181c;
+  --code-text: #e3e5e8;
+  --code-comment: #8a9199;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --paper: #0e1511;
-    --card: #131c16;
-    --ink: #e7eee6;
-    --ink-soft: #9fb1a3;
+    --paper: #111213;
+    --card: #18191b;
+    --ink: #ececec;
+    --ink-soft: #a3a4a6;
     --pine: #1e6b4b;
     --accent: #6fd39e;
     --spring: #35c47c;
-    --rule: #243127;
-    --rule-strong: #33443a;
-    --chip-bg: #1a251e;
-    --code-bg: #0a110d;
-    --code-text: #d9e8dc;
-    --code-comment: #6e957d;
+    --rule: #292a2c;
+    --rule-strong: #3b3c3f;
+    --chip-bg: #202124;
+    --code-bg: #0c0d0f;
+    --code-text: #e3e5e8;
+    --code-comment: #7d848c;
   }
 }
 
@@ -106,7 +108,7 @@ nav a[aria-current="page"] { color: var(--ink); }
 .eyebrow {
   font-family: "IBM Plex Mono", ui-monospace, monospace;
   font-size: 0.8rem;
-  color: var(--code-comment);
+  color: var(--ink-soft);
   margin: 0 0 1rem;
 }
 
@@ -321,20 +323,17 @@ p code, li code {
 }
 .row h3 a { color: var(--ink); }
 .row h3 a:hover { color: var(--accent); }
+/* quiet marker for the engine's default profile — informative, not promotional */
 .badge {
   font-family: "IBM Plex Mono", ui-monospace, monospace;
-  font-size: 0.68rem;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--pine);
-  border: 1px solid var(--pine);
+  font-size: 0.7rem;
+  color: var(--ink-soft);
+  border: 1px solid var(--rule-strong);
   border-radius: 999px;
   padding: 0.05rem 0.5rem;
   margin-left: 0.5rem;
   vertical-align: 0.12em;
 }
-@media (prefers-color-scheme: dark) { .badge { color: var(--accent); border-color: var(--accent); } }
 .row p { margin: 0 0 0.55rem; font-size: 0.92rem; color: var(--ink-soft); max-width: 60em; }
 .row .tags { display: flex; flex-wrap: wrap; gap: 0.35rem; }
 .row .tags .chip { padding: 0.05rem 0.6rem; }
