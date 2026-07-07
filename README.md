@@ -97,8 +97,8 @@ agent-native-setup -o ./my-new-project
 **Non-interactive** — scriptable / CI:
 
 ```bash
-agent-native-setup my-app -o ./my-app --languages python,node \
-  --tools claude,cursor,copilot,gemini --yes
+agent-native-setup my-app -o ./my-app --yes \
+  --answer languages=python,node --answer tools=claude,cursor,copilot,gemini
 ```
 
 **Existing project** — point `-o` at code that already exists. Languages are
@@ -112,25 +112,26 @@ agent-native-setup -o ./existing-app --yes
 
 ### Flags
 
+The manager's own flags — they work the same for every profile:
+
 | Flag | Effect |
 | --- | --- |
 | `-o, --output` | Target directory (default: current dir). |
-| `--description "..."` | One-line project description (used in `AGENTS.md`/`README.md`). |
-| `--profile <name\|path>` | Scaffold from a [profile](#profiles--the-community-loop) instead of the flagship baseline. |
-| `--answer NAME=VALUE` | Answer a profile prompt headlessly (repeatable) — for agents/CI; others take defaults with `-y`. |
-| `--languages` | Comma-separated: `python,node,go,rust,html`. Linters only for these. |
-| `--tools` | Comma-separated: `claude,cursor,copilot,gemini` (default: all). |
-| `--runner make\|task` | Command-surface runner for a fresh repo (default: `make`; an existing one is auto-detected). |
-| `--adopt progressive\|full\|none` | How the gate applies to an **existing** repo's code (default: `progressive`). |
-| `--no-agents` · `--no-docs` · `--no-quality` · `--no-ci` | Skip that part. |
-| `--no-security` | Skip secrets + dependency scanning (keep the rest). |
-| `--no-github-actions` | Quality tooling without the CI workflow. |
-| `--no-hooks` · `--no-git` | Skip pre-commit hooks / `git init`. |
-| `--no-first-run-banner` | Don't inject the self-removing "first run — finish ONBOARDING" banner into `AGENTS.md`. |
-| `--no-update-check` | Don't check GitHub for a newer release at the end of a run. |
-| `-y, --yes` | Non-interactive; use flags and defaults. |
+| `--description "..."` | One-line project description (used by profile templates). |
+| `--profile <name\|path\|git+url>` | Scaffold from a [profile](#profiles--the-community-loop) instead of the flagship baseline. |
+| `--answer NAME=VALUE` | Answer a profile prompt headlessly (repeatable) — e.g. `--answer languages=python,node`. |
+| `-y, --yes` | Non-interactive; unanswered prompts take their defaults. |
 | `--dry-run` | Preview what would be created (and what would be skipped as already-present) — writes nothing. |
 | `--force` | Overwrite existing files. |
+| `--no-git` | Skip `git init`. |
+| `--no-update-check` | Don't check GitHub for a newer release at the end of a run. |
+
+Everything else you can tune — languages, AI tools, which parts to scaffold, runner,
+adoption strategy — isn't a manager flag but a **profile prompt**: answer it interactively
+or with `--answer`. The baseline's prompts are documented in [its
+README](https://github.com/luca-mastrostefano/agent-native-baseline#readme). (Legacy
+spellings like `--languages`, `--tools`, `--no-quality`, `--adopt` still work as deprecated
+aliases for the baseline's prompts.)
 
 ### Updating the tool itself
 
