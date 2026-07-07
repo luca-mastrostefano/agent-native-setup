@@ -175,21 +175,27 @@ agent-native-setup profile validate ./my-team      # check it loads + every temp
 agent-native-setup profile publish ./my-team --release  # attach the release asset + print URL/entry
 ```
 
-**Extract a profile from your own repo, from anywhere.** You don't need this repo cloned —
-the [`extract-profile` skill](.agents/skills/extract-profile/SKILL.md) is a runbook any
-coding agent can execute (Claude Code, Codex, Cursor, Copilot, Gemini). Open your agent
-*in your own project* and ask:
+**Extract a profile from your own repo.** You don't need this repo cloned — the
+[`extract-profile` skill](.agents/skills/extract-profile/SKILL.md) is a runbook any coding
+agent can execute (Claude Code, Codex, Cursor, Copilot, Gemini). Two steps, from your own
+project's root:
 
-```text
-Fetch https://raw.githubusercontent.com/luca-mastrostefano/agent-native-setup/main/.agents/skills/extract-profile/SKILL.md
-and follow it to extract an agent-native-setup profile from this repo.
+```bash
+# 1. download the skill into your repo (Codex auto-discovers this location):
+curl -fsSL --create-dirs -o .agents/skills/extract-profile/SKILL.md \
+  https://raw.githubusercontent.com/luca-mastrostefano/agent-native-setup/main/.agents/skills/extract-profile/SKILL.md
 ```
 
-It inventories your agent setup (contracts, `.claude`/`.cursor`/MCP tooling, docs
+```text
+2. then paste this into your agent's chat:
+
+   Follow .agents/skills/extract-profile/SKILL.md to extract an
+   agent-native-setup profile from this repo.
+```
+
+The agent inventories your setup (contracts, `.claude`/`.cursor`/MCP tooling, docs
 conventions, git gates), parameterizes it, proves fidelity with a byte-diff against your
-repo, and walks you to `publish --release` and an index entry. (Working inside a clone of
-this repo, it's just `/extract-profile <path>`; Codex picks it up from `.agents/skills/`
-automatically.)
+repo, and walks you to `publish --release` and an index entry.
 
 - **Discover** — profiles are found through the curated
   [community index](contributions/index.json): a PR-gated list of URLs, kept rot-free by CI
