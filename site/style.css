@@ -345,14 +345,14 @@ p code, li code {
   font-weight: 600;
   margin: 0 0 0.3rem;
 }
-/* profile names read as links at rest; hover answers by lifting the underline */
+/* profile names read as links at rest; hover answers with a heavier underline */
 .row h3 a {
   color: var(--accent);
   text-decoration: underline;
   text-underline-offset: 3px;
   text-decoration-thickness: 1px;
 }
-.row h3 a:hover { text-decoration: none; }
+.row h3 a:hover { text-decoration-thickness: 2px; }
 /* copy-install button beside each profile name */
 .copy {
   background: none;
