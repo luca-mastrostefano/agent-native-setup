@@ -146,6 +146,10 @@ def test_the_committed_index_is_well_formed() -> None:
     assert len(names) == len(set(names)), f"duplicate profile names in the index: {names}"
     urls = [e["url"] for e in profs]
     assert len(urls) == len(set(urls)), f"duplicate URLs in the index: {urls}"
+    # The publish PR flow splices entries textually after this anchor (RFC
+    # 2026-07-07-publish-opens-the-index-pr); a reformat that drops it would strand
+    # publishers - fail here first.
+    assert '"profiles": [' in idx.read_text(encoding="utf-8")
 
 
 # --- adopt-by-name: `add <name>` / `show <name>` fall back to the index (RFC §6) ---------------

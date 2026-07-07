@@ -484,3 +484,304 @@ def test_publish_degrades_gracefully_without_gh(
     assert rc == 1  # failure signalled…
     assert "Add this entry" in c.text  # …but the entry printed first
     assert "needs gh on PATH" in c.text or "--release needs" in c.text
+
+
+# --- publish tail: the index PR (RFC 2026-07-07-publish-opens-the-index-pr) -------------------
+
+
+def _index_bare(tmp_path: Path) -> Path:
+    """A bare 'canonical index repo' with a house-style index.json on main."""
+    content = (
+        "{\n"
+        '  "profiles": [\n'
+        "    {\n"
+        '      "name": "existing",\n'
+        '      "url": "git+https://github.com/o/existing.git@v1.0.0",\n'
+        '      "description": "d",\n'
+        '      "author": "a",\n'
+        '      "tags": ["x"]\n'
+        "    }\n"
+        "  ]\n"
+        "}\n"
+    )
+    work = tmp_path / "index-work"
+    (work / "contributions").mkdir(parents=True)
+    (work / "contributions" / "index.json").write_text(content, encoding="utf-8")
+    _git(work, "init", "-q", "-b", "main")
+    _git(work, "add", "-A")
+    _git(work, "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "seed")
+    bare = tmp_path / "index.git"
+    subprocess.run(
+        ["git", "clone", "-q", "--bare", str(work), str(bare)], check=True, capture_output=True
+    )
+    return bare
+
+
+def _fake_gh(monkeypatch: pytest.MonkeyPatch, bare: Path, pr_calls: list) -> None:
+    """gh faked at the seams: `repo clone` becomes a git clone of the local bare fixture,
+    `pr create` is captured; git commands stay real (the direct-push path is exercised)."""
+    real_run = profiles.subprocess.run
+
+    def fake_run(cmd, **kw):
+        if cmd[0] == "gh" and cmd[1:3] == ["repo", "clone"]:
+            return real_run(
+                ["git", "clone", "-q", "--branch", cmd[-1], str(bare), cmd[4]],
+                capture_output=True,
+                text=True,
+            )
+        if cmd[0] == "gh" and cmd[1:3] == ["pr", "create"]:
+            pr_calls.append(cmd)
+            return subprocess.CompletedProcess(cmd, 0, "https://github.com/o/r/pull/9\n", "")
+        if cmd[0] == "gh" and cmd[1:3] == ["repo", "fork"]:
+            return subprocess.CompletedProcess(cmd, 0, "", "")
+        if cmd[0] == "gh" and cmd[1:2] == ["api"]:
+            return subprocess.CompletedProcess(cmd, 0, "someone\n", "")
+        return real_run(cmd, **kw)
+
+    monkeypatch.setattr(profiles.subprocess, "run", fake_run)
+
+
+def _entry(name: str, url: str) -> dict:
+    return {"name": name, "url": url, "description": "d2", "author": "me", "tags": ["a", "b"]}
+
+
+def test_index_pr_inserts_the_entry_and_touches_nothing_else(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    bare = _index_bare(tmp_path)
+    pr_calls: list = []
+    _fake_gh(monkeypatch, bare, pr_calls)
+    c = _Console()
+    profiles._open_index_pr(
+        _entry("newprof", "git+https://github.com/me/newprof.git@v0.1.0"),
+        "o",
+        "r",
+        "main",
+        "contributions/index.json",
+        c,
+    )
+    assert "Index PR opened" in c.text
+    (call,) = pr_calls
+    assert call[call.index("--repo") + 1] == "o/r"
+    assert call[call.index("--head") + 1] == "index-newprof-v0.1.0"  # direct push, no fork
+    shown = subprocess.run(
+        ["git", "-C", str(bare), "show", "index-newprof-v0.1.0:contributions/index.json"],
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout
+    data = json.loads(shown)["profiles"]
+    assert [e["name"] for e in data] == ["newprof", "existing"]
+    # House style: the new entry is a compact block; every pre-existing line is untouched.
+    assert '      "tags": ["a", "b"]\n' in shown
+    original = (tmp_path / "index-work" / "contributions" / "index.json").read_text(
+        encoding="utf-8"
+    )
+    assert set(original.splitlines()) <= set(shown.splitlines())
+
+
+def test_index_pr_bump_swaps_only_the_url(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    bare = _index_bare(tmp_path)
+    pr_calls: list = []
+    _fake_gh(monkeypatch, bare, pr_calls)
+    c = _Console()
+    profiles._open_index_pr(
+        _entry("existing", "git+https://github.com/o/existing.git@v2.0.0"),
+        "o",
+        "r",
+        "main",
+        "contributions/index.json",
+        c,
+    )
+    shown = subprocess.run(
+        ["git", "-C", str(bare), "show", "index-existing-v2.0.0:contributions/index.json"],
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout
+    assert "@v2.0.0" in shown and "@v1.0.0" not in shown
+    assert '"description": "d"' in shown  # prose left to the human, not regenerated
+    subject = subprocess.run(
+        ["git", "-C", str(bare), "log", "-1", "--format=%s", "index-existing-v2.0.0"],
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout.strip()
+    assert subject == "chore(index): bump existing to v2.0.0"
+
+
+def test_index_pr_refuses_to_repoint_a_listed_name(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The hijack shape: same name, different repo, dressed as a routine version bump.
+    bare = _index_bare(tmp_path)
+    pr_calls: list = []
+    _fake_gh(monkeypatch, bare, pr_calls)
+    with pytest.raises(profiles.ProfileError, match="repointing"):
+        profiles._open_index_pr(
+            _entry("existing", "git+https://github.com/evil/existing.git@v1.0.1"),
+            "o",
+            "r",
+            "main",
+            "contributions/index.json",
+            _Console(),
+        )
+    assert not pr_calls
+    branches = subprocess.run(
+        ["git", "-C", str(bare), "branch"], capture_output=True, text=True, check=True
+    ).stdout
+    assert "index-" not in branches  # nothing left the machine
+
+
+def test_index_pr_refuses_a_republish_of_the_same_version(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    bare = _index_bare(tmp_path)
+    _fake_gh(monkeypatch, bare, [])
+    with pytest.raises(profiles.ProfileError, match="already listed at this exact version"):
+        profiles._open_index_pr(
+            _entry("existing", "git+https://github.com/o/existing.git@v1.0.0"),
+            "o",
+            "r",
+            "main",
+            "contributions/index.json",
+            _Console(),
+        )
+
+
+def test_index_pr_degrades_when_the_anchor_is_gone(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # A reformat of the index (compact JSON, no `"profiles": [` line) must be a legible
+    # refusal, never a broken PR.
+    bare = _index_bare(tmp_path)
+    work = tmp_path / "index-work"
+    idx = work / "contributions" / "index.json"
+    idx.write_text(
+        json.dumps(json.loads(idx.read_text(encoding="utf-8")), separators=(",", ":")),
+        encoding="utf-8",
+    )
+    _git(work, "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-aqm", "reformat")
+    _git(work, "push", "-q", str(bare), "main")
+    _fake_gh(monkeypatch, bare, [])
+    with pytest.raises(profiles.ProfileError, match=r"anchor|splice"):
+        profiles._open_index_pr(
+            _entry("newprof", "git+https://github.com/me/newprof.git@v0.1.0"),
+            "o",
+            "r",
+            "main",
+            "contributions/index.json",
+            _Console(),
+        )
+
+
+def test_offer_skips_private_index_and_respects_decline(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    entry = _entry("p", "git+https://github.com/me/p.git@v1.0.0")
+
+    def boom(*a, **kw):  # any subprocess/confirm call would be a leak
+        raise AssertionError("must not be reached")
+
+    monkeypatch.setattr(profiles.subprocess, "run", boom)
+    monkeypatch.setattr(profiles, "_confirm_index_pr", boom)
+    monkeypatch.setenv(profiles.INDEX_ENV, "https://internal.example/index.json")
+    assert profiles._offer_index_pr(entry, _Console()) == 0  # non-GitHub index: silent skip
+
+    monkeypatch.delenv(profiles.INDEX_ENV)
+    monkeypatch.setattr(profiles, "_confirm_index_pr", lambda name, slug: False)
+    assert profiles._offer_index_pr(entry, _Console()) == 0  # declined: nothing runs
+
+
+def test_publish_offers_the_index_pr_only_on_a_tty(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import sys
+
+    prof = tmp_path / "p"
+    (prof / "templates").mkdir(parents=True)
+    (prof / "templates" / "x.md").write_text("hi\n", encoding="utf-8")
+    (prof / "profile.json").write_text(
+        json.dumps({"name": "p", "version": "1.0.0", "description": "d"}), encoding="utf-8"
+    )
+    _git(prof, "init", "-q", "-b", "main")
+    _git(prof, "add", "-A")
+    _git(prof, "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "x")
+    _git(prof, "remote", "add", "origin", "git@github.com:me/p.git")
+    _git(prof, "tag", "v1.0.0")
+    offered: list = []
+    monkeypatch.setattr(profiles, "_offer_index_pr", lambda e, c: offered.append(e) or 0)
+    monkeypatch.setattr(
+        profiles, "_publish_author", lambda root: "someone"
+    )  # keep gh/git config out of the test
+    c = _Console()
+    args = argparse.Namespace(path=str(prof), url=None, release=False)
+    assert profiles._publish(args, c) == 0
+    assert not offered  # pytest stdin is not a TTY — publish stays scriptable
+
+    class _Tty:
+        def isatty(self) -> bool:
+            return True
+
+    monkeypatch.setattr(sys, "stdin", _Tty())
+    assert profiles._publish(args, c) == 0
+    assert offered and offered[0]["name"] == "p"
+    assert offered[0]["url"] == "git+https://github.com/me/p.git@v1.0.0"  # ssh normalized
+    assert offered[0]["author"] == "someone"
+
+
+def test_infer_git_url_normalizes_github_ssh_but_keeps_other_hosts(tmp_path: Path) -> None:
+    repo = tmp_path / "r"
+    repo.mkdir()
+    _git(repo, "init", "-q")
+    _git(repo, "remote", "add", "origin", "git@github.com:me/prof.git")
+    assert profiles._infer_git_url(repo) == "git+https://github.com/me/prof.git"
+    _git(repo, "remote", "set-url", "origin", "git@git.example.com:me/prof.git")
+    assert profiles._infer_git_url(repo) == "git+ssh://git@git.example.com/me/prof.git"
+
+
+def test_publish_warns_when_the_listing_url_is_ssh(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    prof = tmp_path / "p"
+    (prof / "templates").mkdir(parents=True)
+    (prof / "templates" / "x.md").write_text("hi\n", encoding="utf-8")
+    (prof / "profile.json").write_text(
+        json.dumps({"name": "p", "version": "1.0.0", "description": "d"}), encoding="utf-8"
+    )
+    _git(prof, "init", "-q", "-b", "main")
+    _git(prof, "add", "-A")
+    _git(prof, "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "x")
+    _git(prof, "remote", "add", "origin", "git@git.example.com:me/p.git")
+    _git(prof, "tag", "v1.0.0")
+    monkeypatch.setattr(profiles, "_publish_author", lambda root: "someone")
+    c = _Console()
+    assert profiles._publish(argparse.Namespace(path=str(prof), url=None, release=False), c) == 0
+    assert "git+ssh:// listing URL" in c.text
+
+
+def test_publish_author_prefers_gh_login_then_git_config(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo = tmp_path / "r"
+    repo.mkdir()
+    _git(repo, "init", "-q")
+    _git(repo, "config", "user.name", "Tess")
+
+    def gh_ok(cmd, **kw):
+        assert cmd[:2] == ["gh", "api"]
+        return subprocess.CompletedProcess(cmd, 0, "octo\n", "")
+
+    monkeypatch.setattr(profiles.subprocess, "run", gh_ok)
+    assert profiles._gh_login() == "octo"
+    monkeypatch.undo()
+
+    real_run = profiles.subprocess.run
+
+    def no_gh(cmd, **kw):
+        if cmd[0] == "gh":
+            raise FileNotFoundError(2, "not found", "gh")
+        return real_run(cmd, **kw)
+
+    monkeypatch.setattr(profiles.subprocess, "run", no_gh)
+    assert profiles._publish_author(repo) == "Tess"

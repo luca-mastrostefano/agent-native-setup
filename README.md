@@ -184,7 +184,7 @@ agent-native-setup profile init my-team            # scaffold a skeleton…
 agent-native-setup profile save ./my-app my-team   # …or snapshot a project you've tuned
 # …or have your AI agent extract one from any well-structured repo (below)
 agent-native-setup profile validate ./my-team      # check it loads + every template renders
-agent-native-setup profile publish ./my-team --release  # attach the release asset + print URL/entry
+agent-native-setup profile publish ./my-team --release  # release asset + URL/entry + offers to open the index PR for you
 ```
 
 **Extract a profile from your own repo.** You don't need this repo cloned — the
@@ -207,7 +207,8 @@ curl -fsSL --create-dirs -o .agents/skills/extract-profile/SKILL.md \
 
 The agent inventories your setup (contracts, `.claude`/`.cursor`/MCP tooling, docs
 conventions, git gates), parameterizes it, proves fidelity with a byte-diff against your
-repo, and walks you to `publish --release` and an index entry.
+repo, and walks you to `publish --release` — which attaches the release asset and offers
+to open the community-index listing PR for you.
 
 - **Discover** — profiles are found through the curated
   [community index](contributions/index.json): a PR-gated list of URLs, kept rot-free by CI

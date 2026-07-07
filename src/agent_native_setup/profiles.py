@@ -1358,8 +1358,11 @@ def _search(args: argparse.Namespace, console: Any) -> int:
 
 
 def _publish(args: argparse.Namespace, console: Any) -> int:
-    """Validate a profile and print its shareable URL + a ready-to-PR index entry — the tail of the
-    author flow (RFC 2026-07-04-community-index §5). Does not push or open a PR."""
+    """Validate a profile, print its shareable URL + index entry, then finish the author flow
+    (RFC 2026-07-07-publish-opens-the-index-pr): attach the release asset and — on an explicit
+    interactive confirm — author the listing PR. Every tail step degrades to the printed entry."""
+    import sys
+
     root = Path(args.path).expanduser().resolve()
     if _validate(argparse.Namespace(path=str(root)), console) != 0:
         return 1
@@ -1375,20 +1378,272 @@ def _publish(args: argparse.Namespace, console: Any) -> int:
             "listing."
         )
     url = url or "git+https://<your-repo>.git@v1.0.0"
+    if url.startswith("git+ssh://"):
+        console.print(
+            "[yellow]git+ssh:// listing URL[/] — adopters without ssh access to that host "
+            "can't fetch it; prefer a public https URL for the index."
+        )
     entry = {
         "name": prof.name,
         "url": url,
         "description": prof.description,
-        "author": "TODO: your name/handle",
+        "author": _publish_author(root),
         "tags": list(prof.tags),  # carried from the profile's own tags
     }
     console.print(f"\n[green]Shareable URL:[/] [bold]--profile {url}[/]")
     console.print("[green]Add this entry[/] to a PR against `contributions/index.json`:")
     console.print(json.dumps(entry, indent=2))
+    rc = 0
     if getattr(args, "release", False):
         # After the entry — a failed release must not cost the user the printout above.
-        return _publish_release(root, tag, console)
+        rc = _publish_release(root, tag, console)
+    if rc == 0 and tag and "<your-repo>" not in url and sys.stdin.isatty():
+        rc = _offer_index_pr(entry, console)
+    return rc
+
+
+def _publish_author(root: Path) -> str:
+    """Best-effort author for the index entry: the gh login (gh is already the release auth),
+    else git's user.name, else an explicit TODO. Never fails publish."""
+    login = _gh_login()
+    if login:
+        return login
+    try:
+        out = subprocess.run(
+            ["git", "-C", str(root), "config", "user.name"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        if out.returncode == 0 and out.stdout.strip():
+            return out.stdout.strip()
+    except (OSError, subprocess.SubprocessError):
+        pass
+    return "TODO: your name/handle"
+
+
+def _gh_login() -> str | None:
+    try:
+        out = subprocess.run(
+            ["gh", "api", "user", "--jq", ".login"], capture_output=True, text=True, timeout=10
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    return out.stdout.strip() if out.returncode == 0 and out.stdout.strip() else None
+
+
+# The canonical index is a file on a GitHub branch; its raw URL carries everything the PR
+# flow needs (owner, repo, base branch, path). A non-matching (private) index skips the flow.
+_INDEX_RAW_RE = re.compile(r"^https://raw\.githubusercontent\.com/([^/]+)/([^/]+)/([^/]+)/(.+)$")
+
+
+def _offer_index_pr(entry: dict, console: Any) -> int:
+    """Offer to author the listing PR (RFC 2026-07-07-publish-opens-the-index-pr §3).
+    Interactive-only by construction (the caller gates on a TTY); every failure degrades to
+    the entry already printed."""
+    m = _INDEX_RAW_RE.match(os.environ.get(INDEX_ENV) or INDEX_URL)
+    if not m:
+        return 0  # private / non-GitHub index — the printed entry is the flow
+    owner, repo, branch, path = m.groups()
+    if not _confirm_index_pr(entry["name"], f"{owner}/{repo}"):
+        return 0
+    try:
+        _open_index_pr(entry, owner, repo, branch, path, console)
+    except FileNotFoundError as exc:
+        console.print(
+            f"[yellow]Opening the index PR needs {exc.filename or 'gh'} on PATH[/] — "
+            "add the entry above by hand."
+        )
+        return 1
+    except ProfileError as exc:
+        console.print(
+            f"[yellow]Couldn't open the index PR[/] — {exc}\n"
+            "The entry above is still valid; add it by hand."
+        )
+        return 1
     return 0
+
+
+def _confirm_index_pr(name: str, slug: str) -> bool:
+    import questionary
+
+    return bool(
+        questionary.confirm(
+            f"Open a PR against {slug} to list {name!r} in the community index?", default=True
+        ).ask()
+    )
+
+
+def _open_index_pr(
+    entry: dict, owner: str, repo: str, branch: str, path: str, console: Any
+) -> None:
+    """Clone the index repo, splice the entry, push a branch (fork on refusal), open the PR.
+    Raises ProfileError on any failure — the caller turns that into a legible degrade."""
+    slug = f"{owner}/{repo}"
+    with tempfile.TemporaryDirectory() as tmp:
+        dest = Path(tmp) / "index-repo"
+        cl = subprocess.run(
+            ["gh", "repo", "clone", slug, str(dest), "--", "--depth", "1", "--branch", branch],
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+        if cl.returncode != 0:
+            raise ProfileError(f"couldn't clone {slug}: {(cl.stderr or '').strip()[:200]}")
+        target = dest / path
+        try:
+            text = target.read_text(encoding="utf-8")
+            listed = json.loads(text)["profiles"]
+        except (OSError, ValueError, KeyError) as exc:
+            raise ProfileError(f"couldn't read {path} in {slug}: {exc}") from exc
+        new_text, title, body = _spliced_index(text, listed, entry)
+        # Local tripwire before anything leaves the machine: the spliced file must still be
+        # a valid, duplicate-free index (mirrors the committed-index CI checks).
+        try:
+            spliced = json.loads(new_text)["profiles"]
+        except (ValueError, KeyError) as exc:
+            raise ProfileError(f"splice produced invalid JSON ({exc})") from exc
+        names = [e.get("name") for e in spliced]
+        urls = [e.get("url") for e in spliced]
+        if len(set(names)) != len(names) or len(set(urls)) != len(urls):
+            raise ProfileError("splice would produce duplicate names/urls")
+        target.write_text(new_text, encoding="utf-8")
+        safe = re.sub(r"[^A-Za-z0-9._-]", "-", f"{entry['name']}-{entry['url'].rsplit('@', 1)[-1]}")
+        pr_branch = f"index-{safe}"
+        co = subprocess.run(
+            ["git", "-C", str(dest), "checkout", "-q", "-b", pr_branch],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        if co.returncode != 0:
+            raise ProfileError(f"git checkout failed: {(co.stderr or '').strip()[:200]}")
+        commit = ["git", "-C", str(dest), "commit", "-aqm", title]
+        r = subprocess.run(commit, capture_output=True, text=True, timeout=30)
+        if r.returncode != 0 and "user.name" in (r.stderr or "") + (r.stdout or ""):
+            # No git identity on this machine — the PR carries authorship; the commit
+            # identity is cosmetic (listings are squash-merged).
+            ident = ["-c", "user.name=agent-native-setup", "-c", "user.email=publish@invalid"]
+            r = subprocess.run(
+                [*commit[:3], *ident, *commit[3:]], capture_output=True, text=True, timeout=30
+            )
+        if r.returncode != 0:
+            raise ProfileError(f"git commit failed: {(r.stderr or '').strip()[:200]}")
+        head = pr_branch
+        push = subprocess.run(
+            ["git", "-C", str(dest), "push", "-q", "origin", pr_branch],
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+        if push.returncode != 0:  # no write access — fork and push there
+            fork = subprocess.run(
+                ["gh", "repo", "fork", slug, "--clone=false"],
+                capture_output=True,
+                text=True,
+                timeout=60,
+            )
+            login = _gh_login()
+            if fork.returncode != 0 or not login:
+                raise ProfileError("push refused and forking failed")
+            origin = subprocess.run(
+                ["git", "-C", str(dest), "remote", "get-url", "origin"],
+                capture_output=True,
+                text=True,
+                timeout=10,
+            ).stdout.strip()
+            # Swap the owner in whatever URL scheme gh cloned with, so auth keeps working.
+            fork_url = origin.replace(f"/{owner}/", f"/{login}/", 1).replace(
+                f":{owner}/", f":{login}/", 1
+            )
+            push = subprocess.run(
+                ["git", "-C", str(dest), "push", "-q", fork_url, pr_branch],
+                capture_output=True,
+                text=True,
+                timeout=120,
+            )
+            if push.returncode != 0:
+                raise ProfileError(f"push to fork failed: {(push.stderr or '').strip()[:200]}")
+            head = f"{login}:{pr_branch}"
+        pr = subprocess.run(
+            [
+                "gh",
+                "pr",
+                "create",
+                "--repo",
+                slug,
+                "--head",
+                head,
+                "--base",
+                branch,
+                "--title",
+                title,
+                "--body",
+                body,
+            ],
+            cwd=dest,
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+        if pr.returncode != 0:
+            raise ProfileError(f"gh pr create failed: {(pr.stderr or '').strip()[:200]}")
+        link = pr.stdout.strip().splitlines()[-1] if pr.stdout.strip() else slug
+        console.print(f"[green]Index PR opened:[/] {link}")
+
+
+def _spliced_index(text: str, listed: list, entry: dict) -> tuple[str, str, str]:
+    """New index text + PR title/body. A new name is inserted in house style; a re-publish of
+    a listed name swaps the url in place **iff the repo part is unchanged** — repointing a
+    listed name to a different repo is the hijack shape and is never automated (RFC
+    2026-07-07-publish-opens-the-index-pr §3)."""
+    existing = next((e for e in listed if e.get("name") == entry["name"]), None)
+    if existing is not None:
+        old_url = str(existing.get("url", ""))
+        if old_url == entry["url"]:
+            raise ProfileError(f"{entry['name']!r} is already listed at this exact version")
+        if old_url.rsplit("@", 1)[0] != entry["url"].rsplit("@", 1)[0]:
+            raise ProfileError(
+                f"{entry['name']!r} is already listed from {old_url.rsplit('@', 1)[0]} — "
+                "repointing a listed name to a different repo is not automated; open that "
+                "PR by hand and say what it is"
+            )
+        tag = entry["url"].rsplit("@", 1)[-1]
+        title = f"chore(index): bump {entry['name']} to {tag}"
+        body = (
+            f"Re-publish of `{entry['name']}` — url bumped to `{tag}` by "
+            "`agent-native-setup profile publish`. Description/tags are left as listed and "
+            "may have drifted from the profile; review against the tag."
+        )
+        return text.replace(old_url, entry["url"], 1), title, body
+    anchor = '"profiles": ['
+    i = text.find(anchor)
+    nl = text.find("\n", i) if i != -1 else -1
+    if i == -1 or nl == -1:
+        raise ProfileError('index file has no `"profiles": [` line to splice after')
+    at = nl + 1
+    title = f"feat(index): list {entry['name']}"
+    body = (
+        f"Adds `{entry['name']}` ({entry['url']}) — entry generated by "
+        "`agent-native-setup profile publish`. CI (`index-check`) fetches and validates "
+        "the listing."
+    )
+    return text[:at] + _render_index_entry(entry) + text[at:], title, body
+
+
+def _render_index_entry(entry: dict) -> str:
+    """The committed index's house style — 2-space steps, single-line tags — so a listing PR
+    stays a compact reviewable block and the rest of the file is untouched."""
+    tags = ", ".join(json.dumps(t) for t in entry["tags"])
+    return (
+        "    {\n"
+        f'      "name": {json.dumps(entry["name"])},\n'
+        f'      "url": {json.dumps(entry["url"])},\n'
+        f'      "description": {json.dumps(entry["description"])},\n'
+        f'      "author": {json.dumps(entry["author"])},\n'
+        f'      "tags": [{tags}]\n'
+        "    },\n"
+    )
 
 
 def _publish_release(root: Path, tag: str | None, console: Any) -> int:
@@ -1485,7 +1740,13 @@ def _infer_git_url(path: Path) -> str | None:
     if remote.startswith("https://"):
         return "git+" + remote
     m = re.match(r"git@([^:]+):(.+)", remote)  # git@host:owner/repo(.git) → git+ssh://…
-    return f"git+ssh://git@{m.group(1)}/{m.group(2)}" if m else None
+    if not m:
+        return None
+    if m.group(1) == "github.com":
+        # A listing URL must be fetchable by anyone: ssh is the author's push transport,
+        # https the adopters' fetch transport (RFC 2026-07-07-publish-opens-the-index-pr §1).
+        return f"git+https://github.com/{m.group(2)}"
+    return f"git+ssh://git@{m.group(1)}/{m.group(2)}"
 
 
 def _git_tag(path: Path) -> str | None:

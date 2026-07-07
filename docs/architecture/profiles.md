@@ -159,7 +159,15 @@ impersonation). `profile search <query>` and
 `list --community` read it via a bounded, daily-cached, silent-on-failure HTTP GET
 (`AGENT_NATIVE_SETUP_INDEX_URL` points a team at a private index). `profile publish` prints a
 profile's shareable URL (pinned `@<tag>` when the commit is tagged — else it nudges you to
-tag) + ready-to-PR entry. Freeform `tags` on the profile are the
+tag; github.com ssh remotes are normalized to the publicly fetchable `git+https://` form) +
+ready-to-PR entry (`author` autofilled from the gh login or git identity), then — on a TTY,
+after an explicit confirm — **authors the listing PR itself** (RFC
+2026-07-07-publish-opens-the-index-pr, amending community-index §5): shallow-clone the index
+repo via `gh`, splice the entry in house style (or swap the `url` in place on a re-publish —
+**refused** if the repo part changed: repointing a listed name is the hijack shape and is
+never automated), validate the spliced file locally, push a branch (fork on push refusal),
+`gh pr create`. Every failure degrades to the already-printed entry; non-interactive runs
+never attempt it. Freeform `tags` on the profile are the
 single source of truth, carried into the entry by `publish`. The `index-check` workflow
 (weekly, on `contributions/` PRs, on demand; `task check-index` locally) fetches and validates
 every listing so rot fails CI instead of the next adopter — and for entries with a release
