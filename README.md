@@ -1,6 +1,6 @@
 <div align="center">
 
-# 🪄 agent-native-setup
+# <img src="site/favicon.svg" alt="" width="27" align="center" /> agent-native-setup
 
 **One command to make any repo agent-native — new or existing — and keep it that way.**
 
