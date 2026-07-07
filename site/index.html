@@ -14,7 +14,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400..700;1,6..72,400..700&family=IBM+Plex+Sans:wght@400;600&family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="style.css?v=4" />
+  <link rel="stylesheet" href="style.css?v=5" />
 </head>
 <body>
 
@@ -306,13 +306,21 @@ uvx --from git+https://github.com/luca-mastrostefano/agent-native-setup agent-na
     });
   }
 
+  const IC_COPY = '<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><rect x="5.5" y="5.5" width="8" height="8" rx="1.5"/><path d="M10.5 5.5v-2a1.5 1.5 0 0 0-1.5-1.5H4A1.5 1.5 0 0 0 2.5 3.5v5A1.5 1.5 0 0 0 4 10h1.5"/></svg>';
+  const IC_CHECK = '<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 8.5l3.5 3.5L13 4.5"/></svg>';
+
+  function installCmd(name) {
+    return `uvx --from git+https://github.com/luca-mastrostefano/agent-native-setup agent-native-setup -o ./my-app --profile ${name}`;
+  }
+
   function rowHtml(p) {
     const badge = p.isDefault ? '<span class="badge">default</span>' : "";
     const tags = p.tags.map(t =>
       `<button class="chip" data-tag="${esc(t)}" aria-pressed="${state.tags.has(t)}">${esc(t)}</button>`).join("");
+    const copy = `<button class="copy" data-cmd="${esc(installCmd(p.name))}" title="Copy install command" aria-label="Copy install command for ${esc(p.name)}"><span class="ic-copy">${IC_COPY}</span><span class="ic-check">${IC_CHECK}</span></button>`;
     return `<article class="row">
       <div>
-        <h3><a href="${esc(p.repo)}">${esc(p.name)}</a>${badge}</h3>
+        <h3><a href="${esc(p.repo)}">${esc(p.name)}</a>${copy}${badge}</h3>
         <p>${esc(p.description)}</p>
         <div class="tags">${tags}</div>
       </div>
@@ -350,6 +358,15 @@ uvx --from git+https://github.com/luca-mastrostefano/agent-native-setup agent-na
   $sort.addEventListener("change", () => { state.sort = $sort.value; state.shown = PAGE; render(); });
   $more.addEventListener("click", () => { state.shown += PAGE; render(); });
   document.addEventListener("click", e => {
+    const copy = e.target.closest("button.copy");
+    if (copy) {
+      navigator.clipboard.writeText(copy.dataset.cmd).then(() => {
+        copy.classList.add("copied");
+        clearTimeout(copy._t);
+        copy._t = setTimeout(() => copy.classList.remove("copied"), 1600);
+      }).catch(() => {}); // clipboard denied: the quick-start block still has the command
+      return;
+    }
     const chip = e.target.closest("button.chip");
     if (chip) {
       const t = chip.dataset.tag;
