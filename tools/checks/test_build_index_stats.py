@@ -54,7 +54,7 @@ class BuildIndexStatsTest(unittest.TestCase):
     def test_sums_only_the_profile_asset_across_releases(self) -> None:
         self._serve(
             {
-                "/repos/o/r": {"stargazers_count": 12},
+                "/repos/o/r": {"stargazers_count": 12, "forks_count": 3},
                 "/repos/o/r/releases?per_page=100": [
                     {
                         "assets": [
@@ -69,7 +69,7 @@ class BuildIndexStatsTest(unittest.TestCase):
         rc = build_index_stats.main(["--index", str(self.index), "--out", str(self.out)])
         self.assertEqual(rc, 0)
         data = json.loads(self.out.read_text(encoding="utf-8"))
-        self.assertEqual(data["profiles"]["p"], {"stars": 12, "downloads": 340})
+        self.assertEqual(data["profiles"]["p"], {"stars": 12, "forks": 3, "downloads": 340})
         self.assertNotIn("elsewhere", data["profiles"])  # non-GitHub: no public stats
 
     def test_wholly_unreachable_api_is_a_visible_failure(self) -> None:

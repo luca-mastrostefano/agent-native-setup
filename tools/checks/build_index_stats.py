@@ -47,6 +47,8 @@ def stats_for(repo: str) -> dict:
     info = _api(f"/repos/{repo}")
     if isinstance(info, dict) and isinstance(info.get("stargazers_count"), int):
         out["stars"] = info["stargazers_count"]
+    if isinstance(info, dict) and isinstance(info.get("forks_count"), int):
+        out["forks"] = info["forks_count"]  # a fork = someone extending the profile
     releases = _api(f"/repos/{repo}/releases?per_page=100")
     if isinstance(releases, list):
         out["downloads"] = sum(
