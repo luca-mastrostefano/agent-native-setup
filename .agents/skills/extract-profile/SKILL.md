@@ -27,6 +27,11 @@ Sweep the source repo for its agent-native surface — not its product code:
   install? core.hooksPath?), linter/scanner configs, quality-ratchet files, CI workflows
   that enforce the contract (vs product build/release pipelines).
 - **Env surface**: `.env.example`, secret *names* in workflows.
+- **Distribution vehicles**: some repos *are* the setup, packaged for a marketplace
+  (`.claude-plugin/` manifests, root-level `skills/` dirs). The packaging is SKIP; the
+  payload ships relocated to project-native paths (`skills/x` → `.claude/skills/x`). Docs
+  *about* the setup (README, examples, per-tool install guides) are SKIP too — the
+  profile writes its own README.
 
 Classify every file: **VERBATIM** (ships as-is), **PARAMETERIZE** (project name/slug,
 instance-bound IDs, org URLs), **SKIP** (product code, fixtures, lockfiles, generated
@@ -69,7 +74,9 @@ adopters' repos before proceeding.
   scaffold or guarded until made true.
 - Meta files at the profile root (never shipped): README.md with attribution, what's
   reusable vs adapted and why, an adopter checklist (external services, secrets to map);
-  AGENTS.md for maintaining the profile; LICENSE per step 2.
+  AGENTS.md for maintaining the profile; LICENSE per step 2. If the source's recommended
+  install is user-level (e.g. a plugin available across all projects), state plainly that
+  the profile reproduces the per-project experience only.
 
 ## 4. Verify (the fidelity proof)
 
