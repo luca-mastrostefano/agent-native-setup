@@ -176,6 +176,10 @@ byte-equivalent to its tag: the poisoning tripwire). `profile publish --release`
 the asset (packed from the tag's tree); the weekly `index-stats` workflow precomputes public
 stars + asset-download counts to a data-only `stats` branch, which `search`/`list` fetch
 like the index (cached, silent-fail, display-only) — `search` ranks hits by downloads.
+The project website (`site/`, deployed by the `pages` workflow) is a second consumer of the
+same two contracts: it fetches `contributions/index.json` (main) and the stats branch's
+`contributions/stats.json` client-side on load — renaming a field there degrades the site
+to its static fallback silently.
 
 ## Extension is git-native
 

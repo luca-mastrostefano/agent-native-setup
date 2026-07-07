@@ -1,0 +1,36 @@
+name: pages
+# Publish site/ (the static project website) to GitHub Pages. The site is plain
+# HTML/CSS — no build step — and fetches the community index (main) and stats
+# (stats branch) client-side, so it never needs a redeploy for data changes.
+# Requires Settings → Pages → Source: "GitHub Actions" (one-time).
+on:
+  push:
+    branches: [main]
+    paths: ["site/**", ".github/workflows/pages.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Queue rather than cancel: killing deploy-pages mid-flight can leave a deployment
+# stuck pending (GitHub's starter workflow does the same).
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/configure-pages@v6
+      - uses: actions/upload-pages-artifact@v5
+        with:
+          path: site
+      - id: deployment
+        uses: actions/deploy-pages@v5

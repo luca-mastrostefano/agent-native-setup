@@ -1,0 +1,200 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>agent-native-setup — one command to make any repo agent-native</title>
+  <meta name="description" content="Your agent setup — contract, prompts, subagents, guardrails — installs like a package and updates like one. Adopt a community profile, tune it, share it back." />
+  <meta property="og:title" content="agent-native-setup" />
+  <meta property="og:description" content="One command to make any repo agent-native — new or existing — and keep it that way." />
+  <meta property="og:type" content="website" />
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🪄</text></svg>" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+<header>
+  <div class="wrap">
+    <a class="brand" href="./">🪄 agent-native-setup</a>
+    <nav>
+      <a href="./" aria-current="page">Home</a>
+      <a href="mission.html">Mission</a>
+      <a href="https://github.com/luca-mastrostefano/agent-native-setup">GitHub</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+  <div class="wrap">
+
+    <div class="hero">
+      <h1>One command to make any repo agent&#8209;native&nbsp;— and keep it that way.</h1>
+      <p class="tagline">
+        Your agent setup — contract, prompts, subagents, guardrails — installs like a
+        package and <strong>updates like one</strong>: as the profile you adopted improves,
+        <code>update</code> brings the best current version into your repo, without touching
+        what you've customized.
+      </p>
+      <div class="actions">
+        <a class="btn btn-primary" href="https://github.com/luca-mastrostefano/agent-native-setup">View on GitHub</a>
+        <a class="btn btn-ghost" href="mission.html">Read the mission</a>
+      </div>
+    </div>
+
+    <section>
+      <h2>Why</h2>
+      <p>
+        Coding agents (Claude Code, Cursor, Copilot, Gemini, …) are only as effective as the
+        repo they work in. A repo becomes <strong>agent-native</strong> when it carries three
+        things — enforced by tooling, not memory:
+      </p>
+      <div class="pillars">
+        <div class="pillar">
+          <h3>One contract</h3>
+          <p>A single <code>AGENTS.md</code> every agent follows — Claude, Cursor, Copilot, Gemini — never forking.</p>
+        </div>
+        <div class="pillar">
+          <h3>Mechanical guardrails</h3>
+          <p>Linters, hooks, and CI that catch mistakes automatically, with error messages that say how to fix them.</p>
+        </div>
+        <div class="pillar">
+          <h3>Feedback loops</h3>
+          <p>Review subagents, tests, and an RFC trail — so quality compounds instead of drifting.</p>
+        </div>
+      </div>
+      <p style="margin-top:1.5rem">
+        The hard part: <strong>there is no one right setup.</strong> A Python backend, a
+        TypeScript monorepo, a legacy service — each needs different gates, prompts, and
+        agents. Today every team re-discovers theirs from scratch, none of it shared, every
+        lesson re-learned one repo over. This project turns that private, perishable effort
+        into a <strong>community asset</strong>: a setup is a <em>profile</em> — versioned,
+        inspectable, forkable — and improvements flow back to every repo that adopted it.
+      </p>
+    </section>
+
+    <section>
+      <h2>Quick start</h2>
+      <pre><code># one command, no install (needs uv: https://docs.astral.sh/uv)
+uvx --from git+https://github.com/luca-mastrostefano/agent-native-setup agent-native-setup -o ./my-app</code></pre>
+      <p class="muted">
+        Works on new <em>and existing</em> repos: languages are auto-detected, existing files
+        are never overwritten, and legacy code is grandfathered so day one isn't a wall of red.
+      </p>
+    </section>
+
+    <section id="profiles">
+      <h2>Community profiles</h2>
+      <p class="muted">
+        A profile is a packaged, versioned, complete project setup. Discover one, adopt it in
+        a command, tune it, and share yours back. Stats are public download counts — no
+        telemetry.
+      </p>
+
+      <div class="profile-list" id="profile-list">
+        <!-- Static fallback, refreshed on load from the live index + stats branch. -->
+        <article class="profile">
+          <div class="profile-head">
+            <h3><a href="https://github.com/luca-mastrostefano/agent-native-baseline">agent-native-baseline</a> <span class="flagship">flagship</span></h3>
+            <div class="profile-stats"><span>⭐ 0</span><span>🍴 0</span><span>⬇️ 5</span></div>
+          </div>
+          <p class="profile-desc">The flagship profile — the complete agent-native setup the engine scaffolds by default: AGENTS.md contract, docs + RFCs, quality gates, security scanning, CI, and a .claude library. Fork it to build your own.</p>
+          <div class="tags"><span class="tag">general</span><span class="tag">baseline</span><span class="tag">multi-language</span></div>
+        </article>
+        <article class="profile">
+          <div class="profile-head">
+            <h3><a href="https://github.com/luca-mastrostefano/tolaria-setup">tolaria-setup</a></h3>
+            <div class="profile-stats"><span>⭐ 0</span><span>🍴 0</span><span>⬇️ 5</span></div>
+          </div>
+          <p class="profile-desc">Tolaria's agent-native engineering setup: direct-to-main TDD contract, CodeScene ratchet gates + MCP wiring, ADR system with /create-adr, two-tier husky gates, Codacy/Semgrep, optional Chunk sidecar lanes and Todoist task-loop commands.</p>
+          <div class="tags"><span class="tag">tauri</span><span class="tag">react</span><span class="tag">rust</span><span class="tag">typescript</span><span class="tag">tdd</span><span class="tag">codescene</span><span class="tag">adr</span><span class="tag">desktop</span></div>
+        </article>
+        <article class="profile">
+          <div class="profile-head">
+            <h3><a href="https://github.com/luca-mastrostefano/andrej-karpathy-skills-setup">andrej-karpathy-skills-setup</a></h3>
+            <div class="profile-stats"><span>⭐ 0</span><span>🍴 0</span><span>⬇️ 2</span></div>
+          </div>
+          <p class="profile-desc">Karpathy-inspired LLM coding guidelines extracted from forrestchang/andrej-karpathy-skills: one behavioral contract (CLAUDE.md) plus the same guidelines as a Claude Code skill and a Cursor project rule.</p>
+          <div class="tags"><span class="tag">guidelines</span><span class="tag">best-practices</span><span class="tag">coding</span><span class="tag">karpathy</span><span class="tag">claude-code</span><span class="tag">cursor</span><span class="tag">general</span></div>
+        </article>
+      </div>
+
+      <p style="margin-top:1.5rem">
+        Built a setup your team is proud of? <a href="https://github.com/luca-mastrostefano/agent-native-setup#profiles--the-community-loop">Extract it as a profile and list it</a> —
+        the next team with your use case starts where you finished, not from zero.
+      </p>
+    </section>
+
+  </div>
+</main>
+
+<footer>
+  <div class="wrap">
+    <span>MIT — the engine, the profiles, and everything they scaffold are yours.</span>
+    <span><a href="https://github.com/luca-mastrostefano/agent-native-setup">GitHub</a> · <a href="mission.html">Mission</a></span>
+  </div>
+</footer>
+
+<script>
+// Refresh the profile list from the live community index (main) and the precomputed
+// stats branch. The static markup above stays as-is if either fetch fails.
+(async function () {
+  const REPO_RAW = "https://raw.githubusercontent.com/luca-mastrostefano/agent-native-setup";
+  const FLAGSHIP = "agent-native-baseline";
+
+  function repoLink(url) {
+    // "git+https://github.com/owner/repo.git@v1.2.3" -> "https://github.com/owner/repo"
+    return url.replace(/^git\+/, "").replace(/\.git(@.*)?$/, "");
+  }
+
+  function esc(s) {
+    const d = document.createElement("span");
+    d.textContent = s;
+    return d.innerHTML.replaceAll('"', "&quot;"); // also attribute-safe (used in href)
+  }
+
+  try {
+    const [index, stats] = await Promise.all([
+      fetch(REPO_RAW + "/main/contributions/index.json").then(r => r.json()),
+      fetch(REPO_RAW + "/stats/contributions/stats.json").then(r => r.json()),
+    ]);
+
+    const cards = index.profiles.map(p => {
+      const s = (stats.profiles || {})[p.name] || {};
+      const flagship = p.name === FLAGSHIP ? ' <span class="flagship">flagship</span>' : "";
+      const tags = (p.tags || []).map(t => `<span class="tag">${esc(t)}</span>`).join("");
+      return `<article class="profile">
+        <div class="profile-head">
+          <h3><a href="${esc(repoLink(p.url))}">${esc(p.name)}</a>${flagship}</h3>
+          <div class="profile-stats">
+            <span title="stars">⭐ ${s.stars ?? 0}</span>
+            <span title="forks">🍴 ${s.forks ?? 0}</span>
+            <span title="downloads">⬇️ ${s.downloads ?? 0}</span>
+          </div>
+        </div>
+        <p class="profile-desc">${esc(p.description)}</p>
+        <div class="tags">${tags}</div>
+      </article>`;
+    });
+
+    // Landing-page order: flagship pinned first, then by downloads. (`profile search`
+    // ranks by downloads/stars/forks with no flagship pin — this is deliberately not that.)
+    const byName = Object.fromEntries(index.profiles.map((p, i) => [p.name, cards[i]]));
+    const ranked = index.profiles
+      .slice()
+      .sort((a, b) => {
+        if (a.name === FLAGSHIP) return -1;
+        if (b.name === FLAGSHIP) return 1;
+        const sa = (stats.profiles || {})[a.name] || {}, sb = (stats.profiles || {})[b.name] || {};
+        return (sb.downloads || 0) - (sa.downloads || 0);
+      })
+      .map(p => byName[p.name]);
+
+    document.getElementById("profile-list").innerHTML = ranked.join("\n");
+  } catch (e) {
+    // Offline or rate-limited: the baked-in fallback above keeps the page complete.
+  }
+})();
+</script>
+
+</body>
+</html>
