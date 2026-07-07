@@ -295,10 +295,13 @@ p code, li code {
   font-family: "IBM Plex Mono", ui-monospace, monospace;
   font-size: 0.85rem;
   color: var(--ink);
-  background: var(--card);
   border: 1px solid var(--rule-strong);
   border-radius: 6px;
-  padding: 0.55rem 0.7rem;
+  padding: 0.55rem 2.4rem 0.55rem 0.9rem;
+  appearance: none;
+  -webkit-appearance: none;
+  /* own chevron so it keeps a proper inset from the border (mid-grey reads in both themes) */
+  background: var(--card) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 8' width='12' height='8'%3E%3Cpath d='M1.5 1.5 6 6l4.5-4.5' fill='none' stroke='%23949698' stroke-width='1.6' stroke-linecap='round'/%3E%3C/svg%3E") no-repeat right 0.9rem center;
 }
 
 .tag-rail { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-bottom: 0.75rem; }
@@ -342,8 +345,14 @@ p code, li code {
   font-weight: 600;
   margin: 0 0 0.3rem;
 }
-.row h3 a { color: var(--ink); }
-.row h3 a:hover { color: var(--accent); }
+/* profile names read as links at rest; hover answers with a heavier underline */
+.row h3 a {
+  color: var(--accent);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  text-decoration-thickness: 1px;
+}
+.row h3 a:hover { text-decoration-thickness: 2px; }
 /* copy-install button beside each profile name */
 .copy {
   background: none;
