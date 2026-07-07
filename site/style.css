@@ -323,6 +323,29 @@ p code, li code {
 }
 .row h3 a { color: var(--ink); }
 .row h3 a:hover { color: var(--accent); }
+/* copy-install button beside each profile name */
+.copy {
+  background: none;
+  border: none;
+  padding: 0.1rem;
+  margin-left: 0.45rem;
+  cursor: pointer;
+  color: var(--ink-soft);
+  vertical-align: -0.1em;
+  line-height: 0;
+}
+.copy:hover { color: var(--accent); }
+.copy .ic-check { display: none; color: var(--accent); }
+.copy.copied .ic-copy { display: none; }
+.copy.copied .ic-check { display: inline; }
+@media (prefers-reduced-motion: no-preference) {
+  .copy.copied .ic-check svg { animation: pop 0.25s ease-out; }
+}
+@keyframes pop {
+  from { transform: scale(0.4); opacity: 0; }
+  to { transform: scale(1); opacity: 1; }
+}
+
 /* quiet marker for the engine's default profile — informative, not promotional */
 .badge {
   font-family: "IBM Plex Mono", ui-monospace, monospace;
