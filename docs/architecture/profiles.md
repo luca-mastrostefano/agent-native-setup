@@ -57,7 +57,12 @@ a refresh.
    translate onto its prompts);
 2. a `git+https://…` / `git+ssh://…` URL (optionally `@ref`, `#subdir=dir`) → fetched into
    `~/.cache/agent-native-setup/profiles/` (pinned refs cached forever, branches re-fetched,
-   stale cache reused on fetch failure with a warning);
+   stale cache reused on fetch failure with a warning). For a **pinned GitHub tag**, the
+   release asset `agent-native-profile.tar.gz` is tried first (one HTTPS GET, hardened
+   stdlib-filter extraction with bomb caps, publicly countable downloads — RFC 2026-07-07).
+   A missing/oversized/odd asset falls back to the clone (which reproduces the same tag
+   safely); an archive **attempting to escape** the extraction dir or spoof member names
+   is an attack and errors loudly, never a silent fallback;
 3. a path containing `profile.json`;
 4. a bare name under `~/.config/agent-native-setup/profiles/`;
 5. (`add`/`show` only) a bare name that matches nothing local → exact-name lookup in the
@@ -154,7 +159,12 @@ profile's shareable URL (pinned `@<tag>` when the commit is tagged — else it n
 tag) + ready-to-PR entry. Freeform `tags` on the profile are the
 single source of truth, carried into the entry by `publish`. The `index-check` workflow
 (weekly, on `contributions/` PRs, on demand; `task check-index` locally) fetches and validates
-every listing so rot fails CI instead of the next adopter.
+every listing so rot fails CI instead of the next adopter — and for entries with a release
+asset it fetches through **both transports** and fails on hash mismatch (the asset must be
+byte-equivalent to its tag: the poisoning tripwire). `profile publish --release` attaches
+the asset (packed from the tag's tree); the weekly `index-stats` workflow precomputes public
+stars + asset-download counts to a data-only `stats` branch, which `search`/`list` fetch
+like the index (cached, silent-fail, display-only) — `search` ranks hits by downloads.
 
 ## Extension is git-native
 

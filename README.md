@@ -171,13 +171,14 @@ agent-native-setup my-app --profile acme-profile   # scaffold from it (also: a p
 agent-native-setup profile init my-team            # scaffold a skeleton…
 agent-native-setup profile save ./my-app my-team   # …or snapshot a project you've tuned
 agent-native-setup profile validate ./my-team      # check it loads + every template renders
-agent-native-setup profile publish ./my-team       # print its shareable URL + index entry (then PR it)
+agent-native-setup profile publish ./my-team --release  # attach the release asset + print URL/entry
 ```
 
 - **Discover** — profiles are found through the curated
   [community index](contributions/index.json): a PR-gated list of URLs, kept rot-free by CI
-  (`AGENT_NATIVE_SETUP_INDEX_URL` points a team at a private one). A listing is discovery,
-  not endorsement — trust is decided at fetch.
+  (`AGENT_NATIVE_SETUP_INDEX_URL` points a team at a private one), with `search` results
+  ranked by **public download counts** (release-asset stats, no telemetry). A listing is
+  discovery, not endorsement — trust is decided at fetch.
 - **Trust** — fetches are data-only (an https/ssh allowlist), templates render in a sandbox
   with outputs confined to the project, and each profile is classified **safe**/**unsafe**
   from its content. A fetched code-carrying profile asks for consent once per exact content

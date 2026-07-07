@@ -1,0 +1,35 @@
+name: index-stats
+# Precompute public per-profile stats (stars + release-asset download counts) and publish
+# them to the data-only `stats` branch, which `profile search`/`list` fetch like the index
+# (RFC 2026-07-07-profile-releases-and-stats). Schedule-only + dispatch: no fork-PR token
+# exposure; the branch ruleset protects only `main` and `v*` tags, so `stats` is writable.
+on:
+  schedule:
+    - cron: "0 7 * * 1" # weekly, after index-check
+  workflow_dispatch:
+
+permissions:
+  contents: write # force-pushes the stats branch (index-check stays read-only)
+
+jobs:
+  index-stats:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - run: python tools/checks/build_index_stats.py --out "$RUNNER_TEMP/stats.json"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: publish to the stats branch (data-only, history-free)
+        run: |
+          git config user.name "index-stats[bot]"
+          git config user.email "actions@github.com"
+          git checkout --orphan stats
+          git rm -rfq .
+          mkdir -p contributions
+          cp "$RUNNER_TEMP/stats.json" contributions/stats.json
+          git add contributions/stats.json
+          git commit -qm "stats: weekly public metadata refresh"
+          git push -f origin stats
