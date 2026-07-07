@@ -374,6 +374,29 @@ p code, li code {
 .stat b { display: block; font-size: 1rem; font-weight: 600; color: var(--ink); }
 .stat span { font-size: 0.7rem; color: var(--ink-soft); }
 
+/* segmented control: the two ways to contribute a profile */
+.seg {
+  display: inline-flex;
+  flex-wrap: wrap;
+  border: 1px solid var(--rule-strong);
+  border-radius: 8px;
+  overflow: hidden;
+  margin: 0.25rem 0 1rem;
+}
+.seg-btn {
+  font: inherit;
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: 0.85rem;
+  padding: 0.5rem 1.1rem;
+  background: none;
+  border: none;
+  color: var(--ink-soft);
+  cursor: pointer;
+}
+.seg-btn + .seg-btn { border-left: 1px solid var(--rule-strong); }
+.seg-btn:hover { color: var(--ink); background: var(--chip-bg); }
+.seg-btn[aria-selected="true"] { background: var(--pine); color: #f4f6f0; }
+
 .empty {
   padding: 2.5rem 0;
   border-bottom: 1px solid var(--rule);

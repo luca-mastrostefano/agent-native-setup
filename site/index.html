@@ -14,7 +14,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400..700;1,6..72,400..700&family=IBM+Plex+Sans:wght@400;600&family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="style.css?v=5" />
+  <link rel="stylesheet" href="style.css?v=6" />
 </head>
 <body>
 
@@ -182,10 +182,39 @@ uvx --from git+https://github.com/luca-mastrostefano/agent-native-setup agent-na
       <button class="show-more" id="show-more" hidden>Show more</button>
 
       <p style="margin-top:1.75rem">
-        Built a setup your team is proud of?
-        <a href="https://github.com/luca-mastrostefano/agent-native-setup#profiles--the-community-loop">Extract it as a profile and list it</a> —
-        the next team with your use case starts where you finished, not from zero.
+        Built a setup your team is proud of? Share it as a profile — the next team with your
+        use case starts where you finished, not from zero. Two ways in:
       </p>
+
+      <div class="seg" role="tablist" aria-label="How to contribute a profile">
+        <button class="seg-btn" role="tab" aria-selected="true" data-panel="extract">Extract your agent profile from an existing repo</button>
+        <button class="seg-btn" role="tab" aria-selected="false" data-panel="init">Create a brand new profile</button>
+      </div>
+
+      <div class="seg-panel" id="panel-extract" role="tabpanel">
+        <pre><code><span class="c"># 1. download the skill into your repo (Codex auto-discovers this location):</span>
+curl -fsSL --create-dirs -o .agents/skills/extract-profile/SKILL.md \
+  https://raw.githubusercontent.com/luca-mastrostefano/agent-native-setup/main/.agents/skills/extract-profile/SKILL.md
+
+<span class="c"># 2. then paste this into your agent's chat:</span>
+Follow .agents/skills/extract-profile/SKILL.md to extract an
+agent-native-setup profile from this repo.</code></pre>
+        <p class="muted">
+          Works with any coding agent — Claude Code, Codex, Cursor, Copilot, Gemini. The agent
+          inventories your setup, parameterizes it, proves fidelity with a byte-diff, and walks
+          you to <code>publish --release</code>.
+        </p>
+      </div>
+
+      <div class="seg-panel" id="panel-init" role="tabpanel" hidden>
+        <pre><code><span class="c"># scaffold a skeleton, then tell your agent what you want — its AGENTS.md guides it…</span>
+agent-native-setup profile init my-team</code></pre>
+        <p class="muted">
+          Then <code>profile validate ./my-team</code> to check it loads, and
+          <code>profile publish ./my-team --release</code> to share it — publish offers to open
+          the community-index PR for you.
+        </p>
+      </div>
     </div>
   </section>
 
@@ -365,6 +394,12 @@ uvx --from git+https://github.com/luca-mastrostefano/agent-native-setup agent-na
         clearTimeout(copy._t);
         copy._t = setTimeout(() => copy.classList.remove("copied"), 1600);
       }).catch(() => {}); // clipboard denied: the quick-start block still has the command
+      return;
+    }
+    const seg = e.target.closest("button.seg-btn");
+    if (seg) {
+      document.querySelectorAll(".seg-btn").forEach(b => b.setAttribute("aria-selected", String(b === seg)));
+      document.querySelectorAll(".seg-panel").forEach(p => { p.hidden = p.id !== "panel-" + seg.dataset.panel; });
       return;
     }
     const chip = e.target.closest("button.chip");
