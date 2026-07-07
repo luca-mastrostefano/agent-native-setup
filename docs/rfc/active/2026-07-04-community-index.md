@@ -5,6 +5,11 @@
 - **Author:** Luca Mastrostefano
 - [x] Implemented
 
+> **Amended by RFC 2026-07-07-publish-opens-the-index-pr:** §5's "does not push or open a
+> PR (that stays the author's deliberate act)" is relaxed — publish may now *author* the
+> listing PR after an explicit interactive confirm (the confirm is the deliberate act).
+> The PR-gated, human-reviewed trust model is unchanged.
+
 ## Context
 
 The profile ecosystem can now **author** (`init`/`save`/`validate`), **publish** (`git push`),
