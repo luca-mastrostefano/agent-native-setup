@@ -3,12 +3,15 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>agent-native-setup — one command to make any repo agent-native</title>
-  <meta name="description" content="Your agent setup — contract, prompts, subagents, guardrails — installs like a package and updates like one. Adopt a community profile, tune it, share it back." />
+  <title>agent-native-setup — agent setups should compound</title>
+  <meta name="description" content="A package manager for agent setups. Your contract, prompts, subagents, and guardrails install like a package and update like one — adopt a community profile, tune it, share it back." />
   <meta property="og:title" content="agent-native-setup" />
   <meta property="og:description" content="One command to make any repo agent-native — new or existing — and keep it that way." />
   <meta property="og:type" content="website" />
   <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🪄</text></svg>" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400..700;1,6..72,400..700&family=IBM+Plex+Sans:wght@400;600&family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
@@ -17,41 +20,68 @@
   <div class="wrap">
     <a class="brand" href="./">🪄 agent-native-setup</a>
     <nav>
-      <a href="./" aria-current="page">Home</a>
-      <a href="mission.html">Mission</a>
-      <a href="https://github.com/luca-mastrostefano/agent-native-setup">GitHub</a>
+      <a href="./" aria-current="page">home</a>
+      <a href="mission.html">mission</a>
+      <a href="https://github.com/luca-mastrostefano/agent-native-setup">github</a>
     </nav>
   </div>
 </header>
 
 <main>
-  <div class="wrap">
 
-    <div class="hero">
-      <h1>One command to make any repo agent&#8209;native&nbsp;— and keep it that way.</h1>
-      <p class="tagline">
-        Your agent setup — contract, prompts, subagents, guardrails — installs like a
-        package and <strong>updates like one</strong>: as the profile you adopted improves,
-        <code>update</code> brings the best current version into your repo, without touching
-        what you've customized.
-      </p>
-      <div class="actions">
-        <a class="btn btn-primary" href="https://github.com/luca-mastrostefano/agent-native-setup">View on GitHub</a>
-        <a class="btn btn-ghost" href="mission.html">Read the mission</a>
+  <div class="hero">
+    <div class="wrap">
+      <div>
+        <p class="eyebrow">// a package manager for agent setups</p>
+        <h1>Agent setups should <em>compound</em>.</h1>
+        <p class="tagline">
+          Your contract, prompts, subagents, and guardrails install like a package and
+          update like one. Adopt a community profile, tune it to your stack — and every
+          improvement upstream flows into your repo, without touching what you've customized.
+        </p>
+        <div class="actions">
+          <a class="btn btn-primary" href="#profiles">Browse profiles</a>
+          <a class="btn btn-ghost" href="https://github.com/luca-mastrostefano/agent-native-setup">View on GitHub</a>
+        </div>
       </div>
+      <figure>
+        <svg class="release-graph" viewBox="0 0 440 320" aria-hidden="true">
+          <!-- forks merging into the mainline -->
+          <path class="fork" d="M118,300 C130,292 140,282 148,270" />
+          <path class="fork" d="M240,268 C252,258 264,228 272,206" />
+          <path class="fork" d="M300,212 C314,196 326,170 334,144" />
+          <!-- the compounding release curve -->
+          <path class="curve" d="M24,292 C55,289 70,287 86,284 C115,279 130,275 148,270 C180,262 190,255 210,246 C240,233 252,220 272,206 C302,184 315,168 334,144 C362,108 380,82 400,52" />
+          <!-- release nodes -->
+          <circle class="node n1" cx="24" cy="292" r="4" />
+          <circle class="node n2" cx="86" cy="284" r="5" />
+          <circle class="node n3" cx="148" cy="270" r="5" />
+          <circle class="node n4" cx="210" cy="246" r="5" />
+          <circle class="node n5" cx="272" cy="206" r="5" />
+          <circle class="node n6" cx="334" cy="144" r="5" />
+          <circle class="node-fork n3" cx="118" cy="300" r="3.5" />
+          <circle class="node-fork n5" cx="240" cy="268" r="3.5" />
+          <circle class="node-fork n6" cx="300" cy="212" r="3.5" />
+          <circle class="tip-ring n7" cx="400" cy="52" r="12" />
+          <circle class="node-tip n7" cx="400" cy="52" r="7" />
+        </svg>
+        <figcaption>forks flow back · releases flow down · every repo runs the best current setup</figcaption>
+      </figure>
     </div>
+  </div>
 
-    <section>
-      <h2>Why</h2>
+  <section>
+    <div class="wrap">
+      <p class="eyebrow">// why</p>
+      <h2>Agents are only as good as the repo they work in.</h2>
       <p>
-        Coding agents (Claude Code, Cursor, Copilot, Gemini, …) are only as effective as the
-        repo they work in. A repo becomes <strong>agent-native</strong> when it carries three
-        things — enforced by tooling, not memory:
+        Claude Code, Cursor, Copilot, Gemini — all of them do their best work in a repo
+        that carries three things, enforced by tooling rather than memory:
       </p>
       <div class="pillars">
         <div class="pillar">
           <h3>One contract</h3>
-          <p>A single <code>AGENTS.md</code> every agent follows — Claude, Cursor, Copilot, Gemini — never forking.</p>
+          <p>A single <code>AGENTS.md</code> every agent follows — never forking per tool.</p>
         </div>
         <div class="pillar">
           <h3>Mechanical guardrails</h3>
@@ -62,137 +92,286 @@
           <p>Review subagents, tests, and an RFC trail — so quality compounds instead of drifting.</p>
         </div>
       </div>
-      <p style="margin-top:1.5rem">
+      <p style="margin-top:2rem">
         The hard part: <strong>there is no one right setup.</strong> A Python backend, a
         TypeScript monorepo, a legacy service — each needs different gates, prompts, and
-        agents. Today every team re-discovers theirs from scratch, none of it shared, every
-        lesson re-learned one repo over. This project turns that private, perishable effort
-        into a <strong>community asset</strong>: a setup is a <em>profile</em> — versioned,
-        inspectable, forkable — and improvements flow back to every repo that adopted it.
+        agents. Today every team re-discovers theirs from scratch, in private, and it decays.
+        Here a setup is a <em>profile</em> — versioned, inspectable, forkable — and one good
+        idea propagates to every repo that adopted it.
       </p>
-    </section>
+    </div>
+  </section>
 
-    <section>
-      <h2>Quick start</h2>
-      <pre><code># one command, no install (needs uv: https://docs.astral.sh/uv)
+  <section>
+    <div class="wrap">
+      <p class="eyebrow">// quick start</p>
+      <h2>One command, no install.</h2>
+      <pre><code><span class="c"># needs uv — docs.astral.sh/uv</span>
 uvx --from git+https://github.com/luca-mastrostefano/agent-native-setup agent-native-setup -o ./my-app</code></pre>
       <p class="muted">
         Works on new <em>and existing</em> repos: languages are auto-detected, existing files
         are never overwritten, and legacy code is grandfathered so day one isn't a wall of red.
       </p>
-    </section>
+    </div>
+  </section>
 
-    <section id="profiles">
+  <section id="profiles">
+    <div class="wrap">
+      <p class="eyebrow">// the registry</p>
       <h2>Community profiles</h2>
       <p class="muted">
-        A profile is a packaged, versioned, complete project setup. Discover one, adopt it in
-        a command, tune it, and share yours back. Stats are public download counts — no
-        telemetry.
+        A profile is a packaged, versioned, complete project setup. Adopt one in a command,
+        tune it, share yours back. Stats are public release-asset downloads — no telemetry.
       </p>
+
+      <div class="toolbar" id="toolbar" hidden>
+        <input type="search" id="q" placeholder="Filter by name or description…" aria-label="Filter profiles by name or description" />
+        <select id="sort" aria-label="Sort profiles">
+          <option value="downloads">most downloaded</option>
+          <option value="stars">most starred</option>
+          <option value="name">name a–z</option>
+        </select>
+      </div>
+      <div class="tag-rail" id="tag-rail" role="group" aria-label="Filter by tag"></div>
+      <p class="count" id="count" aria-live="polite" hidden></p>
 
       <div class="profile-list" id="profile-list">
-        <!-- Static fallback, refreshed on load from the live index + stats branch. -->
-        <article class="profile">
-          <div class="profile-head">
-            <h3><a href="https://github.com/luca-mastrostefano/agent-native-baseline">agent-native-baseline</a> <span class="flagship">flagship</span></h3>
-            <div class="profile-stats"><span>⭐ 0</span><span>🍴 0</span><span>⬇️ 5</span></div>
+        <!-- Static fallback for no-JS readers; replaced from the live index + stats on load. -->
+        <article class="row">
+          <div>
+            <h3><a href="https://github.com/luca-mastrostefano/agent-native-baseline">agent-native-baseline</a><span class="badge">flagship</span></h3>
+            <p>The flagship profile — the complete agent-native setup the engine scaffolds by default: AGENTS.md contract, docs + RFCs, quality gates, security scanning, CI, and a .claude library. Fork it to build your own.</p>
+            <div class="tags"><span class="chip">general</span><span class="chip">baseline</span><span class="chip">multi-language</span></div>
           </div>
-          <p class="profile-desc">The flagship profile — the complete agent-native setup the engine scaffolds by default: AGENTS.md contract, docs + RFCs, quality gates, security scanning, CI, and a .claude library. Fork it to build your own.</p>
-          <div class="tags"><span class="tag">general</span><span class="tag">baseline</span><span class="tag">multi-language</span></div>
+          <div class="stats">
+            <div class="stat"><b>5</b><span>downloads</span></div>
+            <div class="stat"><b>0</b><span>stars</span></div>
+            <div class="stat"><b>0</b><span>forks</span></div>
+          </div>
         </article>
-        <article class="profile">
-          <div class="profile-head">
+        <article class="row">
+          <div>
             <h3><a href="https://github.com/luca-mastrostefano/tolaria-setup">tolaria-setup</a></h3>
-            <div class="profile-stats"><span>⭐ 0</span><span>🍴 0</span><span>⬇️ 5</span></div>
+            <p>Tolaria's agent-native engineering setup: direct-to-main TDD contract, CodeScene ratchet gates + MCP wiring, ADR system with /create-adr, two-tier husky gates, Codacy/Semgrep, optional Chunk sidecar lanes and Todoist task-loop commands.</p>
+            <div class="tags"><span class="chip">tauri</span><span class="chip">react</span><span class="chip">rust</span><span class="chip">typescript</span><span class="chip">tdd</span></div>
           </div>
-          <p class="profile-desc">Tolaria's agent-native engineering setup: direct-to-main TDD contract, CodeScene ratchet gates + MCP wiring, ADR system with /create-adr, two-tier husky gates, Codacy/Semgrep, optional Chunk sidecar lanes and Todoist task-loop commands.</p>
-          <div class="tags"><span class="tag">tauri</span><span class="tag">react</span><span class="tag">rust</span><span class="tag">typescript</span><span class="tag">tdd</span><span class="tag">codescene</span><span class="tag">adr</span><span class="tag">desktop</span></div>
+          <div class="stats">
+            <div class="stat"><b>5</b><span>downloads</span></div>
+            <div class="stat"><b>0</b><span>stars</span></div>
+            <div class="stat"><b>0</b><span>forks</span></div>
+          </div>
         </article>
-        <article class="profile">
-          <div class="profile-head">
+        <article class="row">
+          <div>
             <h3><a href="https://github.com/luca-mastrostefano/andrej-karpathy-skills-setup">andrej-karpathy-skills-setup</a></h3>
-            <div class="profile-stats"><span>⭐ 0</span><span>🍴 0</span><span>⬇️ 2</span></div>
+            <p>Karpathy-inspired LLM coding guidelines extracted from forrestchang/andrej-karpathy-skills: one behavioral contract (CLAUDE.md) plus the same guidelines as a Claude Code skill and a Cursor project rule.</p>
+            <div class="tags"><span class="chip">guidelines</span><span class="chip">best-practices</span><span class="chip">karpathy</span></div>
           </div>
-          <p class="profile-desc">Karpathy-inspired LLM coding guidelines extracted from forrestchang/andrej-karpathy-skills: one behavioral contract (CLAUDE.md) plus the same guidelines as a Claude Code skill and a Cursor project rule.</p>
-          <div class="tags"><span class="tag">guidelines</span><span class="tag">best-practices</span><span class="tag">coding</span><span class="tag">karpathy</span><span class="tag">claude-code</span><span class="tag">cursor</span><span class="tag">general</span></div>
+          <div class="stats">
+            <div class="stat"><b>2</b><span>downloads</span></div>
+            <div class="stat"><b>0</b><span>stars</span></div>
+            <div class="stat"><b>0</b><span>forks</span></div>
+          </div>
         </article>
       </div>
+      <button class="show-more" id="show-more" hidden>Show more</button>
 
-      <p style="margin-top:1.5rem">
-        Built a setup your team is proud of? <a href="https://github.com/luca-mastrostefano/agent-native-setup#profiles--the-community-loop">Extract it as a profile and list it</a> —
+      <p style="margin-top:1.75rem">
+        Built a setup your team is proud of?
+        <a href="https://github.com/luca-mastrostefano/agent-native-setup#profiles--the-community-loop">Extract it as a profile and list it</a> —
         the next team with your use case starts where you finished, not from zero.
       </p>
-    </section>
+    </div>
+  </section>
 
-  </div>
+  <section>
+    <div class="wrap">
+      <p class="eyebrow">// the loop</p>
+      <h2>How improvements travel.</h2>
+      <ol class="loop">
+        <li><b>discover</b></li>
+        <li><b>adopt</b></li>
+        <li><b>tune</b></li>
+        <li><b>snapshot</b>&nbsp;or&nbsp;<b>fork</b></li>
+        <li><b>publish</b></li>
+        <li><b>update</b>&nbsp;flows back to every consumer</li>
+      </ol>
+      <p class="muted" style="margin-top:1.25rem">
+        Every release you cut reaches every project scaffolded from your profile through
+        <code>agent-native-setup update</code> — pristine files refresh, your edits are never
+        clobbered.
+      </p>
+    </div>
+  </section>
+
 </main>
 
 <footer>
   <div class="wrap">
     <span>MIT — the engine, the profiles, and everything they scaffold are yours.</span>
-    <span><a href="https://github.com/luca-mastrostefano/agent-native-setup">GitHub</a> · <a href="mission.html">Mission</a></span>
+    <span><a href="https://github.com/luca-mastrostefano/agent-native-setup">github</a> · <a href="mission.html">mission</a></span>
   </div>
 </footer>
 
 <script>
-// Refresh the profile list from the live community index (main) and the precomputed
-// stats branch. The static markup above stays as-is if either fetch fails.
-(async function () {
+// Registry directory: renders from the live community index (main) + stats branch on load.
+// The static rows above stay as-is for no-JS readers or if both fetches fail.
+(function () {
   const REPO_RAW = "https://raw.githubusercontent.com/luca-mastrostefano/agent-native-setup";
   const FLAGSHIP = "agent-native-baseline";
+  const PAGE = 60; // rows rendered per "Show more" — keeps the DOM sane at thousands of profiles
 
-  function repoLink(url) {
-    // "git+https://github.com/owner/repo.git@v1.2.3" -> "https://github.com/owner/repo"
-    return url.replace(/^git\+/, "").replace(/\.git(@.*)?$/, "");
-  }
+  // Snapshot of contributions/index.json + the stats branch, so the toolbar works even
+  // fully offline. (The static no-JS rows above show a trimmed view of the same data;
+  // both are superseded by the live fetch below on every normal page load.)
+  const FALLBACK = {
+    index: { profiles: [
+      { name: "agent-native-baseline", url: "git+https://github.com/luca-mastrostefano/agent-native-baseline.git@v0.2.0",
+        description: "The flagship profile — the complete agent-native setup the engine scaffolds by default: AGENTS.md contract, docs + RFCs, quality gates, security scanning, CI, and a .claude library. Fork it to build your own.",
+        tags: ["general", "baseline", "multi-language"] },
+      { name: "tolaria-setup", url: "git+https://github.com/luca-mastrostefano/tolaria-setup.git@v0.1.1",
+        description: "Tolaria's agent-native engineering setup: direct-to-main TDD contract, CodeScene ratchet gates + MCP wiring, ADR system with /create-adr, two-tier husky gates, Codacy/Semgrep, optional Chunk sidecar lanes and Todoist task-loop commands.",
+        tags: ["tauri", "react", "rust", "typescript", "tdd", "codescene", "adr", "desktop"] },
+      { name: "andrej-karpathy-skills-setup", url: "git+https://github.com/luca-mastrostefano/andrej-karpathy-skills-setup.git@v0.1.0",
+        description: "Karpathy-inspired LLM coding guidelines extracted from forrestchang/andrej-karpathy-skills: one behavioral contract (CLAUDE.md) plus the same guidelines as a Claude Code skill and a Cursor project rule.",
+        tags: ["guidelines", "best-practices", "coding", "karpathy", "claude-code", "cursor", "general"] },
+    ]},
+    stats: { profiles: {
+      "agent-native-baseline": { stars: 0, forks: 0, downloads: 5 },
+      "tolaria-setup": { stars: 0, forks: 0, downloads: 5 },
+      "andrej-karpathy-skills-setup": { stars: 0, forks: 0, downloads: 2 },
+    }},
+  };
+
+  const $q = document.getElementById("q");
+  const $sort = document.getElementById("sort");
+  const $rail = document.getElementById("tag-rail");
+  const $count = document.getElementById("count");
+  const $list = document.getElementById("profile-list");
+  const $more = document.getElementById("show-more");
+
+  let all = [];
+  let topTags = [];
+  const state = { q: "", tags: new Set(), sort: "downloads", shown: PAGE };
 
   function esc(s) {
     const d = document.createElement("span");
-    d.textContent = s;
+    d.textContent = s == null ? "" : String(s);
     return d.innerHTML.replaceAll('"', "&quot;"); // also attribute-safe (used in href)
   }
 
-  try {
-    const [index, stats] = await Promise.all([
-      fetch(REPO_RAW + "/main/contributions/index.json").then(r => r.json()),
-      fetch(REPO_RAW + "/stats/contributions/stats.json").then(r => r.json()),
-    ]);
-
-    const cards = index.profiles.map(p => {
-      const s = (stats.profiles || {})[p.name] || {};
-      const flagship = p.name === FLAGSHIP ? ' <span class="flagship">flagship</span>' : "";
-      const tags = (p.tags || []).map(t => `<span class="tag">${esc(t)}</span>`).join("");
-      return `<article class="profile">
-        <div class="profile-head">
-          <h3><a href="${esc(repoLink(p.url))}">${esc(p.name)}</a>${flagship}</h3>
-          <div class="profile-stats">
-            <span title="stars">⭐ ${s.stars ?? 0}</span>
-            <span title="forks">🍴 ${s.forks ?? 0}</span>
-            <span title="downloads">⬇️ ${s.downloads ?? 0}</span>
-          </div>
-        </div>
-        <p class="profile-desc">${esc(p.description)}</p>
-        <div class="tags">${tags}</div>
-      </article>`;
-    });
-
-    // Landing-page order: flagship pinned first, then by downloads. (`profile search`
-    // ranks by downloads/stars/forks with no flagship pin — this is deliberately not that.)
-    const byName = Object.fromEntries(index.profiles.map((p, i) => [p.name, cards[i]]));
-    const ranked = index.profiles
-      .slice()
-      .sort((a, b) => {
-        if (a.name === FLAGSHIP) return -1;
-        if (b.name === FLAGSHIP) return 1;
-        const sa = (stats.profiles || {})[a.name] || {}, sb = (stats.profiles || {})[b.name] || {};
-        return (sb.downloads || 0) - (sa.downloads || 0);
-      })
-      .map(p => byName[p.name]);
-
-    document.getElementById("profile-list").innerHTML = ranked.join("\n");
-  } catch (e) {
-    // Offline or rate-limited: the baked-in fallback above keeps the page complete.
+  function repoLink(url) {
+    // "git+https://github.com/owner/repo.git@v1.2.3" -> "https://github.com/owner/repo";
+    // anything non-https (index entries are PR-reviewed, but belt-and-braces) links nowhere
+    const repo = url.replace(/^git\+/, "").replace(/\.git(@.*)?$/, "");
+    return /^https:\/\//.test(repo) ? repo : "#";
   }
+
+  function fmt(n) {
+    return n >= 1000 ? (Math.round(n / 100) / 10) + "k" : String(n);
+  }
+
+  function build(index, stats) {
+    all = index.profiles.map(p => {
+      const s = (stats.profiles || {})[p.name] || {};
+      const tags = p.tags || [];
+      return {
+        name: p.name, description: p.description || "", tags,
+        hay: (p.name + " " + (p.description || "") + " " + tags.join(" ")).toLowerCase(),
+        repo: repoLink(p.url), flagship: p.name === FLAGSHIP,
+        stars: s.stars || 0, forks: s.forks || 0, downloads: s.downloads || 0,
+      };
+    });
+    const freq = new Map();
+    for (const p of all) for (const t of p.tags) freq.set(t, (freq.get(t) || 0) + 1);
+    topTags = [...freq.entries()].sort((a, b) => b[1] - a[1]).slice(0, 12).map(e => e[0]);
+    for (const t of state.tags) if (!freq.has(t)) state.tags.delete(t);
+  }
+
+  function matches() {
+    // every query word must appear somewhere in name + description + tags
+    const words = state.q.trim().toLowerCase().split(/\s+/).filter(Boolean);
+    return all.filter(p =>
+      words.every(w => p.hay.includes(w)) &&
+      [...state.tags].every(t => p.tags.includes(t))
+    ).sort((a, b) => {
+      // honest directory order — no flagship pin (v1 pinned it; the badge marks it now)
+      if (state.sort === "name") return a.name.localeCompare(b.name);
+      return (b[state.sort] - a[state.sort]) || a.name.localeCompare(b.name);
+    });
+  }
+
+  function rowHtml(p) {
+    const badge = p.flagship ? '<span class="badge">flagship</span>' : "";
+    const tags = p.tags.map(t =>
+      `<button class="chip" data-tag="${esc(t)}" aria-pressed="${state.tags.has(t)}">${esc(t)}</button>`).join("");
+    return `<article class="row">
+      <div>
+        <h3><a href="${esc(p.repo)}">${esc(p.name)}</a>${badge}</h3>
+        <p>${esc(p.description)}</p>
+        <div class="tags">${tags}</div>
+      </div>
+      <div class="stats">
+        <div class="stat"><b>${fmt(p.downloads)}</b><span>downloads</span></div>
+        <div class="stat"><b>${fmt(p.stars)}</b><span>stars</span></div>
+        <div class="stat"><b>${fmt(p.forks)}</b><span>forks</span></div>
+      </div>
+    </article>`;
+  }
+
+  function render() {
+    const hits = matches();
+    const railTags = topTags.concat([...state.tags].filter(t => !topTags.includes(t)));
+    $rail.innerHTML = railTags.map(t =>
+      `<button class="chip" data-tag="${esc(t)}" aria-pressed="${state.tags.has(t)}">${esc(t)}</button>`).join("");
+    $count.hidden = false;
+    $count.textContent = hits.length === all.length
+      ? `${all.length} profile${all.length === 1 ? "" : "s"}`
+      : `${hits.length} of ${all.length} profiles match`;
+    if (hits.length === 0) {
+      $list.innerHTML = `<div class="empty">No profiles match. <button id="clear">Clear filters</button></div>`;
+    } else {
+      $list.innerHTML = hits.slice(0, state.shown).map(rowHtml).join("");
+    }
+    $more.hidden = hits.length <= state.shown;
+    if (!$more.hidden) $more.textContent = `Show more (${hits.length - state.shown} remaining)`;
+  }
+
+  let debounce;
+  $q.addEventListener("input", () => {
+    clearTimeout(debounce);
+    debounce = setTimeout(() => { state.q = $q.value; state.shown = PAGE; render(); }, 120);
+  });
+  $sort.addEventListener("change", () => { state.sort = $sort.value; state.shown = PAGE; render(); });
+  $more.addEventListener("click", () => { state.shown += PAGE; render(); });
+  document.addEventListener("click", e => {
+    const chip = e.target.closest("button.chip");
+    if (chip) {
+      const t = chip.dataset.tag;
+      state.tags.has(t) ? state.tags.delete(t) : state.tags.add(t);
+      state.shown = PAGE;
+      render();
+      // render() rebuilt the DOM: put keyboard focus back on the toggled rail chip
+      const back = $rail.querySelector(`[data-tag="${CSS.escape(t)}"]`);
+      if (back) back.focus();
+    }
+    if (e.target.id === "clear") {
+      state.q = ""; $q.value = ""; state.tags.clear(); state.shown = PAGE;
+      render();
+    }
+  });
+
+  build(FALLBACK.index, FALLBACK.stats);
+  document.getElementById("toolbar").hidden = false;
+  render();
+
+  Promise.all([
+    fetch(REPO_RAW + "/main/contributions/index.json").then(r => r.json()),
+    fetch(REPO_RAW + "/stats/contributions/stats.json").then(r => r.json()),
+  ]).then(([index, stats]) => {
+    build(index, stats);
+    render();
+  }).catch(() => { /* offline or rate-limited: fallback data is already rendered */ });
 })();
 </script>
 
