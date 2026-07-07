@@ -108,7 +108,7 @@ nav a[aria-current="page"] { color: var(--ink); }
 .eyebrow {
   font-family: "IBM Plex Mono", ui-monospace, monospace;
   font-size: 0.8rem;
-  color: var(--ink-soft);
+  color: var(--accent);
   margin: 0 0 1rem;
 }
 
