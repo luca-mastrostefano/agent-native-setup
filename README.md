@@ -132,6 +132,18 @@ agent-native-setup -o ./existing-app --yes
 | `--dry-run` | Preview what would be created (and what would be skipped as already-present) — writes nothing. |
 | `--force` | Overwrite existing files. |
 
+### Updating the tool itself
+
+`agent-native-setup update` (below) refreshes a *scaffolded project*; the installed tool is
+upgraded by whatever installed it:
+
+```bash
+pipx reinstall agent-native-setup     # pipx: re-pulls from the recorded git URL
+uv tool upgrade agent-native-setup    # uv; or force: uv tool install --force git+https://github.com/luca-mastrostefano/agent-native-setup
+```
+
+(With `uvx` there's nothing installed — add `--refresh` to re-resolve.)
+
 ### Keeping a project up to date
 
 A scaffolded setup is a **living dependency, not a one-time template**: the wizard records
