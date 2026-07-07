@@ -106,8 +106,11 @@
     <div class="wrap">
       <p class="eyebrow">// quick start</p>
       <h2>One command, no install.</h2>
-      <pre><code><span class="c"># needs uv — docs.astral.sh/uv</span>
-uvx --from git+https://github.com/luca-mastrostefano/agent-native-setup agent-native-setup -o ./my-app</code></pre>
+      <pre><code><span class="c"># brew install uv   # if you don't have uv yet — docs.astral.sh/uv</span>
+uvx --from git+https://github.com/luca-mastrostefano/agent-native-setup agent-native-setup -o ./my-app
+
+<span class="c"># or scaffold from a community profile</span>
+uvx --from git+https://github.com/luca-mastrostefano/agent-native-setup agent-native-setup -o ./my-app --profile andrej-karpathy-skills-setup</code></pre>
       <p class="muted">
         Works on new <em>and existing</em> repos: languages are auto-detected, existing files
         are never overwritten, and legacy code is grandfathered so day one isn't a wall of red.
