@@ -170,12 +170,26 @@ agent-native-setup my-app --profile acme-profile   # scaffold from it (also: a p
 # Make & share your own
 agent-native-setup profile init my-team            # scaffold a skeleton…
 agent-native-setup profile save ./my-app my-team   # …or snapshot a project you've tuned
-# …or have your AI agent extract one from any well-structured repo: the
-# `extract-profile` skill (works in Claude Code, Codex, Cursor, Copilot, Gemini —
-# see .agents/skills/extract-profile/)
+# …or have your AI agent extract one from any well-structured repo (below)
 agent-native-setup profile validate ./my-team      # check it loads + every template renders
 agent-native-setup profile publish ./my-team --release  # attach the release asset + print URL/entry
 ```
+
+**Extract a profile from your own repo, from anywhere.** You don't need this repo cloned —
+the [`extract-profile` skill](.agents/skills/extract-profile/SKILL.md) is a runbook any
+coding agent can execute (Claude Code, Codex, Cursor, Copilot, Gemini). Open your agent
+*in your own project* and ask:
+
+```text
+Fetch https://raw.githubusercontent.com/luca-mastrostefano/agent-native-setup/main/.agents/skills/extract-profile/SKILL.md
+and follow it to extract an agent-native-setup profile from this repo.
+```
+
+It inventories your agent setup (contracts, `.claude`/`.cursor`/MCP tooling, docs
+conventions, git gates), parameterizes it, proves fidelity with a byte-diff against your
+repo, and walks you to `publish --release` and an index entry. (Working inside a clone of
+this repo, it's just `/extract-profile <path>`; Codex picks it up from `.agents/skills/`
+automatically.)
 
 - **Discover** — profiles are found through the curated
   [community index](contributions/index.json): a PR-gated list of URLs, kept rot-free by CI
