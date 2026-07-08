@@ -30,6 +30,20 @@ jobs:
           git rm -rfq .
           mkdir -p contributions
           cp "$RUNNER_TEMP/stats.json" contributions/stats.json
-          git add contributions/stats.json
+          # Explain the branch in place — the orphan force-push erases anything this
+          # step doesn't re-create, so a hand-committed README would vanish weekly.
+          cat > README.md <<'EOF'
+          # `stats` branch — data only, do not edit by hand
+
+          Auto-generated **weekly** by `.github/workflows/index-stats.yml` on `main`.
+          Holds public per-profile metrics (stars, forks, release-asset downloads) in
+          `contributions/stats.json`, fetched client-side by the website and by
+          `profile search`/`list`.
+
+          This branch is **force-pushed** on every run (`git checkout --orphan stats`),
+          so it has no durable history and **PRs against it will be overwritten**.
+          Rationale: `docs/rfc/proposed/2026-07-07-profile-releases-and-stats.md` on `main`.
+          EOF
+          git add README.md contributions/stats.json
           git commit -qm "stats: weekly public metadata refresh"
           git push -f origin stats
