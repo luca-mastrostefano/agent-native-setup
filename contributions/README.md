@@ -22,11 +22,17 @@ Entry shape:
 {
   "name": "my-team",
   "url": "git+https://github.com/me/my-team-profile.git@v1.0.0",
+  "content_hash": "<sha256 of the vetted bytes — profile publish emits it>",
   "description": "one line — what it sets up and for whom",
   "author": "your name / handle",
   "tags": ["python", "backend"]
 }
 ```
+
+`content_hash` is **required** and pins the exact bytes you vetted: `profile add <name>` verifies
+the fetched profile against it and refuses a force-moved tag / swapped asset, so don't hand-compute
+it — `profile publish` prints the correct value (and the URL must pin an immutable `@<tag>`, since
+that's what makes the hash stable).
 
 ## What listing means (and doesn't)
 

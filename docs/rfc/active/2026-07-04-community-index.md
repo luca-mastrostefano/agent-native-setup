@@ -10,6 +10,12 @@
 > listing PR after an explicit interactive confirm (the confirm is the deliberate act).
 > The PR-gated, human-reviewed trust model is unchanged.
 
+> **Amended by RFC 2026-07-08-pin-index-entries-by-content-hash:** every entry now carries a
+> required `content_hash` (verified at `add <name>`); §3's "grants no trust" is clarified to
+> "grants no *execution* trust" (a verifiable hash is *integrity*, not a declared-safety tier),
+> §6's name → URL now also carries the expected hash, and the open `@ref` question is
+> **resolved** — a pinned `@<tag>` is required, since the hash is only stable for one.
+
 ## Context
 
 The profile ecosystem can now **author** (`init`/`save`/`validate`), **publish** (`git push`),
@@ -118,7 +124,8 @@ URL- or path-shaped never consults the index.
   `tags`), are shown by `show`, matched by `search`, and carried into the index entry by `publish`
   (single source of truth). **CI check — decided:** `index-check` (weekly + on `contributions/`
   PRs + on demand) fetches every listed URL and runs the `profile validate` load +
-  strict-render, so rot fails CI instead of the next adopter. A recommended `@ref` remains open
-  (`publish` already nudges toward a pinned tag).
+  strict-render, so rot fails CI instead of the next adopter. **`@ref` — decided** (RFC
+  2026-07-08-pin-index-entries-by-content-hash): a pinned `@<tag>` is now required, because each
+  entry carries a `content_hash` that is only stable for an immutable ref.
 - **Multiple** indexes (a config *list* of URLs) vs. the single env override — start with one, revisit.
 - **Ranking** as the list grows (exact/substring only for v1; relevance later).

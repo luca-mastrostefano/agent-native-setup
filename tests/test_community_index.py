@@ -129,6 +129,9 @@ def test_publish_validates_infers_url_and_tag_and_emits_entry(tmp_path: Path) ->
     assert profiles._publish(argparse.Namespace(path=str(prof), url=None), c) == 0
     assert "git+https://github.com/me/myprof.git@v1.0.0" in c.text  # inferred remote + tag
     assert '"name": "myprof"' in c.text  # ready-to-PR entry
+    # The emitted entry carries the machine-computed vetted-bytes hash (RFC 2026-07-08 §6),
+    # so a publisher never hand-computes it.
+    assert f'"content_hash": "{profiles.content_hash(profiles.load(prof))}"' in c.text
 
 
 def test_the_committed_index_is_well_formed() -> None:
@@ -140,6 +143,11 @@ def test_the_committed_index_is_well_formed() -> None:
     for e in profs:
         assert e.get("name") and e.get("description"), e
         assert e.get("url", "").startswith("git+http"), e  # a git+https/ssh URL
+        # Every canonical entry carries the vetted-bytes hash (RFC 2026-07-08): a 64-char
+        # sha256 hex. `add <name>` verifies the fetched bytes against it; check_index keeps it
+        # honest online. A missing/malformed one fails here before it can rot in CI.
+        ch = e.get("content_hash", "")
+        assert isinstance(ch, str) and len(ch) == 64 and all(c in "0123456789abcdef" for c in ch), e
     # Names are the bare-name resolution key (`add <name>`): a duplicate would silently
     # shadow one entry with the other (first-in-file wins) — refuse at PR time.
     names = [e["name"] for e in profs]
@@ -192,6 +200,69 @@ def test_add_falls_back_to_an_index_name(tmp_path: Path, monkeypatch: pytest.Mon
     rc = profiles._add(argparse.Namespace(url="acme-backend", name=None, allow_code=False), c)
     assert rc == 0  # the profile is safe (one .md) — no consent needed
     assert (tmp_path / "userdir" / "acme-backend" / "profile.json").is_file()
+
+
+def test_add_by_index_name_verifies_a_matching_content_hash(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Adopting by the name the index vouches for verifies the bytes the index vouched for
+    # (RFC 2026-07-08 §2): a correct hash installs unremarkably.
+    src = _local_profile(tmp_path)
+    _stub_fetch(monkeypatch, src)
+    good = profiles.content_hash(profiles.load(src))
+    _seed(
+        tmp_path, [{"name": "acme-backend", "url": _URL, "content_hash": good, "description": "d"}]
+    )
+    monkeypatch.setattr(profiles, "USER_PROFILE_DIR", tmp_path / "userdir")
+    rc = profiles._add(
+        argparse.Namespace(url="acme-backend", name=None, allow_code=False), _Console()
+    )
+    assert rc == 0
+    assert (tmp_path / "userdir" / "acme-backend" / "profile.json").is_file()
+
+
+def test_add_by_index_name_refuses_a_moved_tag(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The fetched bytes no longer hash to what the index vetted (a force-moved tag / swapped
+    # asset). Hard refusal, not a warning — the raw-URL escape stays available (RFC 2026-07-08 §4).
+    _stub_fetch(monkeypatch, _local_profile(tmp_path))
+    _seed(
+        tmp_path,
+        [{"name": "acme-backend", "url": _URL, "content_hash": "0" * 64, "description": "d"}],
+    )
+    with pytest.raises(profiles.ProfileError, match="no longer matches the hash vetted"):
+        profiles._resolve_ref("acme-backend", _Console())
+
+
+def test_add_by_index_name_without_a_hash_still_installs(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Verify-if-present (RFC 2026-07-08 §3): a federated index that omits content_hash keeps
+    # today's liveness + consent behavior, not a hard refuse — the operator is its own trust root.
+    _stub_fetch(monkeypatch, _local_profile(tmp_path))
+    _seed(tmp_path, [{"name": "acme-backend", "url": _URL, "description": "d"}])  # no content_hash
+    monkeypatch.setattr(profiles, "USER_PROFILE_DIR", tmp_path / "userdir")
+    rc = profiles._add(
+        argparse.Namespace(url="acme-backend", name=None, allow_code=False), _Console()
+    )
+    assert rc == 0
+
+
+def test_raw_url_adopt_bypasses_the_integrity_check(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The escape hatch (RFC 2026-07-08 §4): adopting by raw git+ URL never consults the index,
+    # so a listed content_hash — even a mismatching one — is not applied (only the index-name
+    # path is gated). The consent gate still fires on the fetched bytes; only integrity is opted
+    # out of. A force-moved-tag refusal by name (above) is thus recoverable via the raw URL.
+    _stub_fetch(monkeypatch, _local_profile(tmp_path))
+    _seed(
+        tmp_path,
+        [{"name": "acme-backend", "url": _URL, "content_hash": "0" * 64, "description": "d"}],
+    )
+    prof = profiles._resolve_ref(_URL, _Console())  # the raw URL, not the bare name
+    assert prof is not None and prof.name == "acme-backend"
 
 
 def test_index_name_fallback_keeps_the_transport_allowlist(tmp_path: Path) -> None:
@@ -373,6 +444,50 @@ def test_check_index_flags_asset_tag_mismatch(
 
     monkeypatch.setattr(check_index.profiles, "_fetch_git", no_asset)
     assert check_index._asset_equivalence("git+https://github.com/x/y.git@v1", _Console()) is None
+
+
+def _load_check_index():
+    import importlib.util
+    import sys as _sys
+
+    spec = importlib.util.spec_from_file_location(
+        "check_index", Path(__file__).parent.parent / "tools/checks/check_index.py"
+    )
+    mod = importlib.util.module_from_spec(spec)  # type: ignore[arg-type]
+    assert spec and spec.loader
+    _sys.modules["check_index"] = mod
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def test_check_index_enforces_pinned_ref_and_declared_hash(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    check_index = _load_check_index()
+    src = _local_profile(tmp_path)  # name "acme-backend"
+    good = profiles.content_hash(profiles.load(src))
+    # A non-github pinned URL so the (separate) asset-equivalence tripwire stays out of the way.
+    monkeypatch.setattr(check_index.profiles, "_fetch_git", lambda spec, console, **kw: src)
+
+    def run(entry: dict) -> tuple[int, str]:
+        idx = tmp_path / "index.json"
+        idx.write_text(json.dumps({"profiles": [entry]}), encoding="utf-8")
+        rc = check_index.check_index(idx)
+        return rc, capsys.readouterr().out
+
+    base = {"name": "acme-backend", "url": "git+https://x/y.git@v1", "description": "d"}
+    # Correct hash + pinned ref → passes.
+    rc, _ = run({**base, "content_hash": good})
+    assert rc == 0
+    # Wrong hash → flagged, and the correct value is printed for a copy-paste fix.
+    rc, out = run({**base, "content_hash": "0" * 64})
+    assert rc == 1 and "content_hash mismatch" in out and good in out
+    # Missing hash → flagged (required for the canonical index).
+    rc, out = run(base)
+    assert rc == 1 and "missing content_hash" in out
+    # Unpinned ref → flagged before fetch (a moving ref can't be hash-vetted).
+    rc, out = run({**base, "url": "git+https://x/y.git@main", "content_hash": good})
+    assert rc == 1 and "not pinned" in out
 
 
 def test_rank_breaks_download_ties_by_stars_then_forks(

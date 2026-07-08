@@ -67,6 +67,17 @@ def check_index(index_path: Path) -> int:
     for e in entries:
         name, url = e.get("name", "?"), e.get("url", "")
         try:
+            # A content_hash is only stable for an immutable ref, so a git+ listing must pin an
+            # @<tag> (RFC 2026-07-08 §1) — this also resolves community-index's open @ref
+            # question. Real entries are always git+ (the offline unit tests use local-path
+            # stand-ins, which have no ref to pin), so scope the pin check to git+ URLs.
+            if url.startswith("git+"):
+                _clone_url, ref, _subdir = profiles._parse_git_url(url)
+                if not profiles._pinned(ref):
+                    raise profiles.ProfileError(
+                        f"url is not pinned to an immutable @<tag> (got ref {ref!r}) — a listing "
+                        "must pin a tag so its content_hash is stable (append e.g. @v1.0.0)"
+                    )
             prof = profiles.resolve(url, console=console)
             if prof is None:
                 raise profiles.ProfileError("resolved to the built-in default")
@@ -78,6 +89,21 @@ def check_index(index_path: Path) -> int:
                     f"listed as {name!r} but the fetched profile.json says {prof.name!r} — "
                     "a listing must carry the profile's own name (possible impersonation "
                     "or a stale entry)"
+                )
+            # Declared == fetched (RFC 2026-07-08 §5): required for the canonical index, so a
+            # force-moved tag / swapped asset fails CI instead of the next adopter. The message
+            # prints the correct value so a stale entry is a copy-paste fix.
+            declared = e.get("content_hash")
+            actual = profiles.content_hash(prof)
+            if not declared:
+                raise profiles.ProfileError(
+                    f'missing content_hash — add "content_hash": "{actual}" to the entry '
+                    "(the vetted-bytes hash; `profile publish` emits it)"
+                )
+            if declared != actual:
+                raise profiles.ProfileError(
+                    f"content_hash mismatch: listed {str(declared)[:12]}… != fetched "
+                    f"{actual[:12]}… — the tag moved or the entry is stale. Correct hash: {actual}"
                 )
             if url.startswith("git+https://github.com/"):
                 mismatch = _asset_equivalence(url, console)

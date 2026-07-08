@@ -123,6 +123,13 @@ profile that ships `AGENTS.md` but declares neither the field nor a link to it.
    community index; the `name → community index → <url>` redirection is printed, and only
    `git+` entries are accepted (a path-shaped entry would masquerade as trusted-local). A
    broken local profile reports its own error — it is never shadowed by an index listing.
+   **If the entry declares a `content_hash`, the fetched bytes are verified against it** and a
+   mismatch is a hard refusal (a force-moved tag / swapped asset since listing) — the same
+   integrity gate the builtin baseline gets, generalized to every listing (RFC
+   2026-07-08-pin-index-entries-by-content-hash). It's verify-if-present: the canonical index
+   requires the field (`check_index`), a federated index opts in by carrying it. This is
+   *integrity*, not *safety* — the consent gate still fires on the fetched bytes either way; a
+   raw-URL adopt bypasses only the integrity vetting, not consent.
 
 The reference is recorded verbatim as the manifest `source`, so `update` re-resolves (and
 re-fetches) the same way later.
@@ -216,17 +223,25 @@ re-passes consent on its new hash.
 
 ## Discovery (community index)
 
-`contributions/index.json` is a curated, PR-gated list of `{name, url, description, author,
-tags}` entries — a phone book, not a registry: profiles live in their own repos and a listing
-grants no trust (RFC 2026-07-04-community-index). Names are unique (the offline shape test
-refuses a duplicate at PR time — bare-name resolution would otherwise silently first-wins)
-and must match the fetched profile's own `name` (`check_index` flags a mismatch as possible
-impersonation). `profile search <query>` and
+`contributions/index.json` is a curated, PR-gated list of `{name, url, content_hash,
+description, author, tags}` entries — a phone book, not a registry: profiles live in their own
+repos and a listing grants no *execution* trust (RFC 2026-07-04-community-index). Names are
+unique (the offline shape test refuses a duplicate at PR time — bare-name resolution would
+otherwise silently first-wins) and must match the fetched profile's own `name` (`check_index`
+flags a mismatch as possible impersonation). The **`content_hash`** is the SHA-256 of the
+vetted bytes (`profiles.content_hash`, the same primitive the baseline pin uses): an
+`add <name>` verifies the fetched profile against it and hard-refuses a drift, and
+`check_index` requires it, asserts declared == fetched online, and rejects an unpinned URL
+(the hash is only stable for an immutable `@<tag>`) — RFC
+2026-07-08-pin-index-entries-by-content-hash. A verifiable hash is *integrity*, not the
+declared-safety tier community-index §3 rejected; the derived classifier + consent gate remain
+the execution-trust boundary. `profile search <query>` and
 `list --community` read it via a bounded, daily-cached, silent-on-failure HTTP GET
 (`AGENT_NATIVE_SETUP_INDEX_URL` points a team at a private index). `profile publish` prints a
 profile's shareable URL (pinned `@<tag>` when the commit is tagged — else it nudges you to
 tag; github.com ssh remotes are normalized to the publicly fetchable `git+https://` form) +
-ready-to-PR entry (`author` autofilled from the gh login or git identity), then — on a TTY,
+ready-to-PR entry (`author` autofilled from the gh login or git identity; `content_hash`
+machine-computed so it's never hand-typed), then — on a TTY,
 after an explicit confirm — **authors the listing PR itself** (RFC
 2026-07-07-publish-opens-the-index-pr, amending community-index §5): shallow-clone the index
 repo via `gh`, splice the entry in house style (or swap the `url` in place on a re-publish —
