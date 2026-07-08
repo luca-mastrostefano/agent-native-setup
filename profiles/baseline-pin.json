@@ -3,5 +3,12 @@
   "repo": "https://github.com/luca-mastrostefano/agent-native-baseline",
   "url": "git+https://github.com/luca-mastrostefano/agent-native-baseline.git@v0.2.0",
   "tag": "v0.2.0",
-  "content_hash": "c668be8ac35164d44d5cc61f690c9b3bd2f59bff9cfce184657defb6f89331dd"
+  "content_hash": "c668be8ac35164d44d5cc61f690c9b3bd2f59bff9cfce184657defb6f89331dd",
+  "transient": [
+    ".claude/commands/onboard.md",
+    ".cursor/commands/onboard.md",
+    ".gemini/commands/onboard.toml",
+    ".github/prompts/onboard.prompt.md",
+    "ONBOARDING.md"
+  ]
 }

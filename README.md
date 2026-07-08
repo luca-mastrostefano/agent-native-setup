@@ -75,7 +75,8 @@ Then run `agent-native-setup` and answer the prompts — or go non-interactive (
 This repo is the **manager** — resolve, prompt, trust-gate, apply, update, discover. The
 *content* comes from whichever profile you scaffold, and with no `--profile` that's the
 default, [`agent-native-baseline`](https://github.com/luca-mastrostefano/agent-native-baseline)
-(vendored in the wheel, hash-pinned to a tagged release of its repo). In one run it lays
+(fetched from a tagged release of its repo and hash-verified against the pin the engine
+ships — the first run needs network, then it caches). In one run it lays
 down a complete agent-native setup: the `AGENTS.md` contract every tool follows (Claude,
 Cursor, Copilot, Gemini — never forking), a `.claude/` library of review subagents and
 slash commands, docs + an RFC lifecycle, per-language linters wired identically at

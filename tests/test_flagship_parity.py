@@ -27,7 +27,9 @@ from agent_native_setup.config import WizardConfig
 from agent_native_setup.generators import docs as docs_gen
 from agent_native_setup.scaffold import Scaffolder
 
-FLAGSHIP = Path(__file__).resolve().parent.parent / "profiles" / "agent-native-baseline"
+# The baseline is no longer vendored in the wheel (RFC 2026-07-08); the parity harness runs
+# against the checked-in fixture, which `check_baseline_pin.py` keeps byte-identical to the pin.
+FLAGSHIP = Path(__file__).resolve().parent / "fixtures" / "agent-native-baseline"
 
 # Paths the two trees legitimately never compare (provenance differs by design).
 EXCLUDED = {".agent-native-setup.json"}
@@ -269,18 +271,18 @@ def test_flagship_profile_loads_and_validates() -> None:
     assert profiles._validate(argparse.Namespace(path=str(FLAGSHIP)), _Console()) == 0
 
 
-def test_vendored_flagship_matches_its_pin() -> None:
-    """The offline half of the pin contract (RFC 2026-07-05 §5, stage B3): the vendored copy
-    the wheel embeds must hash to exactly what profiles/baseline-pin.json records, and carry
-    the pinned tag's version — so a template change can't ship without a coordinated re-tag
-    of the profile repo and pin bump. The network half (the tag itself still resolves to this
-    artifact) runs in the index-check workflow."""
-    import json
-
-    pin = json.loads((FLAGSHIP.parent / "baseline-pin.json").read_text(encoding="utf-8"))
+def test_baseline_fixture_matches_its_pin() -> None:
+    """The offline half of the pin contract (RFC 2026-07-08): the checked-in fixture the
+    parity harness and conftest stub run against must hash to exactly what
+    profiles/baseline-pin.json records, and carry the pinned tag's version — so the fixture
+    can't drift from the pinned release the engine actually fetches, and a template change
+    can't ship without a coordinated re-tag + pin bump. The network half (the live tag still
+    resolves to this artifact) runs in check_baseline_pin.py / the index-check workflow."""
+    pin = profiles.load_baseline_pin()
     prof = profiles.load(FLAGSHIP)
     assert profiles.content_hash(prof) == pin["content_hash"], (
-        "vendored flagship != baseline-pin.json — re-tag the profile repo and update the pin"
+        "baseline fixture != baseline-pin.json — re-sync tests/fixtures/agent-native-baseline "
+        "with the pinned release (and re-tag + bump the pin if the templates changed)"
     )
     assert f"v{prof.version}" == pin["tag"]
     assert pin["url"].startswith("git+https://") and f"@{pin['tag']}" in pin["url"]
@@ -324,11 +326,11 @@ def test_built_templates_are_current(tmp_path: Path) -> None:
     for rel, content in fresh.items():
         assert rel in committed, f"built template {rel} is not committed — run build.py"
         assert committed[rel] == content, (
-            f"{rel} is stale — run: python profiles/agent-native-baseline/build.py"
+            f"{rel} is stale — run: python tests/fixtures/agent-native-baseline/build.py"
         )
     built_list = json.loads((FLAGSHIP / ".built-manifest.json").read_text(encoding="utf-8"))
     assert sorted(fresh) == sorted(built_list), (
-        "build manifest out of date — run: python profiles/agent-native-baseline/build.py"
+        "build manifest out of date — run: python tests/fixtures/agent-native-baseline/build.py"
     )
     for rel in built_list:
         assert rel in fresh, f"orphaned built template {rel} — removed from PORTS but committed"

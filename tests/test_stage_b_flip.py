@@ -1,5 +1,5 @@
-"""Stage B (RFC 2026-07-05 §7-B): the default scaffold flows through the vendored flagship —
-byte-identical output, builtin provenance, updates and the engine fold working end to end."""
+"""Stage B (RFC 2026-07-05 §7-B): the default scaffold flows through the flagship (fetched by
+pin, RFC 2026-07-08) — byte-identical output, builtin provenance, updates + fold end to end."""
 
 from __future__ import annotations
 

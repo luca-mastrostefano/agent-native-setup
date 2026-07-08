@@ -40,7 +40,7 @@ tasks:
     cmds:
       - python tools/checks/build_index_stats.py
   check-baseline:
-    desc: verify the vendored flagship matches its pinned tag (needs network; --offline in tests)
+    desc: verify the baseline fixture + live tag match the pin (needs network; --offline in tests)
     cmds:
       - python tools/checks/check_baseline_pin.py
   improvement:

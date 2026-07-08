@@ -26,16 +26,17 @@ jobs:
       - run: python -m pip install -e . pytest ruff
       - run: pytest
       - run: python -m unittest discover -s tools/checks
-      # The vendored baseline must actually ship (review of #55): every test runs against
-      # the editable checkout's fallback, so a broken force-include would pass unnoticed.
+      # The wheel must ship the pin and NOT the baseline bytes (RFC 2026-07-08): the engine
+      # fetches `builtin:` by pin at runtime, so a force-include regression that either drops
+      # the pin or re-embeds the baseline would break the packaging invariant unnoticed.
       - run: |
           python -m pip wheel --no-deps -w dist . -q
           python - <<'CHECK'
           import glob, zipfile
           names = zipfile.ZipFile(glob.glob("dist/agent_native_setup-*.whl")[0]).namelist()
-          assert "agent_native_setup/_baseline/profile.json" in names, "baseline missing from wheel"
-          assert any(n.startswith("agent_native_setup/_baseline/templates/") for n in names)
-          print("wheel embeds the baseline:", sum("_baseline/" in n for n in names), "files")
+          assert "agent_native_setup/baseline-pin.json" in names, "pin missing from wheel"
+          assert not any("_baseline" in n for n in names), "baseline bytes must not ship"
+          print("wheel ships the pin, not the baseline:", len(names), "files")
           CHECK
   checks:
     runs-on: ubuntu-latest

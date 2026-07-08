@@ -1,13 +1,14 @@
 # Profiles
 
 A **profile** is a packaged, versioned, **complete** project setup — one project = one
-profile; the engine's own scaffold is just the vendored flagship profile
-(`agent-native-baseline`). This is the subsystem map for
+profile; the engine's own scaffold is just the flagship profile
+(`agent-native-baseline`), fetched by pin (RFC 2026-07-08), not vendored. This is the subsystem map for
 `src/agent_native_setup/profiles.py` and its integration points; [`overview.md`](./overview.md)
 is the repo-wide index. The RFC trail: 2026-06-23-scaffolding-profiles (umbrella),
 2026-06-26-profile-prompts, 2026-07-03-profile-safety / -profile-save / -ecosystem-core,
 2026-07-04-profile-fetch / -community-index / -profile-extends, 2026-07-05-engine-and-flagship
-(the inversion: no composition, `env` = sensed facts only).
+(the inversion: no composition, `env` = sensed facts only), 2026-07-08-builtin-baseline-by-reference
+(the default is fetched-and-hash-verified, not vendored).
 
 ## Format
 
@@ -92,12 +93,22 @@ profile that ships `AGENTS.md` but declares neither the field nor a link to it.
 `--profile` / `profile add` / `profile show` accept, in this order of precedence:
 
 1. `default` / empty → `None` (the legacy bare generators, kept until stage D) — and with
-   **no `--profile` at all, the engine scaffolds the vendored flagship**
-   (`builtin:agent-native-baseline`: a pin-verified copy of the tagged release of
-   [its own repo](https://github.com/luca-mastrostefano/agent-native-baseline), embedded in
-   the wheel and recorded in `profiles/baseline-pin.json` — the `v*` tags there are
-   immutable by repo ruleset, so the pinned artifact can't be repointed upstream; the wizard's flags/questions
-   translate onto its prompts);
+   **no `--profile` at all, the engine scaffolds the flagship by reference**
+   (`builtin:agent-native-baseline`, RFC 2026-07-08): `builtin_baseline_root()` **fetches** the
+   hardcoded pinned URL from `profiles/baseline-pin.json`
+   ([its own repo](https://github.com/luca-mastrostefano/agent-native-baseline), `@v<tag>`) and
+   **verifies the fetched bytes against the pin's `content_hash`** before trusting them — the
+   engine no longer vendors the baseline's files, only the pin (tag + hash + the baseline's
+   `transient` list). The `v*` tags are immutable by repo ruleset, so a released engine can't be
+   repointed upstream. The hash check runs on **every** resolution (network fetch, cache hit, and
+   stale-cache fallback alike), so no unverified bytes reach the consent-free default run; a
+   mismatch or a cold-cache fetch failure is a loud error. Because pinned refs cache forever, only
+   the **first `builtin:` resolution on a machine** needs the network — and that first touch may be
+   an `update` or the staleness nudge, not only the initial scaffold. `source` stays
+   `builtin:agent-native-baseline` (trusted provenance now anchored by the hash, not by local
+   bytes); the wizard's flags/questions translate onto its prompts. The suite stays hermetic via a
+   test-only conftest stub pointing `builtin_baseline_root` at a checked-in fixture
+   (`tests/fixtures/agent-native-baseline`, kept byte-identical to the pin by `check_baseline_pin.py`);
 2. a `git+https://…` / `git+ssh://…` URL (optionally `@ref`, `#subdir=dir`) → fetched into
    `~/.cache/agent-native-setup/profiles/` (pinned refs cached forever, branches re-fetched,
    stale cache reused on fetch failure with a warning). For a **pinned GitHub tag**, the
