@@ -65,10 +65,110 @@ pipx install git+https://github.com/luca-mastrostefano/agent-native-setup
 uv tool install git+https://github.com/luca-mastrostefano/agent-native-setup
 ```
 
-Then run `agent-native-setup` and answer the prompts — or go non-interactive (below).
+Then run `agent-native-setup` and answer the prompts — or go non-interactive ([Usage](#usage)).
 
 > Installs straight from GitHub — no clone, no manual dependency setup. Needs the
 > repo to be public (or collaborator access) and Python 3.10+.
+
+## Profiles — the community loop
+
+A **profile** is a packaged, versioned, **complete** project setup — the built-in scaffold is
+itself just the default profile. A team or community ships their own (`.claude/` agents, MCP
+config, house rules, extra gates), so new projects start from "exactly like ours," not just
+the generic baseline. The loop: **discover → adopt → tune → snapshot or fork → publish** —
+and every release you cut flows to your consumers through `update`.
+
+```bash
+# Find & use
+agent-native-setup profile search python           # search the community index (name/description/tags)
+agent-native-setup profile show acme-profile       # inspect before adopting: files, prompts, safety
+agent-native-setup my-app --profile acme-profile   # scaffold from it (also: a path or git+https://… URL)
+
+# Make & share your own
+agent-native-setup profile init my-team            # scaffold a skeleton, then tell your agent
+                                                   #   what you want — its AGENTS.md guides it…
+agent-native-setup profile save ./my-app my-team   # …or snapshot a project you've tuned
+# …or have your AI agent extract one from any well-structured repo (below)
+agent-native-setup profile validate ./my-team      # check it loads + every template renders
+agent-native-setup profile publish ./my-team --release  # release asset + URL/entry + offers to open the index PR for you
+```
+
+**Extract a profile from your own repo.** You don't need this repo cloned — the
+[`extract-profile` skill](.agents/skills/extract-profile/SKILL.md) is a runbook any coding
+agent can execute (Claude Code, Codex, Cursor, Copilot, Gemini). Two steps, from your own
+project's root:
+
+```bash
+# 1. download the skill into your repo (Codex auto-discovers this location):
+curl -fsSL --create-dirs -o .agents/skills/extract-profile/SKILL.md \
+  https://raw.githubusercontent.com/luca-mastrostefano/agent-native-setup/main/.agents/skills/extract-profile/SKILL.md
+```
+
+```text
+2. then paste this into your agent's chat:
+
+   Follow .agents/skills/extract-profile/SKILL.md to extract an
+   agent-native-setup profile from this repo.
+```
+
+The agent inventories your setup (contracts, `.claude`/`.cursor`/MCP tooling, docs
+conventions, git gates), parameterizes it, proves fidelity with a byte-diff against your
+repo, and walks you to `publish --release` — which attaches the release asset and offers
+to open the community-index listing PR for you.
+
+- **Discover** — profiles are found through the curated
+  [community index](contributions/index.json): a PR-gated list of URLs, kept rot-free by CI
+  (`AGENT_NATIVE_SETUP_INDEX_URL` points a team at a private one), with `search` results
+  ranked by **public download counts** (release-asset stats, no telemetry). A listing is
+  discovery, not endorsement — trust is decided at fetch.
+- **Trust** — fetches are data-only (an https/ssh allowlist), templates render in a sandbox
+  with outputs confined to the project, and each profile is classified **safe**/**unsafe**
+  from its content. A fetched code-carrying profile asks for consent once per exact content
+  (`--allow-code`; review or revoke with `profile trust --list` / `untrust`).
+- **Extend** — fork the profile's repo (the default baseline included), add your templates, and
+  publish your fork to the index; `git fetch upstream && git merge` takes base improvements
+  later.
+- **Update** — bump your profile's `version`, and your consumers' `agent-native-setup update`
+  refreshes its files: pristine ones only (edits are reported as conflicts, `seed` files are
+  never touched), with a pause for confirmation on a breaking bump or new session hooks.
+
+The format (`profile.json` + `templates/` with prompts, sensed `env` facts, `seed` /
+`transient` / `links`) and the full trust model live in
+[`docs/architecture/profiles.md`](docs/architecture/profiles.md) — and `profile init` writes
+a skeleton whose README documents every field.
+
+## Keeping a project up to date
+
+A scaffolded setup is a **living dependency, not a one-time template**: the wizard records
+what it generated in `.agent-native-setup.json`, so your prompts, agents, and gates track
+the best current version of the profile you adopted instead of freezing at the version
+that made them:
+
+```bash
+agent-native-setup update            # refresh managed files to the installed version
+agent-native-setup update --dry-run  # preview the changes — and check for local drift
+agent-native-setup update --check    # one-line "newer version available?" nudge
+```
+
+`update` **classifies** rather than merges: it refreshes generated files that are still
+pristine, never touches files you own or have edited (it reports those as conflicts to
+reconcile), and removes guardrails it no longer generates. It needs a clean git working tree
+(or `--dry-run`) so the change is a reviewable diff; a breaking version bump pauses for
+confirmation and writes an `UPDATING.md` runbook. On an already-current project,
+`update --dry-run` doubles as a **conformance check** — it flags any managed file that has
+drifted from the scaffold.
+
+## Updating the tool itself
+
+`agent-native-setup update` (above) refreshes a *scaffolded project*; the installed tool is
+upgraded by whatever installed it:
+
+```bash
+pipx reinstall agent-native-setup     # pipx: re-pulls from the recorded git URL
+uv tool upgrade agent-native-setup    # uv; or force: uv tool install --force git+https://github.com/luca-mastrostefano/agent-native-setup
+```
+
+(With `uvx` there's nothing installed — add `--refresh` to re-resolve.)
 
 ## The default: `agent-native-baseline`
 
@@ -135,106 +235,6 @@ or with `--answer`. The baseline's prompts are documented in [its
 README](https://github.com/luca-mastrostefano/agent-native-baseline#readme). (Legacy
 spellings like `--languages`, `--tools`, `--no-quality`, `--adopt` still work as deprecated
 aliases for the baseline's prompts.)
-
-### Updating the tool itself
-
-`agent-native-setup update` (below) refreshes a *scaffolded project*; the installed tool is
-upgraded by whatever installed it:
-
-```bash
-pipx reinstall agent-native-setup     # pipx: re-pulls from the recorded git URL
-uv tool upgrade agent-native-setup    # uv; or force: uv tool install --force git+https://github.com/luca-mastrostefano/agent-native-setup
-```
-
-(With `uvx` there's nothing installed — add `--refresh` to re-resolve.)
-
-### Keeping a project up to date
-
-A scaffolded setup is a **living dependency, not a one-time template**: the wizard records
-what it generated in `.agent-native-setup.json`, so your prompts, agents, and gates track
-the best current version of the profile you adopted instead of freezing at the version
-that made them:
-
-```bash
-agent-native-setup update            # refresh managed files to the installed version
-agent-native-setup update --dry-run  # preview the changes — and check for local drift
-agent-native-setup update --check    # one-line "newer version available?" nudge
-```
-
-`update` **classifies** rather than merges: it refreshes generated files that are still
-pristine, never touches files you own or have edited (it reports those as conflicts to
-reconcile), and removes guardrails it no longer generates. It needs a clean git working tree
-(or `--dry-run`) so the change is a reviewable diff; a breaking version bump pauses for
-confirmation and writes an `UPDATING.md` runbook. On an already-current project,
-`update --dry-run` doubles as a **conformance check** — it flags any managed file that has
-drifted from the scaffold.
-
-### Profiles — the community loop
-
-A **profile** is a packaged, versioned, **complete** project setup — the built-in scaffold is
-itself just the default profile. A team or community ships their own (`.claude/` agents, MCP
-config, house rules, extra gates), so new projects start from "exactly like ours," not just
-the generic baseline. The loop: **discover → adopt → tune → snapshot or fork → publish** —
-and every release you cut flows to your consumers through `update`.
-
-```bash
-# Find & use
-agent-native-setup profile search python           # search the community index (name/description/tags)
-agent-native-setup profile show acme-profile       # inspect before adopting: files, prompts, safety
-agent-native-setup my-app --profile acme-profile   # scaffold from it (also: a path or git+https://… URL)
-
-# Make & share your own
-agent-native-setup profile init my-team            # scaffold a skeleton, then tell your agent
-                                                   #   what you want — its AGENTS.md guides it…
-agent-native-setup profile save ./my-app my-team   # …or snapshot a project you've tuned
-# …or have your AI agent extract one from any well-structured repo (below)
-agent-native-setup profile validate ./my-team      # check it loads + every template renders
-agent-native-setup profile publish ./my-team --release  # release asset + URL/entry + offers to open the index PR for you
-```
-
-**Extract a profile from your own repo.** You don't need this repo cloned — the
-[`extract-profile` skill](.agents/skills/extract-profile/SKILL.md) is a runbook any coding
-agent can execute (Claude Code, Codex, Cursor, Copilot, Gemini). Two steps, from your own
-project's root:
-
-```bash
-# 1. download the skill into your repo (Codex auto-discovers this location):
-curl -fsSL --create-dirs -o .agents/skills/extract-profile/SKILL.md \
-  https://raw.githubusercontent.com/luca-mastrostefano/agent-native-setup/main/.agents/skills/extract-profile/SKILL.md
-```
-
-```text
-2. then paste this into your agent's chat:
-
-   Follow .agents/skills/extract-profile/SKILL.md to extract an
-   agent-native-setup profile from this repo.
-```
-
-The agent inventories your setup (contracts, `.claude`/`.cursor`/MCP tooling, docs
-conventions, git gates), parameterizes it, proves fidelity with a byte-diff against your
-repo, and walks you to `publish --release` — which attaches the release asset and offers
-to open the community-index listing PR for you.
-
-- **Discover** — profiles are found through the curated
-  [community index](contributions/index.json): a PR-gated list of URLs, kept rot-free by CI
-  (`AGENT_NATIVE_SETUP_INDEX_URL` points a team at a private one), with `search` results
-  ranked by **public download counts** (release-asset stats, no telemetry). A listing is
-  discovery, not endorsement — trust is decided at fetch.
-- **Trust** — fetches are data-only (an https/ssh allowlist), templates render in a sandbox
-  with outputs confined to the project, and each profile is classified **safe**/**unsafe**
-  from its content. A fetched code-carrying profile asks for consent once per exact content
-  (`--allow-code`; review or revoke with `profile trust --list` / `untrust`).
-- **Extend** — fork the profile's repo (the default baseline included), add your templates, and
-  publish your fork to the index; `git fetch upstream && git merge` takes base improvements
-  later.
-- **Update** — bump your profile's `version`, and your consumers' `agent-native-setup update`
-  refreshes its files: pristine ones only (edits are reported as conflicts, `seed` files are
-  never touched), with a pause for confirmation on a breaking bump or new session hooks.
-
-The format (`profile.json` + `templates/` with prompts, sensed `env` facts, `seed` /
-`transient` / `links`) and the full trust model live in
-[`docs/architecture/profiles.md`](docs/architecture/profiles.md) — and `profile init` writes
-a skeleton whose README documents every field.
 
 ## License
 
