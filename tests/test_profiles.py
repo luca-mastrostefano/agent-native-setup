@@ -1577,6 +1577,134 @@ def test_profile_validate_flags_a_seed_entry_with_no_file(tmp_path: Path) -> Non
     assert cli.main(["profile", "validate", str(prof.root)]) == 1
 
 
+def test_validate_warns_but_passes_when_a_gate_runs_a_tool_with_no_manifest(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # The tolaria-setup blocker: a pre-commit hook runs `pnpm lint` but the profile ships no
+    # package.json, so a fresh scaffold can't reach a passing commit. Advisory — exit stays 0.
+    prof = _make_profile(
+        tmp_path, "team", {".husky/pre-commit": "pnpm lint\n", ".gitignore": "node_modules/\n"}
+    )
+    assert cli.main(["profile", "validate", str(prof.root)]) == 0
+    out = capsys.readouterr().out
+    # `hand-authors` is unique to the L3 warning (package.json also appears in the safety line
+    # because it's an execution sink, so match the warning-only token instead).
+    assert "⚠" in out and "hand-authors" in out
+
+
+def test_validate_no_manifest_warning_once_the_manifest_ships(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    prof = _make_profile(
+        tmp_path,
+        "team",
+        {".husky/pre-commit": "pnpm lint\n", "package.json": "{}\n", ".gitignore": "x\n"},
+    )
+    assert cli.main(["profile", "validate", str(prof.root)]) == 0
+    assert "⚠" not in capsys.readouterr().out  # manifest + .gitignore shipped → no footgun
+
+
+def test_validate_no_manifest_warning_for_a_conditionally_rendered_gate(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # The flagship-baseline pattern: a .j2 gate whose `cargo` steps render only for a Rust
+    # project. The lint scans the *rendered* default output (no Rust → no cargo), not the raw
+    # Jinja source, so a well-designed conditional gate isn't a false positive.
+    prof = _make_profile(
+        tmp_path,
+        "team",
+        {
+            ".github/workflows/quality.yml.j2": (
+                "steps:\n{% if answers.use_rust %}  - run: cargo test\n{% endif %}"
+            ),
+            ".gitignore": "target/\n",
+        },
+        prompts=[{"name": "use_rust", "type": "confirm", "message": "Rust?", "default": False}],
+    )
+    assert cli.main(["profile", "validate", str(prof.root)]) == 0
+    assert "⚠" not in capsys.readouterr().out  # cargo doesn't render for the default answer
+
+
+def test_validate_l3_catches_a_run_step_command_with_no_manifest(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # `- run: cargo test` in a workflow is a real command (unwrapped from `run:`, first word
+    # `cargo`) — flagged when no Cargo.toml ships.
+    prof = _make_profile(
+        tmp_path,
+        "team",
+        {".github/workflows/ci.yml": "steps:\n  - run: cargo test\n", ".gitignore": "x\n"},
+    )
+    assert cli.main(["profile", "validate", str(prof.root)]) == 0
+    out = capsys.readouterr().out
+    assert "⚠" in out and "hand-authors" in out
+
+
+def test_validate_no_l3_warning_on_tool_names_in_prose(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # Runner tokens inside a step `name:`, an `echo`, or a `#` comment are not commands — the lint
+    # matches only the first word of a command, so none of these false-positive (review finding).
+    prof = _make_profile(
+        tmp_path,
+        "team",
+        {
+            ".github/workflows/ci.yml": (
+                "steps:\n"
+                "  - name: Run the quality task now\n"
+                "  - run: echo remember to install pnpm and uv\n"
+                "  # cargo is not used here\n"
+            ),
+            ".gitignore": "x\n",
+        },
+    )
+    assert cli.main(["profile", "validate", str(prof.root)]) == 0
+    assert "⚠" not in capsys.readouterr().out
+
+
+def test_validate_never_crashes_on_a_raising_empty_files_when(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # A when-clause over an undeclared answer *raises* at eval (not falsy). The advisory pass must
+    # degrade to no warnings, never propagate a nonzero exit out of validate (review High finding).
+    prof = _make_profile(tmp_path, "team", {"docs/x.md": "hi\n"})
+    data = json.loads((prof.root / "profile.json").read_text(encoding="utf-8"))
+    data["empty_files"] = {"docs/rfc/active/.gitkeep": "answers.nonexistent > 3"}
+    (prof.root / "profile.json").write_text(json.dumps(data), encoding="utf-8")
+    assert cli.main(["profile", "validate", str(prof.root)]) == 0  # no traceback, clean exit
+
+
+def test_validate_warns_on_a_shipped_local_secret_file(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # A tracked settings.local.json commits the adopter's own approvals (feedback #6).
+    prof = _make_profile(tmp_path, "team", {".claude/settings.local.json": "{}\n"})
+    assert cli.main(["profile", "validate", str(prof.root)]) == 0
+    out = capsys.readouterr().out
+    assert "⚠" in out and "per-machine/secret" in out  # warning-only phrase
+
+
+def test_validate_warns_on_hooks_without_a_gitignore(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # Ships a gate but no .gitignore → a fresh `git add -A` stages deps/secrets (feedback #5).
+    prof = _make_profile(tmp_path, "team", {".husky/pre-commit": "echo hi\n"})
+    assert cli.main(["profile", "validate", str(prof.root)]) == 0
+    out = capsys.readouterr().out
+    assert "⚠" in out and ".gitignore" in out  # .gitignore appears only in the L2 warning here
+
+
+def test_validate_is_quiet_for_a_clean_profile(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # A docs-only profile trips none of the footgun lints — no ⚠, and .env.example is not secret.
+    prof = _make_profile(
+        tmp_path, "team", {"docs/x.md.j2": "hi {{ project_name }}\n", ".env.example": "TOKEN=\n"}
+    )
+    assert cli.main(["profile", "validate", str(prof.root)]) == 0
+    assert "⚠" not in capsys.readouterr().out
+
+
 def test_profile_list_reports_user_dir(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
