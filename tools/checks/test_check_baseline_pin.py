@@ -1,4 +1,4 @@
-"""Offline tests for check_baseline_pin: the vendored-copy/pin agreement logic."""
+"""Offline tests for check_baseline_pin: the fixture/pin agreement logic."""
 
 from __future__ import annotations
 
@@ -12,33 +12,38 @@ from pathlib import Path
 import check_baseline_pin
 
 
-def _write_profile(root: Path, *, version: str = "1.2.3") -> Path:
+def _write_profile(
+    root: Path, *, version: str = "1.2.3", transient: list[str] | None = None
+) -> Path:
     d = root / "prof"
     (d / "templates" / "docs").mkdir(parents=True)
     (d / "templates" / "docs" / "note.md").write_text("hi\n", encoding="utf-8")
-    (d / "profile.json").write_text(
-        json.dumps({"name": "base", "version": version, "description": "d"}),
-        encoding="utf-8",
-    )
+    manifest = {"name": "base", "version": version, "description": "d"}
+    if transient is not None:
+        manifest["transient"] = transient
+    (d / "profile.json").write_text(json.dumps(manifest), encoding="utf-8")
     return d
 
 
 def _write_pin(
-    root: Path, *, tag: str = "v1.2.3", content_hash: str, url: str | None = None
+    root: Path,
+    *,
+    tag: str = "v1.2.3",
+    content_hash: str,
+    url: str | None = None,
+    transient: list[str] | None = None,
 ) -> Path:
     p = root / "pin.json"
-    p.write_text(
-        json.dumps(
-            {
-                "name": "base",
-                "repo": "https://example.invalid/base",
-                "url": url or f"git+https://example.invalid/base.git@{tag}",
-                "tag": tag,
-                "content_hash": content_hash,
-            }
-        ),
-        encoding="utf-8",
-    )
+    pin: dict = {
+        "name": "base",
+        "repo": "https://example.invalid/base",
+        "url": url or f"git+https://example.invalid/base.git@{tag}",
+        "tag": tag,
+        "content_hash": content_hash,
+    }
+    if transient is not None:
+        pin["transient"] = transient
+    p.write_text(json.dumps(pin), encoding="utf-8")
     return p
 
 
@@ -46,16 +51,16 @@ class CheckBaselinePinTest(unittest.TestCase):
     def setUp(self) -> None:
         self.tmp = Path(tempfile.mkdtemp())
         self.addCleanup(shutil.rmtree, self.tmp, ignore_errors=True)
-        self._old = (check_baseline_pin.PIN_PATH, check_baseline_pin.VENDORED)
+        self._old = (check_baseline_pin.PIN_PATH, check_baseline_pin.FIXTURE)
         self.addCleanup(self._restore)
-        self.vendored = _write_profile(self.tmp)
+        self.fixture = _write_profile(self.tmp)
         from agent_native_setup import profiles
 
-        self.hash = profiles.content_hash(profiles.load(self.vendored))
-        check_baseline_pin.VENDORED = self.vendored
+        self.hash = profiles.content_hash(profiles.load(self.fixture))
+        check_baseline_pin.FIXTURE = self.fixture
 
     def _restore(self) -> None:
-        check_baseline_pin.PIN_PATH, check_baseline_pin.VENDORED = self._old
+        check_baseline_pin.PIN_PATH, check_baseline_pin.FIXTURE = self._old
 
     def test_matching_pin_passes_offline(self) -> None:
         check_baseline_pin.PIN_PATH = _write_pin(self.tmp, content_hash=self.hash)
@@ -73,6 +78,23 @@ class CheckBaselinePinTest(unittest.TestCase):
         for url in ("git+ssh://example.invalid/base.git@v1.2.3", "git+https://x.git@v0.0.0"):
             check_baseline_pin.PIN_PATH = _write_pin(self.tmp, content_hash=self.hash, url=url)
             self.assertEqual(check_baseline_pin.main(["--offline"]), 1)
+
+    def test_transient_out_of_sync_fails(self) -> None:
+        # The baseline declares a transient set; the pin's duplicate of it must match, or
+        # `profile save` would snapshot a self-deleting first-run file (RFC 2026-07-08 §4).
+        from agent_native_setup import profiles
+
+        sub = self.tmp / "with_transient"
+        sub.mkdir()
+        check_baseline_pin.FIXTURE = _write_profile(sub, transient=["ONBOARDING.md"])
+        h = profiles.content_hash(profiles.load(check_baseline_pin.FIXTURE))
+        check_baseline_pin.PIN_PATH = _write_pin(self.tmp, content_hash=h, transient=["stale.md"])
+        self.assertEqual(check_baseline_pin.main(["--offline"]), 1)
+        # Same bytes, matching transient list → passes.
+        check_baseline_pin.PIN_PATH = _write_pin(
+            self.tmp, content_hash=h, transient=["ONBOARDING.md"]
+        )
+        self.assertEqual(check_baseline_pin.main(["--offline"]), 0)
 
 
 class _FakeProfiles:

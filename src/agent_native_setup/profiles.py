@@ -59,9 +59,10 @@ STATS_URL = (
     "contributions/stats.json"
 )
 STATS_ENV = "AGENT_NATIVE_SETUP_STATS_URL"
-# The engine's built-in scaffold (RFC 2026-07-05 §5): the vendored flagship profile. The
-# `builtin:` source scheme resolves to the wheel's embedded copy (or the repo checkout in
-# development), is trusted like any local artifact, and re-resolves identically at update.
+# The engine's built-in scaffold (RFC 2026-07-05 §5, fetched-by-pin per RFC 2026-07-08): the
+# flagship profile. The `builtin:` source scheme resolves by fetching the pinned URL and
+# verifying it against baseline-pin.json's hash, is trusted on that verification (not local
+# bytes), and re-resolves identically at update.
 # Release-asset transport (RFC 2026-07-07-profile-releases-and-stats): a pinned GitHub tag
 # is fetched as this release asset first (one HTTPS GET, publicly countable downloads),
 # falling back to clone. The name+URL scheme is a compatibility contract once shipped.
@@ -564,19 +565,55 @@ def _fetch_git(spec: str, console: Any, *, transport: str = "auto") -> Path:
     return root
 
 
-def builtin_baseline_root() -> Path:
-    """The vendored flagship's directory: the wheel's package-data copy, else (editable
-    install / dev checkout) the repo's ``profiles/agent-native-baseline``."""
-    packaged = Path(__file__).resolve().parent / "_baseline"
-    if (packaged / PROFILE_MANIFEST).is_file():
+BASELINE_PIN_NAME = "baseline-pin.json"
+
+
+def _baseline_pin_path() -> Path:
+    """The pin's location: shipped beside the package (wheel), else the repo checkout's
+    ``profiles/baseline-pin.json`` (editable install / dev)."""
+    packaged = Path(__file__).resolve().parent / BASELINE_PIN_NAME
+    if packaged.is_file():
         return packaged
-    checkout = Path(__file__).resolve().parents[2] / "profiles" / BASELINE_NAME
-    if (checkout / PROFILE_MANIFEST).is_file():
+    checkout = Path(__file__).resolve().parents[2] / "profiles" / BASELINE_PIN_NAME
+    if checkout.is_file():
         return checkout
-    raise ProfileError(
-        "the vendored baseline profile is missing — broken install "
-        "(neither the wheel's _baseline nor a repo checkout was found)"
-    )
+    raise ProfileError(f"the baseline pin ({BASELINE_PIN_NAME}) is missing — broken install")
+
+
+def load_baseline_pin() -> dict[str, Any]:
+    """The pinned-flagship record: ``{name, repo, url (git+…@tag), tag, content_hash,
+    transient}``. The single source the engine uses to fetch and verify the builtin."""
+    return json.loads(_baseline_pin_path().read_text(encoding="utf-8"))
+
+
+def builtin_baseline_root(console: Any = None) -> Path:
+    """Fetch the pinned flagship baseline and verify its bytes against the pin's
+    ``content_hash`` (RFC 2026-07-08). The engine no longer vendors the baseline; it resolves
+    ``builtin:`` by fetching the hardcoded pinned URL. The pinned tag caches forever, so only
+    the **first** ``builtin:`` resolution on a machine needs the network; later runs (and a
+    transient failure) reuse the cache. The hash check runs on *every* resolution — cache hits
+    included — so no unverified bytes ever reach a consent-free default run; a mismatch or a
+    cold-cache fetch failure is a loud error, never a silent fallthrough."""
+    pin = load_baseline_pin()
+    try:
+        root = _fetch_git(pin["url"], console or _NullConsole())
+    except ProfileError as exc:
+        # Only relabel the network-class failure with the first-run hint; an integrity error
+        # (hostile release asset, missing manifest) is a real signal and must surface verbatim.
+        if not str(exc).startswith("failed to fetch"):
+            raise
+        raise ProfileError(
+            "couldn't fetch the builtin baseline profile — the first run on a machine needs "
+            f"network access to GitHub (it caches forever after). Underlying error: {exc}"
+        ) from None
+    actual = content_hash(load(root, source=BUILTIN_SCHEME + BASELINE_NAME))
+    if actual != pin["content_hash"]:
+        raise ProfileError(
+            f"builtin baseline hash mismatch: fetched {actual[:12]}… != pinned "
+            f"{pin['content_hash'][:12]}… — refusing to scaffold unverified bytes "
+            "(supply-chain tripwire)"
+        )
+    return root
 
 
 def resolve(name_or_path: str, *, console: Any = None) -> Profile | None:
@@ -593,7 +630,7 @@ def resolve(name_or_path: str, *, console: Any = None) -> Profile | None:
         name = name_or_path[len(BUILTIN_SCHEME) :]
         if name != BASELINE_NAME:
             raise ProfileError(f"unknown builtin profile {name!r} — only {BASELINE_NAME!r} ships")
-        return load(builtin_baseline_root(), source=name_or_path)
+        return load(builtin_baseline_root(console), source=name_or_path)
     if name_or_path.startswith("git+"):
         return load(_fetch_git(name_or_path, console or _NullConsole()), source=name_or_path)
     candidate = Path(name_or_path).expanduser()
@@ -2030,8 +2067,9 @@ def _save(args: argparse.Namespace, console: Any) -> int:
 
     # User-added files, only where the scaffold owns the directory (else it's their source).
     # The transient first-run apparatus (never recorded, self-deleting) is the baseline's own
-    # `transient` declaration — sourced from the vendored copy, not hardcoded.
-    transient = set(load(builtin_baseline_root()).transient)
+    # `transient` declaration — read from the pin (RFC 2026-07-08), so snapshotting a project
+    # never triggers a baseline fetch (a project-local, offline-feeling operation).
+    transient = set(load_baseline_pin().get("transient", []))
     added_elsewhere: list[str] = []
     for pf in sorted(project.rglob("*")):
         if not pf.is_file() or pf.is_symlink():

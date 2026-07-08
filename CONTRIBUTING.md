@@ -32,7 +32,7 @@ the `quality` and `checks` status checks green (squash-merged — linear history
 
 Append one `Language` entry to `src/agent_native_setup/languages.py` (detection markers,
 linters, configs), then rebuild the flagship's templates:
-`python profiles/agent-native-baseline/build.py` — the parity gate
+`python tests/fixtures/agent-native-baseline/build.py` — the parity gate
 (`tests/test_flagship_parity.py`) verifies the result.
 
 ## Contributing a profile

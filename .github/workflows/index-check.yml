@@ -23,6 +23,6 @@ jobs:
           python-version: "3.12"
       - run: python -m pip install -e .
       - run: python tools/checks/check_index.py
-      # The vendored flagship must be exactly the pinned tag of its own repo (RFC 2026-07-05
-      # §5, stage B3) — same network-trust category as the index rot check above.
+      # The pinned tag of the flagship's own repo must still hash to what the engine ships in
+      # baseline-pin.json (RFC 2026-07-08) — same network-trust category as the index rot check.
       - run: python tools/checks/check_baseline_pin.py

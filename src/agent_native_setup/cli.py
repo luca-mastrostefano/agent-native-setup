@@ -577,7 +577,7 @@ def _intro(profile: profiles.Profile | None = None) -> None:
 
 def config_to_answers(config: WizardConfig) -> dict[str, object]:
     """The config -> flagship-answers translation (RFC 2026-07-05 §7-C): every wizard choice
-    maps onto a prompt of the vendored baseline, so the flags and interactive questions keep
+    maps onto a prompt of the baseline, so the flags and interactive questions keep
     working unchanged while scaffolding flows through the profile pipeline. This same table
     becomes the stage-C manifest migration."""
     return {
@@ -608,9 +608,9 @@ def main(argv: list[str] | None = None) -> int:
     # resolve() so the default project name works for `-o .` (Path(".").name is "").
     out = Path(args.output).expanduser().resolve()
     interactive = not args.yes and sys.stdin.isatty()
-    # The flip (RFC 2026-07-05 §7-B): with no --profile, the engine scaffolds the vendored
-    # flagship through the one profile pipeline — the wizard's flags/questions are unchanged
-    # and translate onto its prompts, so the output is byte-identical (the stage-A gate).
+    # The flip (RFC 2026-07-05 §7-B): with no --profile, the engine scaffolds the flagship
+    # (fetched by pin, RFC 2026-07-08) through the one profile pipeline — the wizard's
+    # flags/questions are unchanged and translate onto its prompts (byte-identical, stage-A gate).
     # Resolved before anything prints: the intro pitches the *selected* profile, and a bad
     # reference fails here instead of after the questions.
     baseline_run = not args.profile

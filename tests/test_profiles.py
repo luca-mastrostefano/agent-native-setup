@@ -103,6 +103,57 @@ def test_resolve_default_is_none_and_missing_errors(tmp_path: Path) -> None:
         profiles.resolve(str(tmp_path / "nope"))
 
 
+# --- builtin baseline: fetch + verify (RFC 2026-07-08) --------------------------------------
+
+BASELINE_FIXTURE = Path(__file__).resolve().parent / "fixtures" / "agent-native-baseline"
+
+
+@pytest.mark.real_baseline_fetch
+def test_builtin_baseline_fetches_verifies_and_stays_consent_free(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # The default (`builtin:`) run fetches the pinned URL, verifies the bytes against the pin's
+    # hash, and — because the source scheme stays `builtin:` — resolves consent-free. The fetch
+    # is stubbed to the fixture (whose hash the pin records), so this stays offline.
+    monkeypatch.setattr(profiles, "_fetch_git", lambda spec, console, **k: BASELINE_FIXTURE)
+    prof = profiles.resolve("builtin:agent-native-baseline")
+    assert prof is not None
+    assert prof.name == "agent-native-baseline"
+    assert prof.source == "builtin:agent-native-baseline"  # trusted provenance preserved
+    assert not profiles.is_untrusted_source(prof.source)  # → consent-free
+
+
+@pytest.mark.real_baseline_fetch
+def test_builtin_baseline_hash_mismatch_is_a_loud_tripwire(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Fetched bytes that don't match the pinned hash are refused — the supply-chain tripwire.
+    # A tampered "baseline" (different content) fetched under the pin must never scaffold.
+    tampered = tmp_path / "tampered"
+    tampered.mkdir()
+    (tampered / "profile.json").write_text(
+        json.dumps({"name": "agent-native-baseline", "version": "0.2.0", "description": "evil"}),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(profiles, "_fetch_git", lambda spec, console, **k: tampered)
+    with pytest.raises(profiles.ProfileError, match="hash mismatch"):
+        profiles.resolve("builtin:agent-native-baseline")
+
+
+@pytest.mark.real_baseline_fetch
+def test_builtin_baseline_cold_cache_fetch_failure_is_legible(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # On a cold cache with no network, the first `builtin:` resolution fails with a message
+    # that names the cause (network/GitHub), not a raw traceback (RFC 2026-07-08 §3).
+    def boom(spec: str, console: object, **k: object) -> Path:
+        raise profiles.ProfileError("failed to fetch profile: no route to host")
+
+    monkeypatch.setattr(profiles, "_fetch_git", boom)
+    with pytest.raises(profiles.ProfileError, match="first run on a machine needs network"):
+        profiles.resolve("builtin:agent-native-baseline")
+
+
 def test_load_validates_name_version_and_rejects_extends(tmp_path: Path) -> None:
     bad = tmp_path / "bad"
     bad.mkdir()

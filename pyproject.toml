@@ -28,12 +28,11 @@ source = "vcs"
 [tool.hatch.build.targets.wheel]
 packages = ["src/agent_native_setup"]
 
-# Vendor the flagship profile (RFC 2026-07-05 §5): the wheel ships the exact artifact the
-# engine scaffolds by default — installing the tool is consenting to it. Once the flagship
-# moves to its own repo, this becomes a release-time pin-and-embed.
+# Ship the baseline pin, not the baseline (RFC 2026-07-08): the engine resolves `builtin:` by
+# fetching the pinned flagship URL and verifying its bytes against this file's content hash, so
+# the wheel carries the pin — the tag + hash it was released against — not the flagship's bytes.
 [tool.hatch.build.targets.wheel.force-include]
-"profiles/agent-native-baseline/profile.json" = "agent_native_setup/_baseline/profile.json"
-"profiles/agent-native-baseline/templates" = "agent_native_setup/_baseline/templates"
+"profiles/baseline-pin.json" = "agent_native_setup/baseline-pin.json"
 
 [tool.ruff]
 line-length = 100
@@ -51,3 +50,8 @@ select = ["E", "F", "I", "W", "B", "RUF"]
 # Scope pytest to tests/; the stdlib-unittest suite under tools/checks/ is run by
 # `python -m unittest discover` (the same runner we ship) from the `test` task.
 testpaths = ["tests"]
+markers = [
+    # Opt out of the conftest fixture that points `builtin:` at the local baseline fixture —
+    # for the few tests that exercise the real fetch/verify path (RFC 2026-07-08).
+    "real_baseline_fetch: don't stub builtin_baseline_root; test the real fetch+verify",
+]
