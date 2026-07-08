@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 from datetime import date
 from pathlib import Path
 
@@ -63,6 +64,18 @@ def test_save_snapshots_the_complete_setup(tmp_path: Path) -> None:
     # Provenance: the snapshot says what it was derived from.
     assert "agent-native-baseline" in prof.description
     assert "agent-native-baseline" in (tmp_path / "out/house/README.md").read_text(encoding="utf-8")
+
+
+def test_save_writes_meta_contracts_linking_to_the_manager(tmp_path: Path) -> None:
+    # The saved profile repo carries a root AGENTS.md that names it as a profile and links back
+    # to the manager, with CLAUDE.md/GEMINI.md symlinked to it — meta, never under templates/.
+    proj = _scaffold(tmp_path / "proj")
+    assert _save(proj, "house", tmp_path / "out") == 0
+    out = tmp_path / "out" / "house"
+    agents = (out / "AGENTS.md").read_text(encoding="utf-8")
+    assert "luca-mastrostefano/agent-native-setup" in agents
+    for pointer in ("CLAUDE.md", "GEMINI.md"):
+        assert (out / pointer).is_symlink() and os.readlink(out / pointer) == "AGENTS.md"
 
 
 def test_save_parameterizes_the_project_name(tmp_path: Path) -> None:

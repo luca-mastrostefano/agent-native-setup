@@ -73,8 +73,14 @@ adopters' repos before proceeding.
   commands. Every "the repo has X" claim in the shipped contract must be true in a fresh
   scaffold or guarded until made true.
 - Meta files at the profile root (never shipped): README.md with attribution, what's
-  reusable vs adapted and why, an adopter checklist (external services, secrets to map);
-  AGENTS.md for maintaining the profile; LICENSE per step 2. If the source's recommended
+  reusable vs adapted and why, an adopter checklist (external services, secrets to map); a
+  root **AGENTS.md** that names the repo as an agent-native-setup profile, links back to the
+  manager (`https://github.com/luca-mastrostefano/agent-native-setup`), and carries the notes
+  useful for building/maintaining *this* profile — including how to re-validate, re-publish, and
+  ship an updated version (`profile validate` → bump `version` → tag → `profile publish
+  --release`; adopters pull it with `agent-native-setup update`); **CLAUDE.md** and **GEMINI.md** as symlinks
+  to that AGENTS.md so every assistant reads the same guide (`profile init` / `profile save`
+  write exactly these three — mirror them); LICENSE per step 2. If the source's recommended
   install is user-level (e.g. a plugin available across all projects), state plainly that
   the profile reproduces the per-project experience only.
 

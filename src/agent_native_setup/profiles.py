@@ -1025,14 +1025,21 @@ confirmation. For `update` to pull your changes, the profile must still be resol
 Add your files under `templates/`, then point `--profile` at this directory.
 """
 
+# The main profile manager — this engine's canonical home. A generated profile repo links back
+# to it so an assistant (or human) landing in the profile knows what builds and consumes it.
+_MANAGER_URL = "https://github.com/luca-mastrostefano/agent-native-setup"
+
 _SKELETON_AGENTS = """\
 # Building the {name} profile — agent contract
 
-You're helping build an **agent-native-setup profile** in this directory. A profile is just two
-things: `profile.json` (its config) and `templates/` (the files it ships into scaffolded
-projects). **Everything else here — including this file — is ignored by the profile**; it's
-scratch/harness for building it, so keep your notes, specs, and working files at the root, not
-under `templates/`. See [`README.md`](./README.md) for the full field reference.
+This repo is a **profile** for [**agent-native-setup**]({manager}) — the wizard that scaffolds,
+installs, and updates these profiles into other projects. You're helping build that profile here.
+A profile is just two things: `profile.json` (its config) and `templates/` (the files it ships
+into scaffolded projects). **Everything else here — including this file — is ignored by the
+profile**; it's scratch/harness for building it, so keep your notes, specs, and working files at
+the root, not under `templates/`. (`CLAUDE.md` and `GEMINI.md` are symlinks to this file, so
+every assistant reads the same guide.) See [`README.md`](./README.md) for the full field
+reference.
 
 ## Rules
 
@@ -1079,16 +1086,24 @@ under `templates/`. See [`README.md`](./README.md) for the full field reference.
 - Reset earned state: quality-ratchet thresholds restart at an attainable floor; dated
   artifacts use `@DATE@` in template paths (becomes the scaffold date, stable across updates).
 
-## Verify, then ship
+## Verify, ship, and maintain
 
-1. `agent-native-setup profile validate .` — fix every finding (it loads the manifest,
-   strict-renders every template catching typos, and checks `seed`/`transient` entries).
-2. Scaffold a throwaway project with `--profile .` and read the result end to end; scaffold
-   **both paths of every `confirm`** and check the declined path leaves nothing dangling.
-3. Ship: `git init -b main`, commit, tag `v0.1.0`,
+1. **Validate:** `agent-native-setup profile validate .` — fix every finding (it loads the
+   manifest, strict-renders every template catching typos, and checks `seed`/`transient` entries).
+2. **Try it:** scaffold a throwaway project with `--profile .` and read the result end to end;
+   scaffold **both paths of every `confirm`** and check the declined path leaves nothing dangling.
+3. **Ship the first release:** `git init -b main`, commit, tag `v0.1.0`,
    `gh repo create … --public --source=. --push`, then
    `agent-native-setup profile publish . --release` — it attaches the release asset and
    offers to open the community-index listing PR for you.
+4. **Change it later (the loop you'll repeat):** edit → re-run `profile validate .` (and
+   re-scaffold to eyeball the result) → bump `version` in `profile.json` (a breaking bump makes
+   adopters' `update` pause; see [`README.md`](./README.md) for the versioning rules) → commit →
+   `git tag v<version>` → `git push --follow-tags` → `agent-native-setup profile publish .
+   --release` again — it refreshes your community-index entry in place, re-pinning both the
+   tag and the `content_hash` of the new bytes (so a template change that isn't re-published
+   would fail adopters' install-time verification against the stale hash). Adopters pull the
+   new version by running `agent-native-setup update` in their own projects.
 """
 
 # The contract stub `profile init` ships under templates/, declared as `agents_contract` so
@@ -1108,6 +1123,22 @@ _SKELETON_SHIPPED_AGENTS = """\
 
 TODO: the rules, commands, and conventions an agent needs to work in this project.
 """
+
+
+def _write_meta_contracts(root: Path, name: str) -> None:
+    """Write the profile's root (meta) agent contract and the CLAUDE.md / GEMINI.md pointers to it.
+
+    These live at the profile root — *not* under ``templates/`` — so they guide an assistant
+    *building* the profile (identifying the repo as an agent-native-setup profile and linking to
+    the manager) and never ship into a scaffolded project. CLAUDE.md and GEMINI.md are symlinks to
+    AGENTS.md (this engine's own convention) so Claude and Gemini read the same guide."""
+    (root / "AGENTS.md").write_text(
+        _SKELETON_AGENTS.format(name=name, manager=_MANAGER_URL), encoding="utf-8"
+    )
+    for pointer in ("CLAUDE.md", "GEMINI.md"):
+        # root is always freshly created (both callers refuse a pre-existing dir), so the
+        # pointer can't pre-exist — a bare relative symlink suffices.
+        (root / pointer).symlink_to("AGENTS.md")
 
 
 def _init(args: argparse.Namespace, console: Any) -> int:
@@ -1147,7 +1178,8 @@ def _init(args: argparse.Namespace, console: Any) -> int:
     )
     # An agent contract for *building* the profile: it lives at the profile root (not under
     # templates/), so it's meta — never shipped — and lets an assistant help author the profile.
-    (root / "AGENTS.md").write_text(_SKELETON_AGENTS.format(name=args.name), encoding="utf-8")
+    # CLAUDE.md/GEMINI.md point every assistant at it.
+    _write_meta_contracts(root, args.name)
     console.print(f"[green]Created profile[/] {root}")
     console.print(
         f"  Add files under [bold]{args.name}/templates/[/], validate with "
@@ -2184,7 +2216,7 @@ def _save(args: argparse.Namespace, console: Any) -> int:
         ),
         encoding="utf-8",
     )
-    (out / "AGENTS.md").write_text(_SKELETON_AGENTS.format(name=args.name), encoding="utf-8")
+    _write_meta_contracts(out, args.name)
 
     console.print(f"[green]Saved profile[/] {out} — a snapshot of {len(captured)} file(s).")
     if seed_list:

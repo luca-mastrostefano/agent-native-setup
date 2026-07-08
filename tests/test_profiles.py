@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import shutil
 import subprocess
 from pathlib import Path
@@ -1452,6 +1453,13 @@ def test_profile_init_scaffolds_a_skeleton(tmp_path: Path) -> None:
     assert (root / "templates").is_dir() and (root / "README.md").exists()
     # An agent contract for *building* the profile ships at the root (meta, never shipped).
     assert (root / "AGENTS.md").exists() and not (root / "templates" / "AGENTS.md").exists()
+    # It names the repo as a profile and links back to the manager, and CLAUDE.md/GEMINI.md are
+    # symlinks to it so every assistant reads the same guide.
+    assert "luca-mastrostefano/agent-native-setup" in (root / "AGENTS.md").read_text("utf-8")
+    for pointer in ("CLAUDE.md", "GEMINI.md"):
+        assert (root / pointer).is_symlink()
+        assert os.readlink(root / pointer) == "AGENTS.md"
+        assert (root / pointer).read_text("utf-8") == (root / "AGENTS.md").read_text("utf-8")
     # The contract teaches what an authoring assistant can't guess: the template context the
     # manager injects, the prompts mechanism (questions -> answers.<name> -> conditional
     # files), and the verify/ship tail.
