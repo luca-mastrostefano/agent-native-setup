@@ -1470,6 +1470,10 @@ def test_profile_init_scaffolds_a_skeleton(tmp_path: Path) -> None:
         '"when": "answers.use_x"',
         "empty is skipped",
         "profile publish . --release",
+        # The git-tracking pitfall: only committed files ship, and a stray working-tree file
+        # poisons the published content_hash — guidance that prevents both real failure modes.
+        "Only git-tracked files ship",
+        "git status --porcelain templates/",
     ):
         assert hook in agents, f"authoring contract lost its guidance hook: {hook!r}"
     # It's immediately loadable as a (empty) profile.

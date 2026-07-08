@@ -1067,6 +1067,16 @@ reference.
 - **A profile ships the complete setup** — a scaffolded project gets *only* its files, so ship
   the project's own `AGENTS.md` under `templates/AGENTS.md` (distinct from *this* file). To
   build on an existing profile (e.g. the flagship baseline), fork its repo instead.
+- **Only git-tracked files ship.** The published tag and release asset are built from your
+  **committed** tree — a file under `templates/` that git *ignores* (`.claude/settings.local.json`,
+  `__pycache__/`, `.DS_Store`) sits in your working copy but **never reaches an adopter**, even
+  though a local `--profile .` scaffold *does* copy it (that reads your disk, not git). So a
+  contract that promises a pre-approved `settings.local.json` silently under-delivers. If a
+  normally-ignored file *must* ship, `git add -f` it (or rename it out of the ignore) and confirm
+  `git ls-files templates/` lists it. Every "the profile ships X" claim must survive a fresh clone.
+  A `.gitignore` at the profile root can keep junk (`__pycache__/`, `.DS_Store`) out of your tree,
+  but scope it **narrowly**: `templates/` is content to ship, so a pattern that reaches into it is
+  exactly how a must-ship file gets silently dropped — `git ls-files templates/` stays the truth.
 - **Keep `agents_contract` set** (this skeleton pre-fills it to `"AGENTS.md"`, with a stub at
   `templates/AGENTS.md`). It makes the engine point every assistant at your contract, so your
   profile works with Claude, Cursor, Copilot, and Gemini from one file — and stays `safe`.
@@ -1092,8 +1102,10 @@ reference.
    manifest, strict-renders every template catching typos, and checks `seed`/`transient` entries).
 2. **Try it:** scaffold a throwaway project with `--profile .` and read the result end to end;
    scaffold **both paths of every `confirm`** and check the declined path leaves nothing dangling.
-3. **Ship the first release:** `git init -b main`, commit, tag `v0.1.0`,
-   `gh repo create … --public --source=. --push`, then
+3. **Ship the first release:** `git init -b main`, commit **everything you mean to ship**
+   (`git status --porcelain templates/` should be empty — `publish` hashes your *working tree*,
+   so a stray untracked/ignored file poisons the emitted `content_hash` and adopters' verification
+   fails against the clean tag), tag `v0.1.0`, `gh repo create … --public --source=. --push`, then
    `agent-native-setup profile publish . --release` — it attaches the release asset and
    offers to open the community-index listing PR for you.
 4. **Change it later (the loop you'll repeat):** edit → re-run `profile validate .` (and
