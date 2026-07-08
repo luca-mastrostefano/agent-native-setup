@@ -27,7 +27,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from agent_native_setup.config import WizardConfig
+from agent_native_setup.config import AI_TOOLS, WizardConfig
 from agent_native_setup.scaffold import (
     Scaffolder,
     compile_expr,
@@ -72,6 +72,21 @@ _ASSET_MAX_MEMBERS = 2_000  # member-count cap (bombs)
 BUILTIN_SCHEME = "builtin:"
 BASELINE_NAME = "agent-native-baseline"
 PROMPT_TYPES = ("text", "select", "confirm", "checkbox")
+# The engine-owned tool-pointer matrix (RFC 2026-07-07-agents-contract §2): the root-level
+# file each assistant reads its contract from. Claude Code reads CLAUDE.md, Gemini CLI reads
+# GEMINI.md; Cursor/Copilot (and the growing AGENTS.md standard) read AGENTS.md natively.
+# A public contract with `env`'s add-only discipline: adding a pointer is an engine release,
+# renaming or removing one is a breaking change.
+AGENT_POINTERS = ("AGENTS.md", "CLAUDE.md", "GEMINI.md")
+# Config surfaces per assistant, for DERIVED tool targeting on standalone-profile runs (RFC
+# 2026-07-07-agents-contract §5): a tool is targeted iff the profile ships anything under its
+# surface (plus: a declared contract targets all tools; session_start implies claude).
+_TOOL_SURFACES = {
+    "claude": (".claude/",),
+    "cursor": (".cursor/",),
+    "gemini": (".gemini/",),
+    "copilot": (".github/prompts/", ".github/copilot-instructions.md"),
+}
 
 
 class ProfileError(Exception):
@@ -138,6 +153,10 @@ class Profile:
     # as code-adjacent). ``when`` (None = always) is a Jinja expression over answers/env,
     # mirroring prompts' — so a per-tool link ships only when its tool is targeted.
     links: tuple[tuple[str, str, str | None], ...] = ()
+    # The profile's canonical agent contract (RFC 2026-07-07-agents-contract): a shipped
+    # template path the engine points every assistant at via AGENT_POINTERS — declared
+    # content stays the profile's; which filename each tool reads is engine knowledge.
+    agents_contract: str | None = None
 
     def template_files(self) -> list[tuple[str, Path]]:
         """``(output_rel, source_path)`` for each file under ``templates/``, with a trailing
@@ -151,6 +170,22 @@ class Profile:
                 rel = p.relative_to(base).as_posix()
                 files.append((rel[:-3] if rel.endswith(".j2") else rel, p))
         return files
+
+    def contract_pointers(self) -> tuple[tuple[str, str], ...]:
+        """The ``(link, target)`` pointers the engine creates for a contract-declaring profile,
+        expanded from the *current* engine's AGENT_POINTERS matrix — a deliberate exception to
+        the replay rule (RFC 2026-07-07-agents-contract §2): a grown matrix retrofits on
+        update. A pointer path the profile itself ships a file at, or declares its own
+        ``links`` entry for, is skipped — the author's version wins."""
+        if not self.agents_contract:
+            return ()
+        shipped = {rel for rel, _ in self.template_files()}
+        declared = {link for link, _, _ in self.links}
+        return tuple(
+            (name, self.agents_contract)
+            for name in AGENT_POINTERS
+            if name != self.agents_contract and name not in shipped and name not in declared
+        )
 
     def manifest_block(self) -> dict[str, object]:
         """The provenance block recorded in the project's ``.agent-native-setup.json``."""
@@ -311,7 +346,22 @@ def load(path: Path, *, source: str | None = None) -> Profile:
                 )
         links.append((key, target, when))
 
-    return Profile(
+    contract = data.get("agents_contract")
+    if contract is not None:
+        if not isinstance(contract, str) or not contract:
+            raise ProfileError(f"{manifest_path}: 'agents_contract' must be a path string")
+        if (
+            contract.startswith(("/", "\\"))
+            or ".." in Path(contract).parts
+            or Path(contract).is_absolute()
+            or "@DATE@" in contract
+        ):
+            raise ProfileError(
+                f"{manifest_path}: agents_contract {contract!r} must be a plain "
+                "project-relative path"
+            )
+
+    profile = Profile(
         name=str(name),
         version=str(version),
         description=str(data.get("description", "")),
@@ -325,7 +375,16 @@ def load(path: Path, *, source: str | None = None) -> Profile:
         tags=tuple(_str_list("tags")),
         links=tuple(sorted(links)),
         empty_files=tuple(sorted(empty_files)),
+        agents_contract=contract,
     )
+    # A contract the profile doesn't ship has nothing to point at — reject at load, so a
+    # dangling declaration fails the author, never an adopter mid-scaffold.
+    if contract is not None and contract not in {rel for rel, _ in profile.template_files()}:
+        raise ProfileError(
+            f"{manifest_path}: agents_contract {contract!r} doesn't match any file under "
+            f"{TEMPLATES_DIR}/"
+        )
+    return profile
 
 
 def _parse_git_url(spec: str) -> tuple[str, str, str]:
@@ -628,6 +687,27 @@ def parse_answer_overrides(pairs: list[str], profile: Profile) -> dict[str, Any]
     return overrides
 
 
+def derive_tools(profile: Profile) -> list[str]:
+    """Which assistants a standalone profile targets (RFC 2026-07-07-agents-contract §5),
+    derived from what it **ships** — never asked, so the engine never implies a compatibility
+    it can't keep. A declared ``agents_contract`` targets every tool (a contract is
+    tool-universal by construction); otherwise a tool is targeted iff the profile ships
+    anything under its config surface; declaring ``session_start`` (Claude-only hooks) targets
+    Claude. Returns tools in ``AI_TOOLS`` order for determinism."""
+    if profile.agents_contract:
+        return list(AI_TOOLS)
+    outputs = [rel for rel, _ in profile.template_files()]
+    outputs += [rel for rel, _ in profile.empty_files]
+    outputs += [link for link, _, _ in profile.links]
+    targeted: set[str] = set()
+    for tool, surfaces in _TOOL_SURFACES.items():
+        if any(out == s or out.startswith(s) for out in outputs for s in surfaces):
+            targeted.add(tool)
+    if profile.session_start:
+        targeted.add("claude")
+    return [t for t in AI_TOOLS if t in targeted]
+
+
 def gather_answers(
     profile: Profile,
     config: WizardConfig,
@@ -750,12 +830,20 @@ def apply(
     stamp = applied_on or f"{date.today():%Y-%m-%d}"
     ctx = _context(config, answers, date_stamp=stamp)
     target_root = sc.target.resolve()
+    # The engine-expanded contract pointers (RFC 2026-07-07-agents-contract §2) join the
+    # author's own links: both create per-tool symlinks at the contract, and both fold a
+    # pre-existing real file beneath the rendered contract. Pointers carry no `when` (a
+    # contract is tool-universal) and are computed from the *current* engine's matrix, so a
+    # grown matrix retrofits on update.
+    all_links: tuple[tuple[str, str, str | None], ...] = profile.links + tuple(
+        (link, target, None) for link, target in profile.contract_pointers()
+    )
     # The contract fold (RFC 2026-07-05, engine mechanic decided 2026-07-06): when the
     # profile ships a file AND declares links pointing at it, a pre-existing real file at
     # the target or at a link path is FOLDED beneath the rendered content (never clobbered,
     # never left to block the scaffold) — the generators' AGENTS.md behavior, now engine-side.
     fold_targets: dict[str, list[str]] = {}
-    for link_rel, dest_rel, when in profile.links:
+    for link_rel, dest_rel, when in all_links:
         if when is None or eval_expr(when, **ctx):
             fold_targets.setdefault(dest_rel, []).append(link_rel)
 
@@ -808,7 +896,7 @@ def apply(
             raise ProfileError(f"profile output path escapes the project: {out_rel!r}")
         if sc.overlay(out_rel, "", seed=out_rel in seed_set):
             owned.append(out_rel)
-    for link_rel, dest_rel, when in profile.links:
+    for link_rel, dest_rel, when in all_links:
         if when is not None and not eval_expr(when, **ctx):
             continue  # conditional link — not shipped for these answers/env
         # Confine both ends before creating (same symlinked-parent vector as file outputs).
@@ -839,7 +927,8 @@ agent-native-setup my-app -o ./my-app --profile {source_hint}
 
 ## Layout
 
-- `profile.json` — name, version (your own semver), description, optional `tags` (freeform
+- `profile.json` — name, version (your own semver), description (required — a sentence or
+  two adopters read in the scaffold intro panel and the community index), optional `tags` (freeform
   discovery keywords — who/what it targets, e.g. `backend` / `frontend` / `design` / `general`),
   an optional `seed` list, an optional `transient` list (paths written once and never
   recorded — self-deleting first-run files an update must not resurrect), an optional
@@ -849,7 +938,12 @@ agent-native-setup my-app -o ./my-app --profile {source_hint}
   optional `links` object (`{{"CLAUDE.md": "AGENTS.md"}}`, or
   `{{"CLAUDE.md": {{"target": "AGENTS.md", "when": "..."}}}}` to ship a link conditionally —
   project-confined symlinks the engine creates; `@DATE@` in a template path becomes the
-  scaffold date, stable across updates).
+  scaffold date, stable across updates), and an optional **`agents_contract`** (a shipped
+  path like `"AGENTS.md"`): declare it and the engine points every assistant at your contract
+  (Claude via `CLAUDE.md`, Gemini via `GEMINI.md`; Cursor/Copilot read `AGENTS.md` directly),
+  so your profile works with all of them from one file — and stays `safe` (unlike raw
+  `links`). New assistants are added engine-side and reach your adopters on their next update,
+  no release from you.
 - `templates/` — the files this profile ships. Paths are relative to the project root, so
   `templates/.claude/agents/foo.md` lands at `.claude/agents/foo.md`. A file ending in
   `.j2` is rendered (Jinja) with `project_name`, `slug`, `description`, the
@@ -929,6 +1023,11 @@ under `templates/`. See [`README.md`](./README.md) for the full field reference.
 - **A profile ships the complete setup** — a scaffolded project gets *only* its files, so ship
   the project's own `AGENTS.md` under `templates/AGENTS.md` (distinct from *this* file). To
   build on an existing profile (e.g. the flagship baseline), fork its repo instead.
+- **Keep `agents_contract` set** (this skeleton pre-fills it to `"AGENTS.md"`, with a stub at
+  `templates/AGENTS.md`). It makes the engine point every assistant at your contract, so your
+  profile works with Claude, Cursor, Copilot, and Gemini from one file — and stays `safe`.
+  Fill in the stub; only remove the field if your project genuinely has no single agent
+  contract.
 
 ## Gates and safety
 
@@ -955,6 +1054,24 @@ under `templates/`. See [`README.md`](./README.md) for the full field reference.
    offers to open the community-index listing PR for you.
 """
 
+# The contract stub `profile init` ships under templates/, declared as `agents_contract` so
+# every assistant finds it. Kept minimal — the author fills it in; deleting it (and the
+# `agents_contract` field) is the opt-out.
+_SKELETON_SHIPPED_AGENTS = """\
+# {{ project_name }}
+
+{{ description }}
+
+<!-- This is the project's agent contract — the canonical instructions coding agents and
+     humans read. The profile declares it as `agents_contract`, so the engine points every
+     assistant (Claude via CLAUDE.md, Gemini via GEMINI.md; Cursor/Copilot read this file
+     directly) here. Replace this scaffold with your project's real conventions. -->
+
+## How we work
+
+TODO: the rules, commands, and conventions an agent needs to work in this project.
+"""
+
 
 def _init(args: argparse.Namespace, console: Any) -> int:
     root = Path(args.output).expanduser().resolve() / args.name
@@ -962,7 +1079,11 @@ def _init(args: argparse.Namespace, console: Any) -> int:
         console.print(f"[red]{root} already exists[/] — choose another name or location.")
         return 2
     (root / TEMPLATES_DIR).mkdir(parents=True)
-    (root / TEMPLATES_DIR / ".gitkeep").write_text("", encoding="utf-8")
+    # Ship a contract stub so `agents_contract` resolves out of the box (RFC
+    # 2026-07-07-agents-contract §6): a new author *deletes* multi-tool compatibility
+    # consciously rather than forgetting to add it. The engine points CLAUDE.md/GEMINI.md
+    # at it; Cursor/Copilot read AGENTS.md natively.
+    (root / TEMPLATES_DIR / "AGENTS.md.j2").write_text(_SKELETON_SHIPPED_AGENTS, encoding="utf-8")
     manifest = {
         "name": args.name,
         "version": "0.1.0",
@@ -972,6 +1093,7 @@ def _init(args: argparse.Namespace, console: Any) -> int:
         "onboarding": [],
         "session_start": [],
         "prompts": [],
+        "agents_contract": "AGENTS.md",
     }
     (root / PROFILE_MANIFEST).write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
     (root / "README.md").write_text(
@@ -999,7 +1121,8 @@ def _init(args: argparse.Namespace, console: Any) -> int:
 
 
 def _validate(args: argparse.Namespace, console: Any) -> int:
-    """Author-side check: the profile loads (schema/prompts/when), every ``.j2`` template renders,
+    """Author-side check: the profile loads (schema/prompts/when), carries a non-empty
+    ``description`` (the pitch adopters read at scaffold time), every ``.j2`` template renders,
     and each ``seed`` entry names a file the profile actually ships — so a broken profile is caught
     here, not when a consumer scaffolds with it. Rendering is *strict* (the validation context has
     the same keys as a real scaffold, so an undefined variable can only be a typo that scaffolding
@@ -1011,6 +1134,15 @@ def _validate(args: argparse.Namespace, console: Any) -> int:
         console.print(f"[red]✗ invalid:[/] {exc}")
         return 1
     errors: list[str] = []
+    # Required at validate (not load) so existing scaffolds keep working: adopters read the
+    # description in the scaffold intro panel and the community-index listing, and check-index
+    # runs this same validation on every listed entry.
+    if not prof.description.strip():
+        errors.append(
+            "profile.json: 'description' is empty — write a sentence or two saying what this "
+            "profile sets up and for whom (shown to adopters at scaffold time and in the "
+            "community index)"
+        )
     ctx = _context(
         WizardConfig(project_name="example", output_dir=root, languages=[]),
         default_answers(prof),
@@ -1049,6 +1181,18 @@ def _validate(args: argparse.Namespace, console: Any) -> int:
             f"  [dim]{tier} because:[/] {'; '.join(reasons[:4])}"
             + (" …" if len(reasons) > 4 else "")
         )
+    # Advisory (RFC 2026-07-07-agents-contract §6): a profile shipping an AGENTS.md but no
+    # `agents_contract` and no link to it works for whichever tool reads AGENTS.md and no
+    # other — one line makes it universal.
+    if prof.agents_contract is None and "AGENTS.md" in outputs:
+        pointed_at = {tgt for _, tgt, _ in prof.links}
+        pointer_names = {link for link, _, _ in prof.links}
+        if "AGENTS.md" not in pointed_at and not (set(AGENT_POINTERS) & pointer_names):
+            console.print(
+                '  [yellow]hint:[/] ships AGENTS.md but declares no [bold]"agents_contract": '
+                '"AGENTS.md"[/] — add it and the engine points Claude/Gemini at it too '
+                "(Cursor/Copilot already read AGENTS.md)."
+            )
     return 0
 
 
@@ -1927,6 +2071,22 @@ def _save(args: argparse.Namespace, console: Any) -> int:
         if is_seed:
             seed_list.append(out_rel)
 
+    # The contract pattern (RFC 2026-07-07-agents-contract §6): tool-pointer symlinks
+    # (CLAUDE.md/GEMINI.md) all resolving to one captured file collapse to a single
+    # `agents_contract` — the snapshot stays `safe`, drops the pointers the engine owns, and
+    # inherits future matrix growth. Anything else stays a raw `links` entry.
+    agents_contract: str | None = None
+    pointer_targets = {
+        os.path.normpath(os.path.join(os.path.dirname(rel), tgt)).replace(os.sep, "/"): rel
+        for rel, tgt in links.items()
+        if rel in AGENT_POINTERS
+    }
+    if len(pointer_targets) == 1:
+        contract = next(iter(pointer_targets))
+        if contract in captured:
+            agents_contract = contract
+            links = {rel: tgt for rel, tgt in links.items() if rel not in AGENT_POINTERS}
+
     # Provenance (decided with RFC 2026-07-05 §7-B): the snapshot says what it was derived
     # from in its description + README — human-facing, no new format field.
     base_block = old.get("profile") or {}
@@ -1935,7 +2095,7 @@ def _save(args: argparse.Namespace, console: Any) -> int:
         if base_block.get("name")
         else f"agent-native-setup {old.get('version', '?')}"
     )
-    pj = {
+    pj: dict[str, object] = {
         "name": args.name,
         "version": "0.1.0",
         "description": f"TODO: describe this profile (snapshot of {project.name}, from {derived}).",
@@ -1945,6 +2105,8 @@ def _save(args: argparse.Namespace, console: Any) -> int:
         "session_start": [],
         "prompts": [],
     }
+    if agents_contract:
+        pj["agents_contract"] = agents_contract
     if links:
         pj["links"] = dict(sorted(links.items()))
     (out / PROFILE_MANIFEST).write_text(json.dumps(pj, indent=2) + "\n", encoding="utf-8")
@@ -1968,6 +2130,11 @@ def _save(args: argparse.Namespace, console: Any) -> int:
         console.print(f"  [dim]seed (write-once):[/] {', '.join(sorted(seed_list))}")
     for rel, token, n in subs:
         console.print(f"  [cyan]param[/] {rel}: {n} -> {token}")
+    if agents_contract:
+        console.print(
+            f"  [cyan]agents_contract[/] {agents_contract} "
+            "[dim](engine points every assistant here)[/]"
+        )
     for link, target in sorted(links.items()):
         console.print(f"  [cyan]link[/] {link} -> {target}")
     for step in onboarding_steps:
@@ -2076,6 +2243,12 @@ def _show(args: argparse.Namespace, console: Any) -> int:
     if prof.links:
         shown = ", ".join(f"{a} -> {b}" + (f" (when {w})" if w else "") for a, b, w in prof.links)
         console.print("  links: " + escape(shown))
+    if prof.agents_contract:
+        pointers = ", ".join(f"{link} -> {tgt}" for link, tgt in prof.contract_pointers())
+        console.print(
+            f"  agents_contract: {escape(prof.agents_contract)}"
+            + (f" [dim](pointers: {escape(pointers)})[/]" if pointers else "")
+        )
     return 0
 
 

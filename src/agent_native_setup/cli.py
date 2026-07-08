@@ -258,6 +258,48 @@ def _interactive(
     )
 
 
+def _profile_config(
+    args: argparse.Namespace, out: Path, in_target: set[str], interactive: bool
+) -> WizardConfig:
+    """The shrunken wizard for a **named** profile (RFC 2026-07-07-agents-contract §4): the
+    engine asks only what it owns — project name, description, and (for a fresh repo) git init.
+    The languages/parts/CI/hooks/runner/adoption/banner questions are baseline *content* whose
+    answers a standalone profile discards, so they're not asked; the profile's own ``prompts``
+    are the rest of the wizard. ``ai_tools`` is set by the caller from the profile's shipped
+    content, not here. ``languages`` is the sensed set actually in the target (``in_target``,
+    not the ``--languages`` *choice*, which a named profile never sees), so
+    ``env.existing_project`` senses the same fact regardless of engine flags."""
+    name = args.name
+    description = args.description
+    if interactive:
+        import questionary
+
+        name = (
+            name
+            or questionary.text(
+                "Project name (names the project in the profile's templates):", default=out.name
+            ).unsafe_ask()
+        )
+        description = description or questionary.text("One-line description:").unsafe_ask()
+    git_dir_exists = (out / ".git").exists()
+    if interactive and not git_dir_exists:
+        import questionary
+
+        init_git = questionary.confirm(
+            "Run `git init`? (initialize a git repository here)", default=True
+        ).unsafe_ask()
+    else:
+        init_git = args.git and not git_dir_exists
+    return WizardConfig(
+        project_name=name or out.name,
+        description=description,
+        output_dir=out,
+        languages=sorted(in_target),
+        ai_tools=[],  # caller derives from the profile's shipped surface
+        init_git=bool(init_git),
+    )
+
+
 def _from_flags(args: argparse.Namespace, out: Path, detected: list[str] | None) -> WizardConfig:
     return WizardConfig(
         project_name=args.name or out.name,
@@ -488,15 +530,31 @@ def _dry_run(
     console.print(f"\n[dim]{tail} in[/] {config.target}")
 
 
-def _intro() -> None:
-    body = (
-        "[bold]agent-native-setup[/] scaffolds an [bold]agent-native[/] project setup:\n"
-        "  • a canonical [bold]AGENTS.md[/] contract for coding agents and humans\n"
-        "  • docs + RFCs and a [bold].claude/[/] agents & commands library\n"
-        "  • linters, pre-commit hooks, secret + dependency scanning, and CI\n\n"
-        "[dim]Non-destructive — existing files are never overwritten. "
-        "A few quick questions follow; press Ctrl+C to cancel.[/]"
-    )
+def _intro(profile: profiles.Profile | None = None) -> None:
+    """The "what this will do" panel. A named ``--profile`` brings its own pitch: the body
+    is built from the profile's manifest (name, version, description), so the first thing
+    an adopter reads describes what *they* selected. The default (baseline) run keeps the
+    flagship bullets — richer than the manifest's one-liner."""
+    if profile is None:
+        body = (
+            "[bold]agent-native-setup[/] scaffolds an [bold]agent-native[/] project setup:\n"
+            "  • a canonical [bold]AGENTS.md[/] contract for coding agents and humans\n"
+            "  • docs + RFCs and a [bold].claude/[/] agents & commands library\n"
+            "  • linters, pre-commit hooks, secret + dependency scanning, and CI\n\n"
+            "[dim]Non-destructive — existing files are never overwritten. "
+            "A few quick questions follow; press Ctrl+C to cancel.[/]"
+        )
+    else:
+        from rich.markup import escape  # a fetched manifest must not inject console markup
+
+        desc = " ".join(profile.description.split())
+        body = (
+            f"[bold]agent-native-setup[/] scaffolds the [bold]{escape(profile.name)}[/] "
+            f"profile [dim]v{escape(profile.version)}[/]"
+            + (f":\n  {escape(desc)}" if desc else "")
+            + "\n\n[dim]Non-destructive — existing files are never overwritten. "
+            "A few quick questions follow; press Ctrl+C to cancel.[/]"
+        )
     # Rich panels allow only one title, so span it: the heading on the left and the
     # version on the right, sized to the panel's fit width (6 = the "╭─ " + " ─╮" border
     # decoration). On a terminal too narrow to fit both, fall back to the plain heading.
@@ -550,8 +608,25 @@ def main(argv: list[str] | None = None) -> int:
     # resolve() so the default project name works for `-o .` (Path(".").name is "").
     out = Path(args.output).expanduser().resolve()
     interactive = not args.yes and sys.stdin.isatty()
+    # The flip (RFC 2026-07-05 §7-B): with no --profile, the engine scaffolds the vendored
+    # flagship through the one profile pipeline — the wizard's flags/questions are unchanged
+    # and translate onto its prompts, so the output is byte-identical (the stage-A gate).
+    # Resolved before anything prints: the intro pitches the *selected* profile, and a bad
+    # reference fails here instead of after the questions.
+    baseline_run = not args.profile
+    try:
+        profile = profiles.resolve(
+            args.profile if args.profile else f"{profiles.BUILTIN_SCHEME}{profiles.BASELINE_NAME}",
+            console=console,
+        )
+    except profiles.ProfileError as exc:
+        console.print(f"[red]{exc}[/]")
+        return 2
+    if args.answer and profile is None:  # --profile default: no prompts to answer
+        console.print("[red]--answer has no target[/] — 'default' is the bare engine baseline.")
+        return 2
     if interactive:
-        _intro()
+        _intro(None if baseline_run else profile)
 
     # Source already in the target — drives language auto-select and legacy handling.
     in_target = set(detect_languages(out))
@@ -562,12 +637,19 @@ def main(argv: list[str] | None = None) -> int:
     # Respect an existing runner; for a fresh repo the prompt/flag chooses (default Make).
     runner_detected, existing_runner = detect_runner(out)
 
+    # The shrunken wizard applies only to a *real* named profile — `--profile default`
+    # (profile is None) still drives the legacy generators, whose questions the full wizard asks.
+    named_profile_run = not baseline_run and profile is not None
     try:
-        config = (
-            _interactive(args, out, detected, not existing_runner, in_target)
-            if interactive
-            else _from_flags(args, out, detected)
-        )
+        if named_profile_run:
+            # A named profile owns its own wizard (its `prompts`); the engine asks only its
+            # own questions and derives tool targeting from what the profile ships.
+            config = _profile_config(args, out, in_target, interactive)
+            config.ai_tools = profiles.derive_tools(profile)
+        elif interactive:
+            config = _interactive(args, out, detected, not existing_runner, in_target)
+        else:
+            config = _from_flags(args, out, detected)
     except (KeyboardInterrupt, EOFError):
         console.print("\n[yellow]Cancelled.[/]")
         return 130
@@ -616,21 +698,6 @@ def main(argv: list[str] | None = None) -> int:
             "See CONTRIBUTING.md."
         )
 
-    # The flip (RFC 2026-07-05 §7-B): with no --profile, the engine scaffolds the vendored
-    # flagship through the one profile pipeline — the wizard's flags/questions are unchanged
-    # and translate onto its prompts, so the output is byte-identical (the stage-A gate).
-    baseline_run = not args.profile
-    try:
-        profile = profiles.resolve(
-            args.profile if args.profile else f"{profiles.BUILTIN_SCHEME}{profiles.BASELINE_NAME}",
-            console=console,
-        )
-    except profiles.ProfileError as exc:
-        console.print(f"[red]{exc}[/]")
-        return 2
-    if args.answer and profile is None:  # --profile default: no prompts to answer
-        console.print("[red]--answer has no target[/] — 'default' is the bare engine baseline.")
-        return 2
     answers: dict[str, object] | None = None
     if profile is not None:
         # Consent gate (RFC 2026-07-04): a fetched, code-carrying profile needs consent before it

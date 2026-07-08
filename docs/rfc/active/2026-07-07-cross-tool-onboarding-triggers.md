@@ -93,7 +93,11 @@ Concretely:
 - `--tools` with an empty list means a runbook with zero triggers (the summary line still
   points at the file); conversely the flag defaults to *all four* tools, so a standalone
   profile scaffold ships four small trigger files unless the adopter narrows `--tools` —
-  accepted, they're transient and inert where the tool isn't installed.
+  accepted, they're transient and inert where the tool isn't installed. **Superseded for
+  named-profile runs by RFC 2026-07-07-agents-contract §5:** tool targeting there is *derived*
+  from what the profile ships (its `agents_contract` ⇒ all tools; per-tool config surface;
+  `session_start` ⇒ Claude), and `--tools` no longer narrows or zeroes triggers on those runs.
+  Baseline runs still key off the wizard's `tools` answer as described here.
 - Triggers being transient, updates never create them retroactively (accepted: the new
   experience is for new scaffolds).
 - **§4 holds on the generator path only.** The flagship's templates re-derive the cleanup

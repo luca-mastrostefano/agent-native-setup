@@ -100,6 +100,65 @@ def test_intro_shown_at_start_of_interactive_run(
     assert "scaffolds" in capsys.readouterr().out  # the "what this will do" intro
 
 
+def _write_profile(root: Path, description: str) -> Path:
+    import json
+
+    (root / "templates").mkdir(parents=True)
+    (root / "profile.json").write_text(
+        json.dumps({"name": "acme-setup", "version": "2.3.4", "description": description}),
+        encoding="utf-8",
+    )
+    return root
+
+
+def test_intro_is_built_from_the_selected_profile(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # --profile <x>: the "what this will do" panel pitches the selected profile — its name,
+    # version, and manifest description — not the flagship bullets.
+    prof = _write_profile(tmp_path / "prof", "ACME's in-house TDD contract and CI gates.")
+    monkeypatch.setattr("sys.stdin.isatty", lambda: True)
+
+    def boom(*_a: object, **_k: object) -> object:
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(cli, "_interactive", boom)
+    cli.main(["demo", "-o", str(tmp_path / "out"), "--profile", str(prof)])
+    out = capsys.readouterr().out
+    assert "acme-setup" in out
+    assert "v2.3.4" in out
+    assert "ACME's in-house TDD" in out
+    assert "AGENTS.md" not in out  # the flagship pitch doesn't leak into a profile run
+
+
+def test_intro_survives_a_profile_without_a_description(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # A legacy manifest with no description still gets a sane panel: name + version, no blank
+    # pitch line (validate flags the missing description; the wizard must not crash on it).
+    from agent_native_setup import profiles
+
+    prof = profiles.load(_write_profile(tmp_path / "prof", ""))
+    cli._intro(prof)
+    out = capsys.readouterr().out
+    assert "acme-setup" in out
+    assert "Non-destructive" in out
+
+
+def test_intro_escapes_markup_in_a_fetched_manifest(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # A profile manifest is untrusted input — Rich markup in its description must render
+    # literally, not style the console (or crash on an unbalanced tag).
+    from agent_native_setup import profiles
+
+    prof = profiles.load(_write_profile(tmp_path / "prof", "[blink red]pwned[/] [unclosed"))
+    cli._intro(prof)
+    out = capsys.readouterr().out
+    assert "[blink red]pwned" in out  # shown as text, not interpreted
+    assert "[unclosed" in out
+
+
 def test_intro_shows_version_in_top_right(capsys: pytest.CaptureFixture[str]) -> None:
     # The version rides on the top border, to the right of the "What this will do" heading.
     from agent_native_setup import __version__
@@ -109,6 +168,89 @@ def test_intro_shows_version_in_top_right(capsys: pytest.CaptureFixture[str]) ->
     assert "What this will do" in top
     assert f"v{__version__}" in top
     assert top.index("What this will do") < top.index(f"v{__version__}")  # heading left, ver right
+
+
+def test_named_profile_asks_only_engine_questions_and_derives_tools(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # RFC 2026-07-07-agents-contract §4-5: an interactive named-profile run asks only the
+    # engine's own questions (name / description / git-init) — never the baseline wizard's
+    # languages/parts/CI/… — and derives tool targeting from the profile's shipped contract.
+    import json
+
+    import questionary
+
+    prof = tmp_path / "prof"
+    (prof / "templates").mkdir(parents=True)
+    (prof / "templates" / "AGENTS.md").write_text("contract\n", encoding="utf-8")
+    (prof / "profile.json").write_text(
+        json.dumps(
+            {
+                "name": "acme",
+                "version": "1.0.0",
+                "description": "d",
+                "agents_contract": "AGENTS.md",
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr("sys.stdin.isatty", lambda: True)
+
+    def no_baseline_wizard(*_a: object, **_k: object) -> object:
+        raise AssertionError("the baseline wizard must not run for a named profile")
+
+    monkeypatch.setattr(cli, "_interactive", no_baseline_wizard)
+
+    asked: list[str] = []
+
+    class _Ans:
+        def __init__(self, value: object) -> None:
+            self.value = value
+
+        def unsafe_ask(self) -> object:
+            return self.value
+
+    def _text(message: str, **_k: object) -> _Ans:
+        asked.append(message)
+        return _Ans("myproj" if "name" in message.lower() else "a description")
+
+    def _confirm(message: str, **_k: object) -> _Ans:
+        asked.append(message)
+        return _Ans(False)  # decline git init
+
+    monkeypatch.setattr(questionary, "text", _text)
+    monkeypatch.setattr(questionary, "confirm", _confirm)
+
+    out = tmp_path / "out"
+    assert cli.main(["-o", str(out), "--profile", str(prof), "--no-update-check"]) == 0
+    joined = " ".join(asked)
+    assert "name" in joined.lower() and "description" in joined.lower()
+    # None of the baseline wizard's questions were asked.
+    assert "Scaffold which parts" not in joined and "Languages" not in joined
+    # Derived targeting: a declared contract targets every tool → both pointers created.
+    assert (out / "CLAUDE.md").is_symlink() and (out / "GEMINI.md").is_symlink()
+
+
+def test_profile_default_keeps_the_full_wizard(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # `--profile default` resolves to no profile (the legacy generators), whose questions the
+    # full baseline wizard asks — it must NOT get the shrunken named-profile wizard.
+    monkeypatch.setattr("sys.stdin.isatty", lambda: True)
+
+    def no_shrunken_wizard(*_a: object, **_k: object) -> object:
+        raise AssertionError("--profile default must use the full wizard, not _profile_config")
+
+    monkeypatch.setattr(cli, "_profile_config", no_shrunken_wizard)
+    used = {"full": False}
+
+    def _full(*_a: object, **_k: object) -> WizardConfig:
+        used["full"] = True
+        raise KeyboardInterrupt  # bail out right after — we only assert which path ran
+
+    monkeypatch.setattr(cli, "_interactive", _full)
+    cli.main(["demo", "-o", str(tmp_path / "out"), "--profile", "default", "--no-update-check"])
+    assert used["full"]  # the full wizard ran, the shrunken one never did
 
 
 def test_next_steps_label_contract_optional_and_setup_important(

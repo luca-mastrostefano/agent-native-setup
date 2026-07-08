@@ -307,6 +307,10 @@ def test_profile_owned_trigger_path_wins_through_the_real_cli(tmp_path: Path) ->
     (prof / "templates" / ".gemini" / "commands" / "onboard.toml").write_text(
         'description = "mine"\nprompt = "custom onboarding"\n', encoding="utf-8"
     )
+    # A .cursor/ surface makes cursor a *derived* target (RFC 2026-07-07-agents-contract §5) —
+    # so the engine writes the cursor trigger while the profile-owned gemini one is skipped.
+    (prof / "templates" / ".cursor" / "rules").mkdir(parents=True)
+    (prof / "templates" / ".cursor" / "rules" / "contract.mdc").write_text("x", encoding="utf-8")
     (prof / "profile.json").write_text(
         json.dumps(
             {
@@ -327,8 +331,6 @@ def test_profile_owned_trigger_path_wins_through_the_real_cli(tmp_path: Path) ->
             "-y",
             "--no-git",
             "--no-update-check",
-            "--tools",
-            "gemini,cursor",
             "--profile",
             str(prof),
         ]
