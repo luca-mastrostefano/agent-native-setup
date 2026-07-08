@@ -2,8 +2,8 @@
   "profiles": [
     {
       "name": "tolaria-setup",
-      "url": "git+https://github.com/luca-mastrostefano/tolaria-setup.git@v0.1.3",
-      "content_hash": "083ae6a626e7dd7accc2dc9f5b7ca74816adafb5c2d04d2fb8a330be0e66397e",
+      "url": "git+https://github.com/luca-mastrostefano/tolaria-setup.git@v0.1.4",
+      "content_hash": "0943723b1ab6698884f62498c5e458bff56f64656be6f93cdab9514a8e23810d",
       "description": "Tolaria's agent-native engineering setup: direct-to-main TDD contract, CodeScene ratchet gates + MCP wiring, ADR system with /create-adr, two-tier husky gates (lint pre-commit; build/coverage/smoke/CodeScene pre-push), Codacy/Semgrep, optional Chunk sidecar lanes and Todoist task-loop commands. Extracted from github.com/refactoringhq/tolaria.",
       "author": "Luca Mastrostefano",
       "tags": ["tauri", "react", "rust", "typescript", "tdd", "codescene", "adr", "desktop"]
