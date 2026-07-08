@@ -90,14 +90,20 @@ def test_save_preserves_seed_status(tmp_path: Path) -> None:
     assert "README.md" in pj["seed"]  # an edited seed file stays write-once in the profile
 
 
-def test_save_turns_symlinks_into_links(tmp_path: Path) -> None:
+def test_save_collapses_tool_pointers_into_agents_contract(tmp_path: Path) -> None:
     proj = _scaffold(tmp_path / "proj")
     assert _save(proj, "house", tmp_path / "out") == 0
 
     pj = json.loads((tmp_path / "out/house/profile.json").read_text(encoding="utf-8"))
-    # The tool symlinks ship as declarative `links` — data, not an agent-executed step.
-    assert pj["links"]["CLAUDE.md"] == "AGENTS.md"
+    # The CLAUDE.md/GEMINI.md → AGENTS.md pointer symlinks collapse to one engine-owned
+    # agents_contract (RFC 2026-07-07-agents-contract §6) — not raw links, so the snapshot
+    # inherits future matrix growth instead of pinning the pointer set.
+    assert pj["agents_contract"] == "AGENTS.md"
+    assert "CLAUDE.md" not in pj.get("links", {}) and "GEMINI.md" not in pj.get("links", {})
     assert pj.get("onboarding", []) == []
+    # Round-trips: loading the saved profile re-expands the pointers.
+    prof = profiles.load(tmp_path / "out/house")
+    assert prof.contract_pointers() == (("CLAUDE.md", "AGENTS.md"), ("GEMINI.md", "AGENTS.md"))
 
 
 def test_save_captures_the_bootstrap_rfc_through_date_token(tmp_path: Path) -> None:

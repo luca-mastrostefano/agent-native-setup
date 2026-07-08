@@ -13,7 +13,7 @@ from pathlib import Path
 import pytest
 
 from agent_native_setup import cli, profiles, update, update_check
-from agent_native_setup.config import WizardConfig
+from agent_native_setup.config import AI_TOOLS, WizardConfig
 from agent_native_setup.manifest import MANIFEST_PATH
 from agent_native_setup.scaffold import Scaffolder, render
 
@@ -37,6 +37,7 @@ def _make_profile(
     session_start: tuple[str, ...] = (),
     prompts: list[dict] | None = None,
     tags: tuple[str, ...] = (),
+    agents_contract: str | None = None,
     by_path: bool = False,
 ) -> profiles.Profile:
     d = root / name
@@ -56,6 +57,8 @@ def _make_profile(
         manifest["session_start"] = list(session_start)
     if prompts:
         manifest["prompts"] = prompts
+    if agents_contract is not None:
+        manifest["agents_contract"] = agents_contract
     (d / "profile.json").write_text(json.dumps(manifest), encoding="utf-8")
     for rel, content in files.items():
         p = d / "templates" / rel
@@ -627,11 +630,12 @@ def test_standalone_session_start_refreshes_on_update(tmp_path: Path) -> None:
     assert any("echo v1" in h for h in _session_hooks(target))
 
 
-def test_session_start_without_claude_warns_instead_of_silently_dropping(
+def test_session_start_derives_claude_target_and_applies_hooks(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    # SessionStart hooks need Claude's .claude/ config; targeting only cursor means there's
-    # nowhere to put them — so warn rather than record hooks that never run.
+    # RFC 2026-07-07-agents-contract §5: a profile declaring session_start IS the opt-in to
+    # Claude targeting (the hooks live in .claude/), so a standalone run derives claude and
+    # applies them — no warning, and the engine `--tools` flag no longer targets for a profile.
     prof = _make_profile(tmp_path, "team", {}, session_start=("echo x",), by_path=True)
     target = tmp_path / "proj"
     rc = cli.main(
@@ -642,14 +646,15 @@ def test_session_start_without_claude_warns_instead_of_silently_dropping(
             "-y",
             "--no-git",
             "--tools",
-            "cursor",
+            "cursor",  # ignored for a named profile — targeting is derived
             "--profile",
             str(prof.root),
         ]
     )
     assert rc == 0
-    assert "session_start hooks" in capsys.readouterr().out  # warned
-    assert not (target / ".claude/settings.json").exists()  # no Claude settings to hold them
+    assert "session_start hooks" not in capsys.readouterr().out  # no warning — claude derived
+    settings = (target / ".claude/settings.json").read_text(encoding="utf-8")
+    assert "echo x" in settings  # the hook was applied
 
 
 def test_degraded_update_keeps_session_start_hooks(tmp_path: Path) -> None:
@@ -1415,18 +1420,26 @@ def test_profile_init_scaffolds_a_skeleton(tmp_path: Path) -> None:
 
 
 def test_init_harness_files_are_meta_never_scaffolded(tmp_path: Path) -> None:
-    # The root-level harness (AGENTS.md/README.md) guides the author; it's not part of the
-    # profile — only files under templates/ are — so a scaffold never ships it.
+    # The root-level README.md and the root AGENTS.md *building guide* are meta (not under
+    # templates/) — a scaffold never ships them. The profile *does* ship a contract stub at
+    # templates/AGENTS.md, declared as agents_contract (RFC 2026-07-07-agents-contract §6):
+    # distinct from the building guide, and never confused with it.
     assert cli.main(["profile", "init", "team", "-o", str(tmp_path)]) == 0
     prof = profiles.load(tmp_path / "team")
-    shipped = [rel for rel, _ in prof.template_files()]
-    assert "AGENTS.md" not in shipped and "README.md" not in shipped  # harness is meta
+    shipped = {rel: src for rel, src in prof.template_files()}
+    assert "README.md" not in shipped  # meta harness, never shipped
+    assert prof.agents_contract == "AGENTS.md" and "AGENTS.md" in shipped  # the contract stub
+    # The shipped stub is the contract, NOT the root building-guide harness.
+    root_guide = (tmp_path / "team" / "AGENTS.md").read_text(encoding="utf-8")
+    stub = shipped["AGENTS.md"].read_text(encoding="utf-8")
+    assert "Building the team profile" in root_guide  # the meta guide
+    assert "Building the team profile" not in stub  # the contract stub is a different file
     target = tmp_path / "proj"
     target.mkdir()
     cli.build(_config(target), Scaffolder(target), prof)
     m = json.loads((target / MANIFEST_PATH).read_text(encoding="utf-8"))
-    assert "AGENTS.md" not in m["profile"]["files"]  # not owned by the profile
-    assert "README.md" not in m["profile"]["files"]
+    assert "README.md" not in m["profile"]["files"]  # meta harness never owned
+    assert "AGENTS.md" in m["profile"]["files"]  # the contract stub is shipped and owned
 
 
 def test_profile_init_rejects_the_removed_standalone_flag(tmp_path: Path) -> None:
@@ -1438,6 +1451,20 @@ def test_profile_init_rejects_the_removed_standalone_flag(tmp_path: Path) -> Non
 def test_profile_validate_accepts_a_good_profile(tmp_path: Path) -> None:
     prof = _make_profile(tmp_path, "team", {"docs/x.md.j2": "hi {{ project_name }}\n"})
     assert cli.main(["profile", "validate", str(prof.root)]) == 0
+
+
+def test_profile_validate_flags_an_empty_description(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # The description is what adopters read at scaffold time (the intro panel) and in the
+    # community index — validate (and so check-index, transitively) requires it.
+    d = tmp_path / "team"
+    (d / "templates").mkdir(parents=True)
+    (d / "profile.json").write_text(
+        json.dumps({"name": "team", "version": "1.0.0"}), encoding="utf-8"
+    )
+    assert cli.main(["profile", "validate", str(d)]) == 1
+    assert "'description' is empty" in capsys.readouterr().out
 
 
 def test_profile_validate_flags_a_broken_template(
@@ -1771,6 +1798,201 @@ def test_fold_preserves_a_preexisting_contract_itself(tmp_path: Path) -> None:
     merged = (target / "AGENTS.md").read_text(encoding="utf-8")
     assert merged.startswith("new contract") and "the team's old rules" in merged
     assert "AGENTS.md" in sc.seed  # the folded contract is the user's — never refreshed
+
+
+# --- agents_contract (RFC 2026-07-07-agents-contract) ---------------------------------------
+
+
+def test_agents_contract_load_validation(tmp_path: Path) -> None:
+    d = tmp_path / "p"
+    (d / "templates").mkdir(parents=True)
+    (d / "templates" / "AGENTS.md").write_text("c\n", encoding="utf-8")
+
+    def manifest(contract: object) -> None:
+        (d / "profile.json").write_text(
+            json.dumps(
+                {"name": "p", "version": "1.0.0", "description": "x", "agents_contract": contract}
+            ),
+            encoding="utf-8",
+        )
+
+    for bad in (1, "", "../x.md", "/abs.md", "a/@DATE@.md"):
+        manifest(bad)
+        with pytest.raises(profiles.ProfileError, match="agents_contract"):
+            profiles.load(d)
+    # A contract the profile doesn't ship has nothing to point at — rejected at load.
+    manifest("MISSING.md")
+    with pytest.raises(profiles.ProfileError, match="doesn't match any file"):
+        profiles.load(d)
+    manifest("AGENTS.md")  # shipped → accepted
+    assert profiles.load(d).agents_contract == "AGENTS.md"
+
+
+def test_agents_contract_expands_to_pointers_stays_safe_and_recorded(tmp_path: Path) -> None:
+    prof = _make_profile(tmp_path, "team", {"AGENTS.md": "contract\n"}, agents_contract="AGENTS.md")
+    # A profile whose only "link" is the declared contract still earns `safe` — the engine
+    # pointers are provably inert and excluded from the fail-closed links rule.
+    assert profiles.classify_safety(prof)[0] == "safe"
+    # The contract file is never pointed at itself; every other pointer targets it.
+    assert prof.contract_pointers() == (("CLAUDE.md", "AGENTS.md"), ("GEMINI.md", "AGENTS.md"))
+
+    target = tmp_path / "proj"
+    target.mkdir()
+    cli.build(_config(target), Scaffolder(target), prof)
+    assert (target / "AGENTS.md").is_file() and not (target / "AGENTS.md").is_symlink()
+    for name in ("CLAUDE.md", "GEMINI.md"):
+        link = target / name
+        assert link.is_symlink() and link.resolve() == (target / "AGENTS.md").resolve()
+    m = json.loads((target / MANIFEST_PATH).read_text(encoding="utf-8"))
+    owned = m["profile"]["files"]
+    assert {"AGENTS.md", "CLAUDE.md", "GEMINI.md"} <= set(owned)
+    assert m["files"]["CLAUDE.md"] == "symlink:AGENTS.md"
+
+
+def test_agents_contract_folds_preexisting_contract_and_pointer_files(tmp_path: Path) -> None:
+    prof = _make_profile(tmp_path, "team", {"AGENTS.md": "new\n"}, agents_contract="AGENTS.md")
+    target = tmp_path / "proj"
+    target.mkdir()
+    (target / "AGENTS.md").write_text("old rules\n", encoding="utf-8")
+    (target / "CLAUDE.md").write_text("claude notes\n", encoding="utf-8")
+    sc = Scaffolder(target)
+    profiles.apply(prof, _config(target), sc, {})
+    merged = (target / "AGENTS.md").read_text(encoding="utf-8")
+    assert merged.startswith("new")
+    assert "old rules" in merged and "claude notes" in merged  # both folded, nothing lost
+    assert (target / "CLAUDE.md").is_symlink() and (target / "GEMINI.md").is_symlink()
+    assert "AGENTS.md" in sc.seed  # the folded contract is the user's — never refreshed
+
+
+def test_agents_contract_yields_to_profile_owned_and_declared_pointers(tmp_path: Path) -> None:
+    # A pointer path the profile ships a file at (CLAUDE.md) or declares its own link for
+    # (GEMINI.md) is the author's — the engine skips generating that pointer.
+    prof = _make_profile(
+        tmp_path,
+        "team",
+        {"AGENTS.md": "c\n", "CLAUDE.md": "my own claude file\n"},
+        agents_contract="AGENTS.md",
+    )
+    data = json.loads((prof.root / "profile.json").read_text(encoding="utf-8"))
+    data["links"] = {"GEMINI.md": "docs/other.md"}
+    (prof.root / "templates" / "docs").mkdir(parents=True)
+    (prof.root / "templates" / "docs" / "other.md").write_text("o\n", encoding="utf-8")
+    (prof.root / "profile.json").write_text(json.dumps(data), encoding="utf-8")
+    prof = profiles.load(prof.root, source="team")
+    # Neither CLAUDE.md (shipped) nor GEMINI.md (author-linked) is an engine pointer.
+    assert prof.contract_pointers() == ()
+
+    target = tmp_path / "proj"
+    target.mkdir()
+    cli.build(_config(target), Scaffolder(target), prof)
+    assert (target / "CLAUDE.md").read_text(encoding="utf-8") == "my own claude file\n"
+    assert (target / "GEMINI.md").resolve() == (target / "docs/other.md").resolve()
+
+
+def test_agents_contract_subdir_points_from_root_and_never_self_points(tmp_path: Path) -> None:
+    # A contract in a subdirectory gets root-level pointers; a contract *named* like a pointer
+    # (CLAUDE.md) never points at itself.
+    sub = _make_profile(
+        tmp_path / "a", "team", {"docs/AGENTS.md": "c\n"}, agents_contract="docs/AGENTS.md"
+    )
+    assert sub.contract_pointers() == (
+        ("AGENTS.md", "docs/AGENTS.md"),
+        ("CLAUDE.md", "docs/AGENTS.md"),
+        ("GEMINI.md", "docs/AGENTS.md"),
+    )
+    named = _make_profile(tmp_path / "b", "team", {"CLAUDE.md": "c\n"}, agents_contract="CLAUDE.md")
+    assert named.contract_pointers() == (
+        ("AGENTS.md", "CLAUDE.md"),
+        ("GEMINI.md", "CLAUDE.md"),
+    )
+
+
+def test_named_profile_senses_existing_project_regardless_of_languages_flag(
+    tmp_path: Path,
+) -> None:
+    # env.existing_project must sense pre-existing source from what's actually in the target,
+    # not from the engine --languages *choice* (which a named profile never sees). A regression
+    # here made `--profile X --languages python` over a python repo read existing_project=False.
+    body = "{% if env.existing_project %}brownfield{% else %}greenfield{% endif %}\n"
+    prof = _make_profile(
+        tmp_path, "team", {"AGENTS.md.j2": body}, agents_contract="AGENTS.md", by_path=True
+    )
+    target = tmp_path / "proj"
+    target.mkdir()
+    (target / "main.py").write_text("print(1)\n", encoding="utf-8")  # pre-existing python source
+    rc = cli.main(
+        [
+            "demo",
+            "-o",
+            str(target),
+            "-y",
+            "--no-git",
+            "--languages",
+            "python",
+            "--profile",
+            str(prof.root),
+        ]
+    )
+    assert rc == 0
+    assert (target / "AGENTS.md").read_text(encoding="utf-8").startswith("brownfield")
+
+
+def test_derive_tools(tmp_path: Path) -> None:
+    # A declared contract targets every assistant (universal by construction).
+    contract = _make_profile(tmp_path / "a", "t", {"AGENTS.md": "c\n"}, agents_contract="AGENTS.md")
+    assert profiles.derive_tools(contract) == list(AI_TOOLS)
+    # Otherwise a tool is targeted iff the profile ships under its surface.
+    surfaced = _make_profile(
+        tmp_path / "b",
+        "t",
+        {".cursor/rules/x.mdc": "x", ".github/prompts/y.prompt.md": "y"},
+    )
+    assert profiles.derive_tools(surfaced) == ["cursor", "copilot"]
+    # session_start (Claude-only hooks) targets Claude; a bare profile targets nothing.
+    hooks = _make_profile(tmp_path / "c", "t", {}, session_start=("echo x",))
+    assert profiles.derive_tools(hooks) == ["claude"]
+    assert profiles.derive_tools(_make_profile(tmp_path / "d", "t", {"NOTES.md": "n"})) == []
+
+
+def test_grown_pointer_matrix_retrofits_on_update(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The headline mechanic (RFC 2026-07-07-agents-contract §2): a pointer added to the engine
+    # matrix retrofits an already-scaffolded project on its next update — no profile bump.
+    prof = _make_profile(
+        tmp_path, "team", {"AGENTS.md": "c\n"}, agents_contract="AGENTS.md", by_path=True
+    )
+    target = tmp_path / "proj"
+    target.mkdir()
+    # Scaffold under a SHRUNKEN matrix (pretend GEMINI.md didn't exist yet).
+    monkeypatch.setattr(profiles, "AGENT_POINTERS", ("AGENTS.md", "CLAUDE.md"))
+    cli.build(_config(target), Scaffolder(target), prof)
+    assert (target / "CLAUDE.md").is_symlink() and not (target / "GEMINI.md").exists()
+    _commit(target)
+    # The matrix grows; update re-applies and creates the new pointer where the path is free.
+    monkeypatch.setattr(profiles, "AGENT_POINTERS", ("AGENTS.md", "CLAUDE.md", "GEMINI.md"))
+    assert update.run(target, dry_run=False, console=_Console()) == 0
+    assert (target / "GEMINI.md").is_symlink()
+    assert (target / "GEMINI.md").resolve() == (target / "AGENTS.md").resolve()
+
+
+def test_grown_pointer_over_a_user_file_is_a_conflict_not_a_clobber(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    prof = _make_profile(
+        tmp_path, "team", {"AGENTS.md": "c\n"}, agents_contract="AGENTS.md", by_path=True
+    )
+    target = tmp_path / "proj"
+    target.mkdir()
+    monkeypatch.setattr(profiles, "AGENT_POINTERS", ("AGENTS.md", "CLAUDE.md"))
+    cli.build(_config(target), Scaffolder(target), prof)
+    (target / "GEMINI.md").write_text("my own gemini file\n", encoding="utf-8")
+    _commit(target)
+    monkeypatch.setattr(profiles, "AGENT_POINTERS", ("AGENTS.md", "CLAUDE.md", "GEMINI.md"))
+    assert update.run(target, dry_run=False, console=_Console()) == 0
+    # Never folded, never clobbered at update — the user's file stands, reported as a conflict.
+    assert (target / "GEMINI.md").read_text(encoding="utf-8") == "my own gemini file\n"
+    assert not (target / "GEMINI.md").is_symlink()
 
 
 def test_dated_seed_entry_stays_write_once(tmp_path: Path) -> None:

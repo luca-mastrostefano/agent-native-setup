@@ -15,8 +15,9 @@ A profile is a directory:
 
 ```
 my-profile/
-  profile.json   # name, version (own semver), description, tags, seed,
-                 # prompts, onboarding, session_start
+  profile.json   # name, version (own semver), description (required by `validate` —
+                 # the pitch adopters read in the scaffold intro panel and the community
+                 # index), tags, seed, prompts, onboarding, session_start
   templates/     # the files it ships; paths relative to the project root
   README.md, AGENTS.md, …   # meta — never ships; only profile.json + templates/ do
 ```
@@ -33,7 +34,7 @@ Two path-level affordances (RFC 2026-07-05 §6): **`links`** — an object of
 per-tool link ships only when relevant; both ends project-relative, traversal-free,
 re-confined at apply) the
 engine creates as symlinks, recorded as `symlink:<target>` provenance like the base's own
-links, shown by `show`, and classified fail-closed (any link ⇒ not `safe`); **`transient`** —
+links, shown by `show`, and classified fail-closed (any *author-declared* link ⇒ not `safe`); **`transient`** —
 output paths written but never recorded (self-deleting first-run files: a manifest that
 listed one would let `update` resurrect it after onboarding removed it); **`empty_files`**
 — declared conditionally-shipped empty files (`{"docs/rfc/active/.gitkeep":
@@ -43,6 +44,48 @@ and **`@DATE@`**
 in a template *path*, substituted with the scaffold date — recorded in the manifest
 (`profile.date`) and **replayed on update**, so a dated path never drifts or duplicates under
 a refresh.
+
+## Multi-tool compatibility (`agents_contract`)
+
+A profile declares its canonical agent contract with **`agents_contract`** — a single string
+naming a shipped template path (`"AGENTS.md"`; validated at load: must be plain,
+project-relative, no `@DATE@`, and match a file the profile actually ships). The engine then
+points every assistant at it from an engine-owned matrix, **`AGENT_POINTERS`**
+(`AGENTS.md` for Cursor/Copilot and the AGENTS.md standard, `CLAUDE.md` for Claude Code,
+`GEMINI.md` for Gemini CLI) — RFC 2026-07-07-agents-contract. The split of responsibility: *what
+the contract says* is profile content; *which filename each tool reads it from* is
+engine-shaped ecosystem knowledge, so it lives in one place and updates on the tools'
+schedule, not each profile's.
+
+Expanded pointers run through the same `links` machinery — path confinement,
+`symlink:<target>` provenance, the contract fold, `show` visibility — with three differences:
+
+- **Skip rules.** A pointer path the profile ships a file at, or declares its own `links` entry
+  for, is skipped (the author's version wins — same rule as onboarding triggers); the contract
+  is never pointed at itself. Pointers carry no `when` (a contract is tool-universal) and are
+  created unconditionally: a repo is multi-contributor, so which assistant is in play is a
+  property of whoever opens the repo, not of whoever ran the wizard.
+- **Safe, not fail-closed.** Author `links` are arbitrary and classify `unsafe`; engine
+  pointers have a fixed shape (known names → the validated, already-classified contract path),
+  so they are provably inert and excluded from the links⇒unsafe rule. A profile whose only
+  "link" is `agents_contract` can still earn `safe` — the idiomatic compatibility pattern
+  no longer costs consent friction.
+- **Matrix growth retrofits on update.** Pointers expand from the *current* engine's
+  `AGENT_POINTERS` at apply time, so a release that adds a pointer retrofits every project
+  scaffolded from a contract-declaring profile on its next update — no profile release. This is
+  a deliberate exception to the replay-never-re-sense rule (`env`/`answers` replay recorded
+  observations; the matrix is engine knowledge). At update a grown pointer lands only where the
+  path is **free**; an occupied path is a standard update conflict — never folded, never
+  clobbered (the fold is a scaffold-time affordance). `AGENT_POINTERS` is a public contract
+  with `env`'s add-only discipline: adding a pointer is an engine release, renaming/removing one
+  is a breaking change. Consent binds to the *declaration* (`agents_contract` is in
+  `profile.json`, which the content hash covers); future engine pointers ride engine trust, not
+  a new hash.
+
+`profile init` pre-fills `agents_contract` and a `templates/AGENTS.md` stub so compatibility is
+the default an author opts *out* of; `profile save` collapses captured tool-pointer symlinks
+(CLAUDE.md/GEMINI.md → one file) into a single `agents_contract`; `profile validate` nudges a
+profile that ships `AGENTS.md` but declares neither the field nor a link to it.
 
 ## Resolution (`resolve`)
 
@@ -115,17 +158,29 @@ per-type) default; the repeatable **`--answer NAME=VALUE`** flag answers any pro
 - `session_start` — shell commands appended to the `.claude` SessionStart hooks, run every
   session, each wrapped so a failure can't disrupt the session.
 
+**Which tools a standalone profile targets is derived, not asked** (RFC
+2026-07-07-agents-contract §5): `derive_tools` reads it from what the profile *ships* — a
+declared `agents_contract` targets every assistant; otherwise a tool is targeted iff the
+profile ships anything under its config surface (`.claude/`, `.cursor/`, `.gemini/`,
+`.github/prompts/` or `.github/copilot-instructions.md`); declaring `session_start` (the hooks
+are Claude-only) targets Claude. So a profile that ships no tool surface and no contract gets
+no triggers (the console hint still prints), and there is no engine "which assistants?"
+question implying a compatibility the profile can't keep. A **baseline** run is unchanged: the
+flagship's own `tools` prompt drives its `when`-gated links, translated from the wizard.
+
 The profile gets a profile-only `ONBOARDING.md` and a minimal hooks `settings.json` (Claude
 targets). Hooks are recorded in the manifest so a *degraded* update (profile unresolvable)
 keeps them.
 
 ## The contract fold (engine mechanic)
 
-When a profile ships a file **and** declares links pointing at it (the AGENTS.md pattern), a
+When a profile ships a file **and** points at it — via an author `links` entry **or** an
+`agents_contract` pointer (the AGENTS.md pattern) — a
 pre-existing real file at the target or at a link path is **folded** beneath the rendered
 content — preserved verbatim under a `Preserved from your original <name>` marker, seeded as
 the user's to reconcile, with the link then taking the file's place. Never clobbered, never
-left to block the scaffold (RFC 2026-07-05, decided 2026-07-06).
+left to block the scaffold (RFC 2026-07-05, decided 2026-07-06). The fold is a *scaffold-time*
+affordance; `update` never folds (a grown pointer over a user file is a reported conflict).
 
 ## Safety and trust
 
@@ -197,7 +252,8 @@ changes an overlay never could, and the extender stays the review point.
 scaffolded project's **complete** setup as a standalone profile (every manifest-recorded file
 as it exists on disk, parameterizing name/slug and the scaffold date via `@DATE@`, preserving
 `seed`, symlinks as `links`, provenance noted in the README/description);
-`profile validate` loads it and strict-renders every template (undefined variable = error);
+`profile validate` loads it, requires a non-empty `description`, and strict-renders every
+template (undefined variable = error);
 `profile publish` validates and prints the shareable URL + index entry. Fields are escaped
 wherever fetched profiles are displayed (`show`/`list`/index output) — remote metadata is
 untrusted display data.
@@ -206,7 +262,9 @@ untrusted display data.
 
 | Where | What |
 | --- | --- |
+| `cli.main` | for a **named** profile, asks only the engine-owned questions (name/description/git-init via `_profile_config`) and sets `ai_tools` from `derive_tools`; a baseline run keeps the full wizard. |
 | `cli.build` | resolves the profile, gates consent, gathers answers, applies the overlay, records the manifest `profile` block (name/version/source/safety/files/answers/date/hooks). |
+| `profiles.apply` | expands `agents_contract` into `AGENT_POINTERS` symlinks (current matrix → update retrofit), folds pre-existing files, records `symlink:<target>` provenance. |
 | `scaffold.Scaffolder` | `overlay` (child-last write), sandboxed Jinja envs. |
 | `update.py` | re-resolves from the recorded `source`, re-applies (managed refresh / conflict), version + new-hooks + safety-flip + re-consent gates, degraded mode (frozen files, kept hooks), `--check` staleness nudge. |
 | `tools/checks/check_index.py` | the index-rot CI check (`.github/workflows/index-check.yml`). |
