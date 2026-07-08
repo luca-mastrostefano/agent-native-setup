@@ -97,7 +97,13 @@ adopters' repos before proceeding.
 
 ## 5. Ship
 
-`git init -b main`, commit, tag `v0.1.0`, then hand the user **one copy-pasteable
+`git init -b main`, then **commit every file the profile ships before tagging** — the published
+tag and release asset are built from git-tracked content, so a file under `templates/` that git
+ignores (`.claude/settings.local.json`, `__pycache__/`, `.DS_Store`) never reaches an adopter even
+though a local scaffold copies it; if a normally-ignored file must ship, `git add -f` it and check
+`git ls-files templates/`. Then confirm `git status --porcelain templates/` is empty (`publish`
+hashes the working tree — a stray untracked/ignored file poisons the `content_hash` and fails the
+index-check against the clean tag). Tag `v0.1.0`, then hand the user **one copy-pasteable
 command** chaining everything that needs their say (repo creation) — not a list of steps:
 
 ```bash
