@@ -41,8 +41,24 @@ class CheckIndexTest(unittest.TestCase):
     def test_valid_entries_pass(self) -> None:
         # Local-path entries keep the test offline; git+ entries exercise the same resolve().
         prof = _write_profile(self.tmp, "good")
-        idx = _write_index(self.tmp, [{"name": "good", "url": str(prof)}])
+        h = check_index.profiles.content_hash(check_index.profiles.load(prof))
+        idx = _write_index(self.tmp, [{"name": "good", "url": str(prof), "content_hash": h}])
         self.assertEqual(check_index.main(["--index", str(idx)]), 0)
+
+    def test_a_valid_profile_without_a_content_hash_fails(self) -> None:
+        # content_hash is required (RFC 2026-07-08): a resolvable, valid profile that omits it
+        # is still a broken listing — the canonical index must carry the vetted-bytes hash.
+        prof = _write_profile(self.tmp, "unhashed")
+        idx = _write_index(self.tmp, [{"name": "unhashed", "url": str(prof)}])
+        self.assertEqual(check_index.main(["--index", str(idx)]), 1)
+
+    def test_a_wrong_content_hash_fails(self) -> None:
+        # The declared hash no longer matches the fetched bytes (a moved tag / stale entry).
+        prof = _write_profile(self.tmp, "moved")
+        idx = _write_index(
+            self.tmp, [{"name": "moved", "url": str(prof), "content_hash": "0" * 64}]
+        )
+        self.assertEqual(check_index.main(["--index", str(idx)]), 1)
 
     def test_a_dead_url_fails(self) -> None:
         idx = _write_index(self.tmp, [{"name": "gone", "url": str(self.tmp / "missing")}])
@@ -57,10 +73,11 @@ class CheckIndexTest(unittest.TestCase):
 
     def test_one_broken_entry_fails_even_among_good_ones(self) -> None:
         good = _write_profile(self.tmp, "good")
+        h = check_index.profiles.content_hash(check_index.profiles.load(good))
         idx = _write_index(
             self.tmp,
             [
-                {"name": "good", "url": str(good)},
+                {"name": "good", "url": str(good), "content_hash": h},
                 {"name": "gone", "url": str(self.tmp / "missing")},
             ],
         )

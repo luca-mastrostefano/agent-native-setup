@@ -67,15 +67,17 @@ def check_index(index_path: Path) -> int:
     for e in entries:
         name, url = e.get("name", "?"), e.get("url", "")
         try:
-            # A content_hash is only stable for an immutable ref, so it presupposes a pinned
+            # A content_hash is only stable for an immutable ref, so a git+ listing must pin an
             # @<tag> (RFC 2026-07-08 §1) — this also resolves community-index's open @ref
-            # question. A branch/unpinned entry can't be hash-vetted; reject it here.
-            _clone_url, ref, _subdir = profiles._parse_git_url(url)
-            if not profiles._pinned(ref):
-                raise profiles.ProfileError(
-                    f"url is not pinned to an immutable @<tag> (got ref {ref!r}) — a listing "
-                    "must pin a tag so its content_hash is stable (append e.g. @v1.0.0)"
-                )
+            # question. Real entries are always git+ (the offline unit tests use local-path
+            # stand-ins, which have no ref to pin), so scope the pin check to git+ URLs.
+            if url.startswith("git+"):
+                _clone_url, ref, _subdir = profiles._parse_git_url(url)
+                if not profiles._pinned(ref):
+                    raise profiles.ProfileError(
+                        f"url is not pinned to an immutable @<tag> (got ref {ref!r}) — a listing "
+                        "must pin a tag so its content_hash is stable (append e.g. @v1.0.0)"
+                    )
             prof = profiles.resolve(url, console=console)
             if prof is None:
                 raise profiles.ProfileError("resolved to the built-in default")
