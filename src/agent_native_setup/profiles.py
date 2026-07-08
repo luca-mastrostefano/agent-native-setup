@@ -1486,13 +1486,13 @@ def _print_index_entries(entries: list[dict], console: Any) -> None:
     )
 
 
-def _index_url_for(name: str) -> str | None:
+def _index_entry_for(name: str) -> dict | None:
     """Exact-name lookup in the community index — the ``add <name>`` fallback. Data-only."""
     import time
 
     for e in _fetch_index(time.time()):
         if e["name"] == name:
-            return str(e["url"])
+            return e
     return None
 
 
@@ -1518,9 +1518,10 @@ def _resolve_ref(ref: str, console: Any) -> Profile | None:
         )
         if any(m.is_file() for m in local):
             raise
-        url = _index_url_for(ref)
-        if url is None:
+        entry = _index_entry_for(ref)
+        if entry is None:
             raise
+        url = str(entry["url"])
         if not url.startswith("git+"):
             # The consent gate keys provenance on the git+ scheme (is_untrusted_source) — a
             # path/other-shaped index URL would masquerade as trusted-local. Refuse it.
@@ -1530,7 +1531,25 @@ def _resolve_ref(ref: str, console: Any) -> Profile | None:
         from rich.markup import escape  # the URL is attacker-controlled index data
 
         console.print(f"[dim]{escape(ref)} → community index → {escape(url)}[/]")
-        return resolve(url, console=console)
+        prof = resolve(url, console=console)
+        # Integrity gate (RFC 2026-07-08-pin-index-entries-by-content-hash): adopting a profile
+        # by the name the index vouches for verifies the bytes the index vouched for. The hash
+        # is curated in the index (a different trust domain from the third-party bytes), so a
+        # force-moved tag / swapped asset can't rewrite it. Verify-if-present: the canonical
+        # index requires it (check_index), a federated index (§3) opts in by carrying it. This
+        # is integrity, not safety — the consent gate below still fires either way.
+        expected = entry.get("content_hash")
+        if expected and prof is not None:
+            actual = content_hash(prof)
+            if actual != expected:
+                safe_url = escape(url)  # rendered through Rich markup by _add/_show — keep it inert
+                raise ProfileError(
+                    f"the profile at {safe_url} no longer matches the hash vetted in the community "
+                    f"index (fetched {actual[:12]}… != listed {str(expected)[:12]}…) — the tag "
+                    "was moved or its content changed since it was listed. Refusing. To install "
+                    f"these bytes anyway, adopt them by raw URL: profile add {safe_url}"
+                ) from None
+        return prof
 
 
 def _search(args: argparse.Namespace, console: Any) -> int:
@@ -1600,6 +1619,10 @@ def _publish(args: argparse.Namespace, console: Any) -> int:
     entry = {
         "name": prof.name,
         "url": url,
+        # The vetted-bytes hash, so an adopter's `add <name>` catches a later force-moved tag
+        # (RFC 2026-07-08). Machine-emitted — hand-computing it is exactly the error the
+        # publish step exists to prevent.
+        "content_hash": content_hash(prof),
         "description": prof.description,
         "author": _publish_author(root),
         "tags": list(prof.tags),  # carried from the profile's own tags

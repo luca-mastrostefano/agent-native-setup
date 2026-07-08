@@ -3,6 +3,7 @@
     {
       "name": "tolaria-setup",
       "url": "git+https://github.com/luca-mastrostefano/tolaria-setup.git@v0.1.1",
+      "content_hash": "2cec24c5f3b270a8d42f4dfb35c61ad3507f7b81a9537ec1346040d92203102e",
       "description": "Tolaria's agent-native engineering setup: direct-to-main TDD contract, CodeScene ratchet gates + MCP wiring, ADR system with /create-adr, two-tier husky gates (lint pre-commit; build/coverage/smoke/CodeScene pre-push), Codacy/Semgrep, optional Chunk sidecar lanes and Todoist task-loop commands. Extracted from github.com/refactoringhq/tolaria.",
       "author": "Luca Mastrostefano",
       "tags": ["tauri", "react", "rust", "typescript", "tdd", "codescene", "adr", "desktop"]
@@ -10,6 +11,7 @@
     {
       "name": "andrej-karpathy-skills-setup",
       "url": "git+https://github.com/luca-mastrostefano/andrej-karpathy-skills-setup.git@v0.1.0",
+      "content_hash": "153d410fd509e640020660491e2f965404186216ec12af2a9968e1696e3345fe",
       "description": "Karpathy-inspired LLM coding guidelines extracted from forrestchang/andrej-karpathy-skills: one behavioral contract (CLAUDE.md) plus the same guidelines as a Claude Code skill and a Cursor project rule",
       "author": "Luca Mastrostefano",
       "tags": ["guidelines", "best-practices", "coding", "karpathy", "claude-code", "cursor", "general"]
@@ -17,6 +19,7 @@
     {
       "name": "agent-native-baseline",
       "url": "git+https://github.com/luca-mastrostefano/agent-native-baseline.git@v0.2.0",
+      "content_hash": "c668be8ac35164d44d5cc61f690c9b3bd2f59bff9cfce184657defb6f89331dd",
       "description": "The default profile — the complete agent-native setup the engine scaffolds when you don't pick one: AGENTS.md contract, docs + RFCs, quality gates, security scanning, CI, and a .claude library. Fork it to build your own.",
       "author": "Luca Mastrostefano",
       "tags": ["general", "baseline", "multi-language"]

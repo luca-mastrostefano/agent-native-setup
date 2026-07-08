@@ -5,6 +5,11 @@
 - **Author:** Luca Mastrostefano
 - [x] Implemented
 
+> **See also RFC 2026-07-08-pin-index-entries-by-content-hash:** community-index installs now
+> also verify fetched bytes against a curated `content_hash` (integrity). That is orthogonal to
+> the *derived safety tier* here — the classifier + consent gate remain the only execution-trust
+> boundary; a raw-URL adopt bypasses the integrity check but still hits consent.
+
 > **Status note:** the content-based core **landed** — `profiles.classify_safety` (derived tier,
 > allowlist + fail-closed), **sandboxed rendering** (`SandboxedEnvironment` — the base scaffold
 > renders clean under it), **path confinement** in `apply` (refuses an output escaping the target),

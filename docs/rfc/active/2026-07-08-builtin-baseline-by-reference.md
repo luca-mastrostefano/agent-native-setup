@@ -5,6 +5,11 @@
 - **Author:** Luca Mastrostefano
 - [x] Implemented
 
+> **Generalized by RFC 2026-07-08-pin-index-entries-by-content-hash:** the baseline's
+> fetch-then-verify-against-`content_hash` gate (§1) is now the special case of a per-entry
+> integrity check applied to every community-index listing. The consent gate remains the
+> execution-trust boundary; the hash adds integrity, unchanged here.
+
 ## Context
 
 The engine ships a **vendored copy** of the flagship profile — `profiles/agent-native-baseline/`
