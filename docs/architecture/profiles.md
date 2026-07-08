@@ -274,7 +274,10 @@ changes an overlay never could, and the extender stays the review point.
 ## Authoring journey
 
 `profile init <name>` scaffolds the skeleton plus a field-reference README and a meta
-`AGENTS.md` so an assistant can help build it; `profile save <project> <name>` snapshots a
+`AGENTS.md` (with `CLAUDE.md`/`GEMINI.md` symlinked to it) — the guide names the repo as an
+agent-native-setup profile, links to the manager, and documents the re-validate/publish/update
+loop, so an assistant can help build *and maintain* it; `profile save <project> <name>` writes
+the same meta contracts and snapshots a
 scaffolded project's **complete** setup as a standalone profile (every manifest-recorded file
 as it exists on disk, parameterizing name/slug and the scaffold date via `@DATE@`, preserving
 `seed`, symlinks as `links`, provenance noted in the README/description);
