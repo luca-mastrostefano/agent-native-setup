@@ -36,7 +36,10 @@ Sweep the source repo for its agent-native surface — not its product code:
 Classify every file: **VERBATIM** (ships as-is), **PARAMETERIZE** (project name/slug,
 instance-bound IDs, org URLs), **SKIP** (product code, fixtures, lockfiles, generated
 artifacts, product-specific doc content). Red-flag pass: embedded secrets/tokens, absolute
-paths, personal instance IDs (ticket-system section IDs, dashboards), non-English docs.
+paths, personal instance IDs (ticket-system section IDs, dashboards), non-English docs, and
+**per-machine/local state** (`.claude/settings.local.json`, any `*.local.json`, `.env` /
+`.env.local`) — always SKIP and `.gitignore` these; shipping one commits the *adopter's* own
+approvals and tokens.
 
 ## 2. License gate (before writing anything)
 
@@ -62,6 +65,16 @@ adopters' repos before proceeding.
 - **Reset earned state**: quality-ratchet thresholds restart at an attainable floor (the
   source *earned* its numbers; a fresh repo inheriting them would be unbuildable). Dated
   artifacts use `@DATE@`.
+- **A fresh scaffold must reach a clean first commit** (the setup, not the app). The source's
+  build/test *stack* is product: don't ship a hook or CI step that runs a tool the empty
+  scaffold can't. Either (a) ship the manifest that defines it (`package.json` / `Taskfile` /
+  `Cargo.toml` — a minimal stub with no-op scripts is fine) so the gate is a safe no-op, or
+  (b) make the step conditional on its files existing (`git ls-files '*.rs' | grep -q . &&
+  cargo test`, or a language-gated `.j2`) so it self-skips. A `pre-commit` calling `pnpm lint`
+  with no `package.json`, or a `pre-push` hard-requiring `cargo` on a non-Rust project, blocks
+  the very first commit. `profile validate` now flags these as `⚠` — clear them.
+- **Ship a `.gitignore`** (dependencies, build/test output, `.env*.local`, `*.local.json`).
+  Without one, the first `git add -A` stages `node_modules/` and any secrets onboarding creates.
 - **Genericize structural docs**: keep the source's section structure as seeded skeletons
   with TODOs; never copy product-truth prose into another project's docs. Reset ADR/RFC
   indexes to empty starters (the source's decisions are its history, not the adopter's).
@@ -70,8 +83,12 @@ adopters' repos before proceeding.
   settings. If the contract describes git gates, ship a **self-silencing `session_start`
   guard** that warns every session until the hooks are actually armed (versioned hooks
   can't self-arm — git's security model), and an `onboarding` step with the exact arming
-  commands. Every "the repo has X" claim in the shipped contract must be true in a fresh
-  scaffold or guarded until made true.
+  commands. The guard's armed-check and the arming commands **must agree**: if the guard
+  tests `git config core.hooksPath == .husky`, the onboarding must set exactly that (note
+  husky v9 points `core.hooksPath` at `.husky/_`, not `.husky` — so a bare `husky install`
+  leaves the guard still firing) and `chmod +x` the hook scripts (git silently skips
+  non-executable hooks). Every "the repo has X" claim in the shipped contract must be true in
+  a fresh scaffold or guarded until made true.
 - Meta files at the profile root (never shipped): README.md with attribution, what's
   reusable vs adapted and why, an adopter checklist (external services, secrets to map); a
   root **AGENTS.md** that names the repo as an agent-native-setup profile, links back to the
@@ -86,7 +103,11 @@ adopters' repos before proceeding.
 
 ## 4. Verify (the fidelity proof)
 
-- `agent-native-setup profile validate <profile>` — zero findings.
+- `agent-native-setup profile validate <profile>` — zero errors, and resolve every advisory
+  `⚠` warning (a gate with no manifest, a missing `.gitignore`, a shipped local/secret file).
+- **Make the first commit** in the throwaway scaffold with hooks armed. If `git commit` (and a
+  `git add -A`) can't succeed cleanly on the empty scaffold, the profile ships a gate whose
+  tool/manifest is missing or a `.gitignore` gap — fix it before shipping.
 - Scaffold a throwaway project named **exactly like the source repo** and byte-diff it
   against the source: every VERBATIM file must be identical (this catches accidental
   mangling); PARAMETERIZE files must round-trip the name; list the deliberate deltas and

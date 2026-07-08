@@ -1201,13 +1201,188 @@ def _init(args: argparse.Namespace, console: Any) -> int:
     return 0
 
 
+# --- advisory lints: footguns that pass load/render but bite an adopter --------------------
+# These NEVER fail validate. Its exit code gates `publish` and check-index for every profile
+# already in the community index, so a *new* rule can only warn — a hard error would retroactively
+# fail shipped-and-valid profiles. The engine applies a profile verbatim by contract, so it can't
+# reject a footgun; it flags the mechanically-detectable ones the author can still fix before
+# shipping (the ones a scaffolded tolaria-setup hit: hooks with no manifest, no .gitignore, a
+# tracked settings.local.json).
+
+
+def _is_gate_file(out_rel: str) -> bool:
+    """The enforcement machinery whose commands run on a fresh scaffold's first commit/push —
+    so a tool it invokes must actually be runnable there."""
+    return out_rel.startswith((".husky/", ".git/hooks/", ".github/workflows/")) or (
+        out_rel.rsplit("/", 1)[-1] == ".pre-commit-config.yaml"
+    )
+
+
+# A gate whose command *starts with* one of these tools needs the matching manifest shipped, or the
+# tool has nothing to run (and may not be installed) on a fresh scaffold — the "can't make a passing
+# commit" blocker. ``npx`` is deliberately absent: it fetches on demand and needs no package.json.
+_RUNNER_MANIFESTS: tuple[tuple[frozenset[str], tuple[str, ...], str], ...] = (
+    (frozenset({"pnpm", "npm", "yarn"}), ("package.json",), "package.json"),
+    (frozenset({"cargo"}), ("Cargo.toml",), "Cargo.toml"),
+    (frozenset({"poetry", "uv"}), ("pyproject.toml",), "pyproject.toml"),
+    (
+        frozenset({"task", "go-task"}),
+        ("Taskfile.yml", "Taskfile.yaml", "taskfile.yml"),
+        "a Taskfile",
+    ),
+)
+# Shell/YAML lint of a gate file: a runner counts only as the *first word of a command*, so a tool
+# name inside a step `name:`, an `echo`, or a `#` comment is not a false positive (review finding).
+_YAML_NAME_RE = re.compile(r"^(?:-\s+)?name:\s")
+_RUN_ENTRY_RE = re.compile(r"^(?:-\s+)?(?:run|entry):\s*[|>]?\s*(.*)$")
+_SHELL_SEP_RE = re.compile(r"&&|\|\||[|;`]|\$\(")
+# Shell words that precede the real command in a segment (`then cargo …`, `sudo npm …`) — skipped
+# so the *next* word is taken as the command.
+_SHELL_LEAD_WORDS = frozenset(
+    {"then", "do", "else", "{", "}", "(", "sudo", "-", "!", "time", "exec"}
+)
+
+
+def _gate_command_words(content: str) -> set[str]:
+    """The command-initial tokens of a gate file's shell/YAML — comments and YAML ``name:`` prose
+    dropped, ``run:``/``entry:`` tails unwrapped, each line split on shell separators, leading shell
+    keywords skipped — so a runner is matched only where a command actually starts."""
+    words: set[str] = set()
+    for line in content.splitlines():
+        s = line.strip()
+        if not s or s.startswith("#") or _YAML_NAME_RE.match(s):
+            continue
+        m = _RUN_ENTRY_RE.match(s)
+        if m:
+            s = m.group(1)
+        for seg in _SHELL_SEP_RE.split(s):
+            parts = seg.strip().split()
+            i = 0
+            while i < len(parts) and parts[i] in _SHELL_LEAD_WORDS:
+                i += 1
+            if i < len(parts):
+                words.add(parts[i])
+    return words
+
+
+# Manifests whose presence implies a deps dir / secrets will exist, so a missing .gitignore leaks.
+_DEP_MANIFESTS = (
+    "package.json",
+    "Cargo.toml",
+    "go.mod",
+    "pyproject.toml",
+    "requirements.txt",
+    "Gemfile",
+)
+
+
+def _is_local_secret_file(basename: str) -> bool:
+    """Per-machine or secret state (``settings.local.json``, ``.env``, ``.env.local``) — shipping
+    it as tracked scaffold content commits the adopter's own approvals/tokens. ``.env.example`` and
+    other non-``.local`` env files are fine (they carry no secrets)."""
+    return (
+        basename == ".env"
+        or basename.endswith(".local.json")
+        or (basename.startswith(".env") and basename.endswith(".local"))
+    )
+
+
+def _lint(profile: Profile, ctx: dict[str, Any]) -> list[str]:
+    """Advisory warnings (see the module comment above) — never counted as validate errors.
+
+    Runs over the profile's **default instantiation** — what a ``-y`` scaffold actually ships:
+    ``.j2`` gates are rendered (a conditional gate that renders empty isn't shipped, so it isn't
+    scanned) and matched on their *output*, not their Jinja source. That's what lets the flagship
+    baseline's per-language ``quality.yml`` (whose ``cargo`` steps render only for a Rust project)
+    pass clean, while a profile that ships an unconditional ``pnpm lint`` hook and no
+    ``package.json`` is flagged.
+
+    Purely advisory: it must never change validate's exit code, so the whole body is wrapped so
+    any unexpected error (e.g. a ``when`` expression that raises at eval) degrades to no warnings
+    rather than propagating out of validate."""
+    try:
+        return _lint_unguarded(profile, ctx)
+    except Exception:
+        return []  # advisory only — an internal error here can't be allowed to fail validate
+
+
+def _lint_unguarded(profile: Profile, ctx: dict[str, Any]) -> list[str]:
+    stamp = ctx["env"]["date"]  # @DATE@ in a path resolves to the scaffold stamp, as apply() does
+    shipped_content: dict[str, str] = {}
+    for out_rel, src in profile.template_files():
+        try:
+            raw = src.read_text(encoding="utf-8")
+        except UnicodeDecodeError:
+            continue  # a binary template is already a hard error; validate reports it separately
+        if src.name.endswith(".j2"):
+            content = render(raw, **ctx)
+            if not content.strip():
+                continue  # conditional include renders empty → not shipped, so not scanned
+        else:
+            content = raw
+        shipped_content[out_rel.replace("@DATE@", stamp)] = content
+    shipped_paths = set(shipped_content)
+    for out_rel, when in profile.empty_files:
+        # An unevaluable ``when`` (a typo'd/undeclared answer) raises here — treat the file as
+        # shipped rather than crash; the guard above keeps this advisory pass from failing validate.
+        try:
+            shown = when is None or eval_expr(when, **ctx)
+        except Exception:
+            shown = True
+        if shown:
+            shipped_paths.add(out_rel.replace("@DATE@", stamp))
+    basenames = {rel.rsplit("/", 1)[-1] for rel in shipped_paths}
+    warnings: list[str] = []
+
+    # L1 — per-machine / secret files shipped as tracked scaffold content.
+    for rel in sorted(shipped_paths):
+        if _is_local_secret_file(rel.rsplit("/", 1)[-1]):
+            warnings.append(
+                f"ships {rel!r} — a per-machine/secret file carrying the adopter's own state "
+                "(approvals, tokens). List it in .gitignore instead of shipping it tracked."
+            )
+
+    # L2 — ships git hooks/CI gates or a dependency manifest but no .gitignore: a fresh `git add -A`
+    # then stages deps (node_modules/) and any secrets the adopter creates during onboarding.
+    ships_gates = any(_is_gate_file(rel) for rel in shipped_paths)
+    ships_deps = bool(basenames & set(_DEP_MANIFESTS))
+    if (ships_gates or ships_deps) and ".gitignore" not in basenames:
+        what = "git hooks/CI gates" if ships_gates else "a dependency manifest"
+        warnings.append(
+            f"ships {what} but no .gitignore — a fresh `git add -A` would stage dependencies "
+            "and any secrets. Ship a .gitignore (deps, build output, .env*.local, *.local.json)."
+        )
+
+    # L3 — a gate's command runs a tool whose manifest the profile never ships (one warning per
+    # missing manifest, naming the first gate that triggers it).
+    missing: dict[str, str] = {}
+    for rel, content in shipped_content.items():
+        if not _is_gate_file(rel):
+            continue
+        commands = _gate_command_words(content)
+        for tools, manifests, label in _RUNNER_MANIFESTS:
+            if label in missing or not (tools & commands):
+                continue
+            if not set(manifests) & basenames:
+                missing[label] = rel
+    for label, rel in sorted(missing.items()):
+        warnings.append(
+            f"gate {rel!r} runs a tool needing {label}, but the profile ships none — a fresh "
+            f"scaffold can't reach a passing commit until someone hand-authors {label}. Ship it "
+            "(a minimal stub with no-op scripts is fine) or gate the hook on the file existing."
+        )
+    return warnings
+
+
 def _validate(args: argparse.Namespace, console: Any) -> int:
     """Author-side check: the profile loads (schema/prompts/when), carries a non-empty
     ``description`` (the pitch adopters read at scaffold time), every ``.j2`` template renders,
     and each ``seed`` entry names a file the profile actually ships — so a broken profile is caught
     here, not when a consumer scaffolds with it. Rendering is *strict* (the validation context has
     the same keys as a real scaffold, so an undefined variable can only be a typo that scaffolding
-    would silently leave blank) — catching both Jinja syntax errors and undefined-name typos."""
+    would silently leave blank) — catching both Jinja syntax errors and undefined-name typos.
+    Beyond hard errors, it emits **advisory ``⚠`` warnings** (``_lint``) for footguns that pass
+    load/render but bite an adopter — these never change the exit code."""
     root = Path(args.path).expanduser().resolve()
     try:
         prof = load(root)
@@ -1262,6 +1437,10 @@ def _validate(args: argparse.Namespace, console: Any) -> int:
             f"  [dim]{tier} because:[/] {'; '.join(reasons[:4])}"
             + (" …" if len(reasons) > 4 else "")
         )
+    # Advisory footgun warnings (never change the exit code) — a fresh scaffold that can't reach a
+    # clean first commit, or ships tracked secret/local state. See `_lint`.
+    for w in _lint(prof, ctx):
+        console.print(f"  [yellow]⚠[/] {w}")
     # Advisory (RFC 2026-07-07-agents-contract §6): a profile shipping an AGENTS.md but no
     # `agents_contract` and no link to it works for whichever tool reads AGENTS.md and no
     # other — one line makes it universal.
