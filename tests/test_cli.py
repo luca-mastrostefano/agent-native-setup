@@ -354,10 +354,13 @@ def _run_wizard(
     parts: list[str],
     languages: list[str],
     hooks: bool = True,
+    tools: list[str] | None = None,
+    confirms: list[str] | None = None,
 ) -> tuple[WizardConfig, str, str]:
     """Drive `_interactive` with scripted answers; return (config, console output, choice
     labels). The output is whitespace-normalized: rich hard-wraps to the console width, so a
-    raw-substring assertion would break on where the line happens to fold."""
+    raw-substring assertion would break on where the line happens to fold. Pass `confirms` to
+    collect every yes/no question the wizard actually asked."""
     import io
 
     import questionary
@@ -372,7 +375,7 @@ def _run_wizard(
         if "Languages" in message:
             return _Ans(list(languages))
         if "AI assistants" in message:
-            return _Ans(["claude"])
+            return _Ans(["claude"] if tools is None else list(tools))
         return _Ans(list(parts))
 
     def _select(message: str, choices: list, **_k: object) -> _Ans:
@@ -380,6 +383,8 @@ def _run_wizard(
         return _Ans(choices[0].value)
 
     def _confirm(message: str, **_k: object) -> _Ans:
+        if confirms is not None:
+            confirms.append(message)
         return _Ans(hooks if "pre-commit hooks" in message else True)
 
     monkeypatch.setattr(questionary, "text", lambda message, **_k: _Ans("demo"))
@@ -390,6 +395,52 @@ def _run_wizard(
     args = cli.parse_args(["demo", "-o", str(out_dir)])
     cfg = cli._interactive(args, out_dir, list(languages), True, set(languages))
     return cfg, " ".join(buf.getvalue().split()), " ".join(titles)
+
+
+def test_wizard_never_asks_about_the_first_run_banner(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """RFC 2026-07-09: answering "no" left a scaffolded-but-un-onboarded repo with nothing in
+    AGENTS.md to say so, and bought nothing back — the banner deletes itself once ONBOARDING.md
+    is done. So it ships wherever it works, and the wizard spends no question on it."""
+    confirms: list[str] = []
+    cfg, _out, _shown = _run_wizard(
+        monkeypatch, tmp_path, parts=["quality", "ci"], languages=["python"], confirms=confirms
+    )
+
+    assert cfg.first_run_banner
+    assert confirms, "harness wired wrong — the wizard asks *some* yes/no questions"
+    assert not [m for m in confirms if "banner" in m.lower() or "onboard" in m.lower()]
+
+
+@pytest.mark.parametrize(
+    ("parts", "tools", "expected"),
+    [
+        # The banner points at ONBOARDING.md, which ships for either half of the toolchain.
+        (["quality", "ci"], ["claude"], True),
+        (["quality"], ["claude"], True),
+        (["ci"], ["claude"], True),
+        # No quality/CI ⇒ no ONBOARDING.md to point at, so the banner would dangle.
+        (["agents", "docs"], ["claude"], False),
+        # No AI assistant ⇒ no agent is pointed at AGENTS.md, so the banner is inert text.
+        (["quality", "ci"], [], False),
+    ],
+)
+def test_first_run_banner_ships_exactly_where_it_can_work(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    parts: list[str],
+    tools: list[str],
+    expected: bool,
+) -> None:
+    """Always-on is gated, not unconditional: the banner needs an AI tool to read AGENTS.md
+    *and* an ONBOARDING.md for it to point at. Outside that, injecting it would leave a
+    block promising a runbook that never shipped."""
+    cfg, _out, _shown = _run_wizard(
+        monkeypatch, tmp_path, parts=parts, languages=["python"], tools=tools
+    )
+
+    assert cfg.first_run_banner is expected
 
 
 def test_wizard_names_and_links_the_tools_it_signs_you_up_for(

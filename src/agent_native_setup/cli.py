@@ -280,16 +280,11 @@ def _interactive(
                 ),
             ],
         ).unsafe_ask()
-    first_run_banner = False
-    if ("quality" in parts or "ci" in parts) and tools:
-        _note(
-            "The banner points the agent at ONBOARDING.md on its first session; finishing that "
-            "runbook is what deletes the banner."
-        )
-        first_run_banner = questionary.confirm(
-            "Add a first-run banner to AGENTS.md so the agent self-onboards?",
-            default=True,
-        ).unsafe_ask()
+    # Not a question (RFC 2026-07-09): declining left the repo scaffolded but un-onboarded,
+    # with nothing to tell the agent so. The banner is self-removing, so "no" bought nothing.
+    # The condition is where it can work at all — an AI tool to read AGENTS.md, and an
+    # ONBOARDING.md for it to point at (which `onboarding.generate` ships on quality/ci).
+    first_run_banner = bool(("quality" in parts or "ci" in parts) and tools)
     if (out / ".git").exists():
         console.print("[cyan]Already a git repository[/] — skipping git init.")
         init_git = False
