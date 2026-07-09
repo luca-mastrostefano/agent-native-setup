@@ -22,7 +22,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400..700;1,6..72,400..700&family=IBM+Plex+Sans:wght@400;600&family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="style.css?v=12" />
+  <link rel="stylesheet" href="style.css?v=13" />
 </head>
 <body>
 
@@ -370,7 +370,10 @@ agent-native-setup profile init my-team</code></pre>
           <code>${cmd}</code>
           <button class="copy-cmd" data-cmd="${cmd}"><span class="ic-copy">${IC_COPY}</span><span class="ic-check">${IC_CHECK}</span>Copy install command</button>
         </div>
-        <p class="use-hint">Copy and paste this into your terminal.</p>
+        <p class="use-hint">
+          Copy and paste this into your terminal.<br />
+          <code class="uv">brew install uv</code> # if you don't have uv yet — <a href="https://docs.astral.sh/uv">docs.astral.sh/uv</a>
+        </p>
       </div>
     </div>`;
   }
@@ -379,10 +382,9 @@ agent-native-setup profile init my-team</code></pre>
     const badge = p.isDefault ? '<span class="badge">default</span>' : "";
     const tags = p.tags.map(t =>
       `<button class="chip" data-tag="${esc(t)}" aria-pressed="${state.tags.has(t)}">${esc(t)}</button>`).join("");
-    const copy = `<button class="copy" data-cmd="${esc(installCmd(p.name))}" title="Copy install command" aria-label="Copy install command for ${esc(p.name)}"><span class="ic-copy">${IC_COPY}</span><span class="ic-check">${IC_CHECK}</span></button>`;
     return `<article class="row">
       <div>
-        <h3><a href="${esc(p.repo)}">${esc(p.name)}</a>${copy}${badge}</h3>
+        <h3><a href="${esc(p.repo)}">${esc(p.name)}</a>${badge}</h3>
         <p>${esc(p.description)}</p>
         <div class="tags">${tags}</div>
       </div>
@@ -445,7 +447,7 @@ agent-native-setup profile init my-team</code></pre>
       return;
     }
 
-    const copy = e.target.closest("button.copy, button.copy-cmd");
+    const copy = e.target.closest("button.copy-cmd");
     if (copy) {
       navigator.clipboard.writeText(copy.dataset.cmd).then(() => {
         copy.classList.add("copied");

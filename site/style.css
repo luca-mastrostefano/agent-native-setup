@@ -159,7 +159,7 @@ h1 em {
 .btn:hover { text-decoration: none; }
 .btn-primary { background: var(--pine); color: #f4f6f0; }
 .btn-primary:hover { filter: brightness(1.12); }
-.btn-ghost { border-color: var(--rule-strong); color: var(--ink); }
+.btn-ghost { border-color: var(--pine); color: var(--ink); }
 .btn-ghost:hover { background: var(--chip-bg); }
 
 .hero-note { margin: 1.25rem 0 0; font-size: 0.92rem; color: var(--ink-soft); }
@@ -353,23 +353,11 @@ p code, li code {
   text-decoration-thickness: 1px;
 }
 .row h3 a:hover { text-decoration-thickness: 2px; }
-/* copy-install button beside each profile name */
-.copy {
-  background: none;
-  border: none;
-  padding: 0.1rem;
-  margin-left: 0.45rem;
-  cursor: pointer;
-  color: var(--ink-soft);
-  vertical-align: -0.1em;
-  line-height: 0;
-}
-.copy:hover { color: var(--accent); }
-.copy .ic-check, .copy-cmd .ic-check { display: none; color: var(--accent); }
-.copy.copied .ic-copy, .copy-cmd.copied .ic-copy { display: none; }
-.copy.copied .ic-check, .copy-cmd.copied .ic-check { display: inline; }
+.copy-cmd .ic-check { display: none; color: var(--accent); }
+.copy-cmd.copied .ic-copy { display: none; }
+.copy-cmd.copied .ic-check { display: inline; }
 @media (prefers-reduced-motion: no-preference) {
-  .copy.copied .ic-check svg, .copy-cmd.copied .ic-check svg { animation: pop 0.25s ease-out; }
+  .copy-cmd.copied .ic-check svg { animation: pop 0.25s ease-out; }
 }
 @keyframes pop {
   from { transform: scale(0.4); opacity: 0; }
@@ -403,7 +391,7 @@ p code, li code {
   padding: 0.25rem 1.1rem;
   background: var(--pine);
   border: 1px solid var(--pine);
-  border-radius: 999px;
+  border-radius: 6px;
   color: #f4f6f0;
   cursor: pointer;
 }
@@ -449,13 +437,28 @@ p code, li code {
   font-size: 0.76rem;
   padding: 0.45rem 0.8rem;
   background: var(--chip-bg);
-  border: 1px solid var(--rule-strong);
+  border: 1px solid var(--pine);
   border-radius: 6px;
   color: var(--ink-soft);
   cursor: pointer;
 }
-.copy-cmd:hover { color: var(--ink); border-color: var(--ink-soft); }
-.use-hint { margin: 0.55rem 0 0; font-size: 0.74rem; color: var(--ink-soft); }
+.copy-cmd:hover { color: var(--ink); background: var(--card); }
+/* the icon spans are flex items; block-level svg drops the inline baseline gap */
+.copy-cmd svg { display: block; }
+
+.use-hint {
+  margin: 0.55rem 0 0;
+  font-size: 0.74rem;
+  line-height: 1.6;
+  color: var(--ink-soft);
+}
+.use-hint .uv {
+  font-size: 0.72rem;
+  background: var(--chip-bg);
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+  padding: 0.05rem 0.35rem;
+}
 
 .stats {
   display: flex;
