@@ -428,6 +428,15 @@ p code, li code {
   text-align: left;
 }
 @media (max-width: 640px) { .use-panel { right: auto; left: 0; } }
+/* bridges the gap under the button so travelling into the panel doesn't count as leaving */
+.use-panel::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: -0.55rem;
+  height: 0.55rem;
+}
 .use-cmd { display: flex; align-items: center; gap: 0.7rem; }
 /* narrow screens: the copy button drops below the command instead of squeezing beside it */
 @media (max-width: 640px) {
@@ -467,7 +476,8 @@ p code, li code {
 /* the icon spans are flex items; block-level svg drops the inline baseline gap */
 .copy-cmd svg { display: block; }
 
-.use-hint {
+/* two classes deep so `.row p` doesn't outrank this on the in-row panel */
+.use-panel .use-hint, #pm .use-hint {
   margin: 0.55rem 0 0;
   font-size: 0.74rem;
   line-height: 1.6;
@@ -506,6 +516,10 @@ p code, li code {
   overflow: auto;
 }
 #pm::backdrop { background: rgb(0 0 0 / 0.55); }
+/* the gutter is reserved always, so locking the page doesn't shift it sideways */
+html { scrollbar-gutter: stable; }
+/* <html> is the scrolling element, so the lock has to land there, not on <body> alone */
+html.modal-open, html.modal-open body { overflow: hidden; }
 #pm-close {
   position: sticky;
   top: -0.4rem;
@@ -557,7 +571,7 @@ p code, li code {
 #pm .pm-desc { font-size: 0.92rem; color: var(--ink-soft); margin: 0 0 0.7rem; }
 #pm .tags { display: flex; flex-wrap: wrap; gap: 0.35rem; }
 .pm-sub { font-size: 0.8rem; color: var(--ink-soft); margin: 0 0 0.5rem; }
-.pm-sub + .pm-sub, .tree + .pm-sub { margin-top: 1rem; }
+.pm-sub + .pm-sub, .tree + .pm-sub, .asks + .pm-sub { margin-top: 1.4rem; }
 .tree, .asks {
   margin: 0;
   padding: 0.6rem 0.8rem;

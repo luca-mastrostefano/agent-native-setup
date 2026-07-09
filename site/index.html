@@ -22,7 +22,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400..700;1,6..72,400..700&family=IBM+Plex+Sans:wght@400;600&family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="style.css?v=16" />
+  <link rel="stylesheet" href="style.css?v=18" />
 </head>
 <body>
 
@@ -502,6 +502,7 @@ agent-native-setup profile init my-team</code></pre>
       <div id="pm-inspect" class="pm-inspect"><p class="pm-sub">Loading…</p></div>`;
     $pm.dataset.profile = p.name;
     $pm.showModal();
+    document.documentElement.classList.add("modal-open"); // the page behind must not scroll under the modal
 
     const $i = document.getElementById("pm-inspect");
     // a slow fetch must not paint into a modal the reader has since closed or reopened elsewhere
@@ -518,6 +519,8 @@ agent-native-setup profile init my-team</code></pre>
   }
 
   document.getElementById("pm-close").addEventListener("click", () => $pm.close());
+  // fires however it closed — button, Escape, or backdrop
+  $pm.addEventListener("close", () => document.documentElement.classList.remove("modal-open"));
   // click on the backdrop (i.e. outside the dialog's own box) closes it
   $pm.addEventListener("click", e => {
     if (e.target !== $pm) return;
@@ -533,15 +536,38 @@ agent-native-setup profile init my-team</code></pre>
   });
   $sort.addEventListener("change", () => { state.sort = $sort.value; state.shown = PAGE; render(); });
   $more.addEventListener("click", () => { state.shown += PAGE; render(); });
+  function setUsePanel(btn, open) {
+    btn.setAttribute("aria-expanded", String(open));
+    btn.nextElementSibling.hidden = !open;
+  }
+
   function closeUsePanels(except) {
     for (const btn of document.querySelectorAll(".use-btn[aria-expanded='true']")) {
-      if (btn === except) continue;
-      btn.setAttribute("aria-expanded", "false");
-      btn.nextElementSibling.hidden = true;
+      if (btn !== except) setUsePanel(btn, false);
     }
   }
 
   document.addEventListener("keydown", e => { if (e.key === "Escape") closeUsePanels(); });
+
+  // On a real pointer, the panel follows the cursor: hovering the Use button opens it and
+  // leaving the group closes it. Touch devices keep the click-to-toggle behaviour below.
+  const HOVER_UI = matchMedia("(hover: hover) and (pointer: fine)").matches;
+  if (HOVER_UI) {
+    const enters = e => {
+      const group = e.target.closest(".use");
+      if (!group || group.contains(e.relatedTarget)) return; // moving within the group, not into it
+      const btn = group.querySelector(".use-btn");
+      closeUsePanels(btn);
+      setUsePanel(btn, true);
+    };
+    const leaves = e => {
+      const group = e.target.closest(".use");
+      if (!group || group.contains(e.relatedTarget)) return; // still inside the group
+      setUsePanel(group.querySelector(".use-btn"), false);
+    };
+    $list.addEventListener("mouseover", enters);
+    $list.addEventListener("mouseout", leaves);
+  }
 
   document.addEventListener("click", e => {
     // a click anywhere outside an open "Use" panel dismisses it
@@ -556,10 +582,12 @@ agent-native-setup profile init my-team</code></pre>
 
     const use = e.target.closest("button.use-btn");
     if (use) {
+      // where hover drives the panel, a mouse click would just fight it — but a
+      // keyboard-generated click (detail === 0) must still open it
+      if (HOVER_UI && e.detail > 0) return;
       const open = use.getAttribute("aria-expanded") === "true";
       closeUsePanels(use);
-      use.setAttribute("aria-expanded", String(!open));
-      use.nextElementSibling.hidden = open;
+      setUsePanel(use, !open);
       return;
     }
 
