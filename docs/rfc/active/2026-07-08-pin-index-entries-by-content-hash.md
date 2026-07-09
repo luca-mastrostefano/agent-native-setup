@@ -82,7 +82,7 @@ is not pinned, with a message pointing at the fix.
 ### 2. Verify at install-by-name — the security win
 
 When `profile add <name>` / `show <name>` resolves a bare name **through the index**
-(`_resolve_ref` → index lookup), thread the entry's `content_hash` to the install site and,
+(`resolve_ref` → index lookup), thread the entry's `content_hash` to the install site and,
 after `_fetch_git`, compute `content_hash(fetched)` and compare. This mirrors the baseline
 gate (`builtin_baseline_root`), extended from the one flagship to every listed profile.
 

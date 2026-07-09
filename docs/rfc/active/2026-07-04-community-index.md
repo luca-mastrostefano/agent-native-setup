@@ -16,6 +16,13 @@
 > §6's name → URL now also carries the expected hash, and the open `@ref` question is
 > **resolved** — a pinned `@<tag>` is required, since the hash is only stable for one.
 
+> **Extended 2026-07-09:** §6's adopt-by-name now also covers the scaffold flag — a bare
+> `--profile <name>` that resolves to nothing local falls back to the index, exactly as
+> `add`/`show` do (one shared `resolve_ref`). Same constraints, so the exposure is unchanged:
+> locals win, the listed URL must be `git+`, the content hash is verified, and the fetched
+> profile still faces the consent gate. The scaffold's manifest records the *resolved URL*,
+> not the name, so `update` re-fetches the pinned tag instead of re-consulting a moving index.
+
 ## Context
 
 The profile ecosystem can now **author** (`init`/`save`/`validate`), **publish** (`git push`),
@@ -62,9 +69,9 @@ it *encodes the correct shape* a human gets wrong by hand — a pinned `@<tag>` 
 schema-valid entry — and **unpinned/broken URLs are the main failure mode of the curation burden**,
 so producing reproducible listings directly serves the index's maintainability.
 
-**6. Adopt by name — `add <name>` / `show <name>` fall back to the index.** When a ref is a bare
-name that resolves to nothing local (locals always win), `add`/`show` look it up in the index by
-exact name and proceed with the listed URL — the npm-install model, collapsing the
+**6. Adopt by name — `add <name>` / `show <name>` / `--profile <name>` fall back to the index.**
+When a ref is a bare name that resolves to nothing local (locals always win), they look it up in
+the index by exact name and proceed with the listed URL — the npm-install model, collapsing the
 `search` → copy URL → `add` journey to two short commands. This gives the index one new
 authority: it resolves a *name* to a URL. Two constraints make the exposure unchanged in kind
 (a poisoned index could equally have listed the URL under an enticing name to copy by hand):
