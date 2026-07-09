@@ -175,13 +175,41 @@ per-type) default; the repeatable **`--answer NAME=VALUE`** flag answers any pro
   skips that tool; RFC 2026-07-07-cross-tool-onboarding-triggers).
 - `session_start` — shell commands appended to the `.claude` SessionStart hooks, run every
   session, each wrapped so a failure can't disrupt the session.
+- `claude_settings` — the profile's **contribution** to the `.claude/settings.json` the engine
+  generates (RFC 2026-07-09). An allowlisted object: `permissions` (`allow`/`deny`) and
+  `enabledMcpjsonServers`. Use it to make a shipped `.mcp.json` actually usable — a
+  registration is not an authorization.
+
+  ```json
+  "claude_settings": {
+    "permissions": { "allow": ["mcp__codescene__*"] },
+    "enabledMcpjsonServers": ["codescene"]
+  }
+  ```
+
+  The engine **owns `hooks`** and merges the contribution beside them, so a profile can never
+  drop the update-check nudge or its own guard; `hooks` is therefore not an accepted key.
+  Declaring it *targets Claude* and *triggers the settings write* even with no `session_start`
+  — otherwise a profile whose only job is enabling its MCP server would silently no-op. It is
+  recorded in the manifest and replayed on a degraded update, like `session_start`.
+
+  Contributing settings makes the profile **`unsafe`**, with reasons naming the grant
+  (`pre-approves 2 permission(s): …`, `enables 1 MCP server(s): codescene`) — pre-approval is
+  authority, so it is shown where authority is reviewed. Note `consent()` gates only *fetched*
+  profiles; a local one surfaces the grant via `profile validate`.
+
+  Shipping a `templates/.claude/settings.json` instead is single-owner: it **supersedes** the
+  generated file, silently dropping the hooks and any contribution. `profile validate` warns.
+  Shipping `.claude/settings.local.json` (Claude Code's *per-user, git-ignored* file) as tracked
+  content is the other footgun — it commits the adopter's own future approvals; `validate` warns
+  and points here.
 
 **Which tools a standalone profile targets is derived, not asked** (RFC
 2026-07-07-agents-contract §5): `derive_tools` reads it from what the profile *ships* — a
 declared `agents_contract` targets every assistant; otherwise a tool is targeted iff the
 profile ships anything under its config surface (`.claude/`, `.cursor/`, `.gemini/`,
 `.github/prompts/` or `.github/copilot-instructions.md`); declaring `session_start` (the hooks
-are Claude-only) targets Claude. So a profile that ships no tool surface and no contract gets
+are Claude-only) or `claude_settings` targets Claude. So a profile that ships no tool surface and no contract gets
 no triggers (the console hint still prints), and there is no engine "which assistants?"
 question implying a compatibility the profile can't keep. A **baseline** run is unchanged: the
 flagship's own `tools` prompt drives its `when`-gated links, translated from the wizard.

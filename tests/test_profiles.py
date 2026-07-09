@@ -39,6 +39,7 @@ def _make_profile(
     prompts: list[dict] | None = None,
     tags: tuple[str, ...] = (),
     agents_contract: str | None = None,
+    claude_settings: dict | None = None,
     by_path: bool = False,
 ) -> profiles.Profile:
     d = root / name
@@ -48,6 +49,8 @@ def _make_profile(
         "version": version,
         "description": "x",
     }
+    if claude_settings is not None:
+        manifest["claude_settings"] = claude_settings
     if tags:
         manifest["tags"] = list(tags)
     if seed:
@@ -499,6 +502,129 @@ def _session_hooks(target: Path) -> list[str]:
     return [h["command"] for h in s["hooks"]["SessionStart"][0]["hooks"]]
 
 
+# --- profile-contributed Claude settings (RFC 2026-07-09) ----------------------------------
+
+_CS = {
+    "permissions": {"allow": ["mcp__codescene__*", "Bash(git status:*)"]},
+    "enabledMcpjsonServers": ["codescene"],
+}
+
+
+def _settings(target: Path) -> dict:
+    return json.loads((target / ".claude/settings.json").read_text(encoding="utf-8"))
+
+
+@pytest.mark.parametrize(
+    "bad",
+    [
+        {"hooks": {}},  # the engine owns hooks — never contributable
+        {"nope": 1},
+        {"permissions": []},
+        {"permissions": {"allow": "not-a-list"}},
+        {"permissions": {"grant": ["x"]}},
+        {"enabledMcpjsonServers": "codescene"},
+    ],
+)
+def test_load_rejects_malformed_claude_settings(tmp_path: Path, bad: dict) -> None:
+    # A grant of authority must fail loudly, never be silently dropped.
+    d = tmp_path / "bad"
+    (d / "templates").mkdir(parents=True)
+    (d / "profile.json").write_text(
+        json.dumps({"name": "b", "version": "1.0.0", "claude_settings": bad}), encoding="utf-8"
+    )
+    with pytest.raises(profiles.ProfileError, match="claude_settings"):
+        profiles.load(d)
+
+
+def test_claude_settings_merge_into_the_generated_settings_json(tmp_path: Path) -> None:
+    prof = _make_profile(
+        tmp_path, "team", {"x.md": "hi\n"}, session_start=("echo hi",), claude_settings=_CS
+    )
+    target = tmp_path / "proj"
+    target.mkdir()
+    cli.build(_config(target), Scaffolder(target), prof)
+    s = _settings(target)
+    assert s["permissions"] == {"allow": ["mcp__codescene__*", "Bash(git status:*)"]}
+    assert s["enabledMcpjsonServers"] == ["codescene"]
+    # The engine still owns hooks: its update-check plus the profile's guarded command.
+    cmds = [h["command"] for h in s["hooks"]["SessionStart"][0]["hooks"]]
+    assert any("update --check" in c for c in cmds) and any("echo hi" in c for c in cmds)
+
+
+def test_claude_settings_without_session_start_still_writes_settings(tmp_path: Path) -> None:
+    # The load-bearing case (RFC rule 2): a profile whose only point is "enable the MCP server
+    # I ship" has no hooks. Gating the write on hooks would silently drop the contribution.
+    prof = _make_profile(tmp_path, "team", {".mcp.json": "{}\n"}, claude_settings=_CS)
+    assert "claude" in profiles.derive_tools(prof)  # ...and it must target claude at all
+    target = tmp_path / "proj"
+    target.mkdir()
+    cli.build(_config(target), Scaffolder(target), prof)
+    s = _settings(target)
+    assert s["enabledMcpjsonServers"] == ["codescene"]
+    assert s["hooks"]["SessionStart"][0]["hooks"]  # update-check nudge survives
+
+
+def test_hooks_only_profile_settings_json_is_unchanged(tmp_path: Path) -> None:
+    # Regression the RFC demands: decoupling the write from `hooks` must not alter the file a
+    # session_start-only profile has always produced.
+    prof = _make_profile(tmp_path, "team", {"x.md": "hi\n"}, session_start=("echo hi",))
+    target = tmp_path / "proj"
+    target.mkdir()
+    cli.build(_config(target), Scaffolder(target), prof)
+    assert set(_settings(target)) == {"hooks"}  # no stray permissions/enabledMcpjsonServers keys
+
+
+def test_claude_settings_make_the_profile_unsafe_and_name_the_grant(tmp_path: Path) -> None:
+    prof = _make_profile(tmp_path, "team", {"x.md": "hi\n"}, claude_settings=_CS)
+    tier, reasons = profiles.classify_safety(prof)
+    assert tier == "unsafe"
+    blob = " ".join(reasons)
+    assert "pre-approves 2 permission(s)" in blob and "mcp__codescene__*" in blob
+    assert "enables 1 MCP server(s): codescene" in blob
+
+
+def test_empty_claude_settings_contribute_nothing(tmp_path: Path) -> None:
+    prof = _make_profile(
+        tmp_path, "team", {"x.md": "hi\n"}, claude_settings={"permissions": {"allow": []}}
+    )
+    assert prof.contributes_settings() is False
+    assert "claude" not in profiles.derive_tools(prof)
+    assert "claude_settings" not in prof.manifest_block()
+
+
+def test_claude_settings_are_recorded_for_a_degraded_update_replay(tmp_path: Path) -> None:
+    prof = _make_profile(tmp_path, "team", {"x.md": "hi\n"}, claude_settings=_CS)
+    assert prof.manifest_block()["claude_settings"] == _CS
+
+
+def test_validate_warns_on_an_unrecognized_top_level_key(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # A typo'd `claud_settings` grants nothing, silently — the lint is the only signal.
+    prof = _make_profile(tmp_path, "team", {"x.md": "hi\n"})
+    data = json.loads((prof.root / "profile.json").read_text(encoding="utf-8"))
+    data["claud_settings"] = {"permissions": {"allow": ["x"]}}
+    (prof.root / "profile.json").write_text(json.dumps(data), encoding="utf-8")
+    assert cli.main(["profile", "validate", str(prof.root)]) == 0  # advisory
+    out = capsys.readouterr().out
+    assert "⚠" in out and "claud_settings" in out
+
+
+def test_validate_warns_when_a_shipped_settings_json_would_supersede(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    prof = _make_profile(
+        tmp_path,
+        "team",
+        {".claude/settings.json": "{}\n"},
+        session_start=("echo hi",),
+        claude_settings=_CS,
+    )
+    assert cli.main(["profile", "validate", str(prof.root)]) == 0
+    out = capsys.readouterr().out
+    assert "supersedes" in out and "session_start hooks" in out
+
+
 def test_load_validates_session_start_is_a_string_list(tmp_path: Path) -> None:
     bad = tmp_path / "bad"
     bad.mkdir()
@@ -725,6 +851,52 @@ def test_degraded_update_keeps_session_start_hooks(tmp_path: Path) -> None:
     assert update.run(target, dry_run=False, console=console) == 0
     assert "couldn't be re-resolved" in console.text
     assert any("echo keepme" in h for h in _session_hooks(target))  # NOT stripped by the base
+
+
+def test_degraded_update_keeps_claude_settings_of_a_hookless_profile(tmp_path: Path) -> None:
+    # RFC 2026-07-09 rule 7, end to end, on the newly-decoupled path: a profile with NO
+    # session_start (so the write is triggered by the contribution alone). If the profile is gone
+    # at update time, the recorded grant must be replayed — not silently regenerated away.
+    prof = _make_profile(tmp_path, "team", {}, version="0.1.0", claude_settings=_CS, by_path=True)
+    target = tmp_path / "proj"
+    target.mkdir()
+    cli.build(_config(target), Scaffolder(target), prof)
+    _commit(target)
+
+    shutil.rmtree(prof.root)  # profile source gone
+    console = _Console()
+    assert update.run(target, dry_run=False, console=console) == 0
+    assert "couldn't be re-resolved" in console.text
+    s = _settings(target)
+    assert s["enabledMcpjsonServers"] == ["codescene"]  # the grant survived the degraded update
+    assert s["permissions"]["allow"] == ["mcp__codescene__*", "Bash(git status:*)"]
+
+
+def test_deny_only_claude_settings_are_contributed_and_named(tmp_path: Path) -> None:
+    # A pre-*deny* grants nothing but still shapes the adopter's settings — it must be targeted,
+    # written, recorded, and named in the safety reasons like an allow.
+    deny = {"permissions": {"deny": ["Bash(rm:*)"]}}
+    prof = _make_profile(tmp_path, "team", {"x.md": "hi\n"}, claude_settings=deny)
+    assert prof.contributes_settings() and "claude" in profiles.derive_tools(prof)
+    assert "pre-denies 1 permission(s): Bash(rm:*)" in " ".join(profiles.classify_safety(prof)[1])
+    target = tmp_path / "proj"
+    target.mkdir()
+    cli.build(_config(target), Scaffolder(target), prof)
+    s = _settings(target)
+    assert s["permissions"] == {"deny": ["Bash(rm:*)"]}  # no empty `allow` key smuggled in
+
+
+def test_a_semantically_empty_contribution_is_not_written(tmp_path: Path) -> None:
+    # `{"permissions": {}}` on a profile that targets claude another way (a .claude/ file) must
+    # not write a settings.json the manifest never records — all four call sites agree (review).
+    prof = _make_profile(
+        tmp_path, "team", {".claude/x.md": "hi\n"}, claude_settings={"permissions": {}}
+    )
+    assert prof.contributes_settings() is False
+    target = tmp_path / "proj"
+    target.mkdir()
+    cli.build(_config(target), Scaffolder(target), prof)
+    assert not (target / ".claude/settings.json").exists()
 
 
 # --- Phase 4: prompts (a declarative wizard) ------------------------------------------------
