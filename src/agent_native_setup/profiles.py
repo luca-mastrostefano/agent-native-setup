@@ -1048,16 +1048,41 @@ def apply(
 
 # --- authoring CLI: `agent-native-setup profile <init|list>` ----------------------------
 
-_SKELETON_README = """\
-# {name} — agent-native-setup profile
+# The manager's website, whose profile registry is what an adopter browses. The generated
+# README's attribution points here (not at _MANAGER_URL): a reader landing on a profile repo
+# wants the other profiles, not the engine's source.
+_SITE_URL = "https://lucamastrostefano.com/agent-native-setup/"
 
-{intro} When someone runs
+_SKELETON_README = """\
+# {name}
+
+🌐 *Part of the **agent-native-setup** registry — [browse all community profiles]({site}).*
+
+## Description
+
+{intro}
+
+<!-- TODO: expand — what this profile sets up, and who it's for. Keep the one-liner in sync
+     with `description` in `profile.json`: that is the line adopters read in the scaffold
+     intro panel and on the registry. -->
+
+## How to use it
 
 ```bash
-agent-native-setup my-app -o ./my-app --profile {source_hint}
+uvx --from git+{manager} agent-native-setup -o ./my-app --profile {name}
 ```
 
-{result}
+When someone runs that, {result}
+
+`--profile {name}` resolves through the community index, so it works once you've published
+(`agent-native-setup profile publish . --release`). Until then, point `--profile` at this
+directory: `--profile {source_hint}`. Adopters who'd rather install the wizard once
+(`uv tool install git+{manager}`) can drop the `uvx --from …` prefix and call
+`agent-native-setup` directly.
+
+---
+
+*Everything below is for building and maintaining this profile — not for adopters.*
 
 ## Layout
 
@@ -1212,6 +1237,12 @@ reference.
   A `.gitignore` at the profile root can keep junk (`__pycache__/`, `.DS_Store`) out of your tree,
   but scope it **narrowly**: `templates/` is content to ship, so a pattern that reaches into it is
   exactly how a must-ship file gets silently dropped — `git ls-files templates/` stays the truth.
+- **Keep the README's adopter header.** [`README.md`](./README.md) is this repo's landing page
+  on the registry, so it opens with three things an adopter needs: the attribution line, a
+  **Description** of what the profile sets up and for whom, and a **How to use it** block with
+  the `uvx … --profile <name>` command. Fill the description in (matching `description` in
+  `profile.json`) and keep those three intact when you edit — the maintainer notes live below
+  the `---`.
 - **Keep `agents_contract` set** (this skeleton pre-fills it to `"AGENTS.md"`, with a stub at
   `templates/AGENTS.md`). It makes the engine point every assistant at your contract, so your
   profile works with Claude, Cursor, Copilot, and Gemini from one file — and stays `safe`.
@@ -1314,6 +1345,8 @@ def _init(args: argparse.Namespace, console: Any) -> int:
     (root / "README.md").write_text(
         _SKELETON_README.format(
             name=args.name,
+            site=_SITE_URL,
+            manager=_MANAGER_URL,
             source_hint=f"./{args.name}",
             intro="A complete project setup, shipped as a profile.",
             result=(
@@ -2584,6 +2617,8 @@ def _save(args: argparse.Namespace, console: Any) -> int:
     (out / "README.md").write_text(
         _SKELETON_README.format(
             name=args.name,
+            site=_SITE_URL,
+            manager=_MANAGER_URL,
             source_hint=f"./{args.name}",
             intro=(
                 f"A **standalone snapshot** of `{project.name}`'s agent-native setup "

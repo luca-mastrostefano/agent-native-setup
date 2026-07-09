@@ -99,8 +99,14 @@ adopters' repos before proceeding.
   leaves the guard still firing) and `chmod +x` the hook scripts (git silently skips
   non-executable hooks). Every "the repo has X" claim in the shipped contract must be true in
   a fresh scaffold or guarded until made true.
-- Meta files at the profile root (never shipped): README.md with attribution, what's
-  reusable vs adapted and why, an adopter checklist (external services, secrets to map); a
+- Meta files at the profile root (never shipped): a README.md that opens the way `profile
+  init` writes one — the attribution line (`🌐 *Part of the **agent-native-setup** registry —
+  [browse all community profiles](https://lucamastrostefano.com/agent-native-setup/).*`), a
+  **Description** of what the profile sets up and for whom
+  (matching `description` in `profile.json`), and a **How to use it** block with `uvx --from
+  git+<manager> agent-native-setup -o ./my-app --profile <name>` — that's the repo's landing
+  page on the registry. Below a `---`, the maintainer half: what's reusable vs adapted and
+  why, an adopter checklist (external services, secrets to map); a
   root **AGENTS.md** that names the repo as an agent-native-setup profile, links back to the
   manager (`https://github.com/luca-mastrostefano/agent-native-setup`), and carries the notes
   useful for building/maintaining *this* profile — including how to re-validate, re-publish, and
