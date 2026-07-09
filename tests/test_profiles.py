@@ -1673,11 +1673,12 @@ def test_init_readme_opens_as_an_adopter_landing_page(tmp_path: Path) -> None:
     assert sep, "README lost the adopter/maintainer divider"
     assert "https://lucamastrostefano.com/agent-native-setup/" in head
     assert "## Description" in head and "## How to use it" in head
-    # Only `profile add` consults the community index; a scaffold with a bare `--profile myteam`
-    # that was never added resolves against CWD/~/.config and fails. So the headline command is
-    # the add-then-scaffold pair, with the local path as the pre-publish fallback.
-    assert "agent-native-setup profile add myteam" in head
-    assert "agent-native-setup -o ./my-app --profile myteam" in head
+    # A bare `--profile myteam` matching nothing on disk falls back to the community index, so the
+    # registry one-liner is the headline command; the local path is the pre-publish fallback.
+    assert (
+        "uvx --from git+https://github.com/luca-mastrostefano/agent-native-setup "
+        "agent-native-setup -o ./my-app --profile myteam" in head
+    )
     assert "--profile ./myteam" in head and "profile publish . --release" in head
     # The author-facing field reference survives, below the divider.
     assert "## Layout" in tail and "## Updating" in tail

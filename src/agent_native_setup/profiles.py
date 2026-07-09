@@ -1069,18 +1069,17 @@ _SKELETON_README = """\
 ## How to use it
 
 ```bash
-uvx --from git+{manager} agent-native-setup profile add {name} \\
-  && uvx --from git+{manager} agent-native-setup -o ./my-app --profile {name}
+uvx --from git+{manager} agent-native-setup -o ./my-app --profile {name}
 ```
 
-`profile add` fetches this profile from the community index — verifying it against the
-`content_hash` the index vouches for — into `~/.config/agent-native-setup/profiles/{name}`;
-the scaffold then runs from that copy. When someone runs that, {result}
+When someone runs that, {result}
 
-Only `profile add` consults the index, and only for a bare name, so the pair above works once
-you've published (`agent-native-setup profile publish . --release`). Before that, scaffold
-straight from this directory — a path needs no index: `--profile {source_hint}`. Adopters who
-install the wizard once (`uv tool install git+{manager}`) drop the `uvx --from …` prefix.
+A bare `--profile {name}` that matches nothing on disk falls back to the community index, and
+the fetched bytes are verified against the `content_hash` the index vouches for — so the
+command works once you've published (`agent-native-setup profile publish . --release`). Before
+that, scaffold straight from this directory — a path needs no index: `--profile {source_hint}`.
+Adopters who install the wizard once (`uv tool install git+{manager}`) drop the `uvx --from …`
+prefix.
 
 ---
 
