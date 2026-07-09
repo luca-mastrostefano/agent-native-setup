@@ -6,7 +6,7 @@ can't catch is **rot** — a repo deleted or moved, a tag gone, a profile that n
 loads. This script fetches each entry and runs the same load + strict-render validation as
 ``profile validate``, so a broken listing fails CI instead of failing the next adopter.
 
-Run by ``.github/workflows/index-check.yml`` (weekly, on PRs touching ``contributions/``,
+Run by ``.github/workflows/index-check.yml`` (daily, on PRs touching ``contributions/``,
 and on demand) and locally via ``task check-index`` — needs the network for git+ entries.
 """
 

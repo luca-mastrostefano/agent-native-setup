@@ -5,7 +5,7 @@ name: index-stats
 # exposure; the branch ruleset protects only `main` and `v*` tags, so `stats` is writable.
 on:
   schedule:
-    - cron: "0 7 * * 1" # weekly, after index-check
+    - cron: "0 7 * * *" # daily, after index-check
   workflow_dispatch:
 
 permissions:
@@ -31,11 +31,11 @@ jobs:
           mkdir -p contributions
           cp "$RUNNER_TEMP/stats.json" contributions/stats.json
           # Explain the branch in place — the orphan force-push erases anything this
-          # step doesn't re-create, so a hand-committed README would vanish weekly.
+          # step doesn't re-create, so a hand-committed README would vanish daily.
           cat > README.md <<'EOF'
           # `stats` branch — data only, do not edit by hand
 
-          Auto-generated **weekly** by `.github/workflows/index-stats.yml` on `main`.
+          Auto-generated **daily** by `.github/workflows/index-stats.yml` on `main`.
           Holds public per-profile metrics (stars, forks, release-asset downloads) in
           `contributions/stats.json`, fetched client-side by the website and by
           `profile search`/`list`.
@@ -45,5 +45,5 @@ jobs:
           Rationale: `docs/rfc/proposed/2026-07-07-profile-releases-and-stats.md` on `main`.
           EOF
           git add README.md contributions/stats.json
-          git commit -qm "stats: weekly public metadata refresh"
+          git commit -qm "stats: daily public metadata refresh"
           git push -f origin stats

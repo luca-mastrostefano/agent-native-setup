@@ -5,6 +5,12 @@
 - **Author:** Luca Mastrostefano
 - [x] Implemented
 
+> **Cadence amended 2026-07-09:** `index-check` and `index-stats` now run **daily**, not
+> weekly (the workflow files are the source of truth; "weekly" below reads as "on the
+> scheduled run"). Two consequences shift with it: the rot/poisoning detection window
+> narrows to ~1 day + the 24h client cache, and the self-inflated download baseline rises
+> to ~1/day per listed asset. The API budget is unchanged — it is per-run, not per-week.
+
 ## Context
 
 The ecosystem already has the load-bearing package-manager parts: versioned artifacts

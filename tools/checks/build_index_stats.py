@@ -3,13 +3,13 @@
 
 For every GitHub-hosted index entry, query the public API for stars and the summed
 ``download_count`` of ``agent-native-profile.tar.gz`` assets across all releases (the
-ordering metric), and write ``contributions/stats.json``. Run weekly by the
+ordering metric), and write ``contributions/stats.json``. Run daily by the
 ``index-stats`` workflow, which publishes the file to the data-only ``stats`` branch —
 display data only; a listing's stats grant no trust.
 
 Usage: ``python tools/checks/build_index_stats.py [--index PATH] [--out PATH]``.
 Failures per entry degrade to omitted fields; a wholly unreachable API exits non-zero so
-the weekly run is visibly red rather than silently publishing an empty file.
+the daily run is visibly red rather than silently publishing an empty file.
 """
 
 from __future__ import annotations
