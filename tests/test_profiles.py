@@ -1812,6 +1812,20 @@ def test_validate_l3_catches_a_run_step_command_with_no_manifest(
     assert "⚠" in out and "hand-authors" in out
 
 
+def test_validate_no_l3_warning_when_the_gate_guards_on_the_manifest(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # A gate that names the manifest is guarding on it and self-skips until the app exists —
+    # exactly the fix this warning recommends, so warning on it would punish the correct answer.
+    prof = _make_profile(
+        tmp_path,
+        "team",
+        {".husky/pre-push": "[ -f package.json ] || exit 0\npnpm lint\n", ".gitignore": "x\n"},
+    )
+    assert cli.main(["profile", "validate", str(prof.root)]) == 0
+    assert "⚠" not in capsys.readouterr().out
+
+
 def test_validate_no_l3_warning_on_tool_names_in_prose(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
