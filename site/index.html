@@ -22,7 +22,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400..700;1,6..72,400..700&family=IBM+Plex+Sans:wght@400;600&family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="style.css?v=17" />
+  <link rel="stylesheet" href="style.css?v=18" />
 </head>
 <body>
 
@@ -551,7 +551,8 @@ agent-native-setup profile init my-team</code></pre>
 
   // On a real pointer, the panel follows the cursor: hovering the Use button opens it and
   // leaving the group closes it. Touch devices keep the click-to-toggle behaviour below.
-  if (matchMedia("(hover: hover) and (pointer: fine)").matches) {
+  const HOVER_UI = matchMedia("(hover: hover) and (pointer: fine)").matches;
+  if (HOVER_UI) {
     const enters = e => {
       const group = e.target.closest(".use");
       if (!group || group.contains(e.relatedTarget)) return; // moving within the group, not into it
@@ -581,6 +582,9 @@ agent-native-setup profile init my-team</code></pre>
 
     const use = e.target.closest("button.use-btn");
     if (use) {
+      // where hover drives the panel, a mouse click would just fight it — but a
+      // keyboard-generated click (detail === 0) must still open it
+      if (HOVER_UI && e.detail > 0) return;
       const open = use.getAttribute("aria-expanded") === "true";
       closeUsePanels(use);
       setUsePanel(use, !open);

@@ -476,7 +476,8 @@ p code, li code {
 /* the icon spans are flex items; block-level svg drops the inline baseline gap */
 .copy-cmd svg { display: block; }
 
-.use-hint {
+/* two classes deep so `.row p` doesn't outrank this on the in-row panel */
+.use-panel .use-hint, #pm .use-hint {
   margin: 0.55rem 0 0;
   font-size: 0.74rem;
   line-height: 1.6;
