@@ -463,3 +463,24 @@ def test_wizard_security_note_tracks_what_was_actually_selected(
         REGISTRY[k].audit_tool for k in languages
     }:
         assert absent not in out
+
+
+@pytest.mark.parametrize(
+    "languages",
+    [
+        # An audit tool exists, so the clobbered value is truthy and `ai_tools` silently becomes
+        # ["pip-audit"] — a name that isn't an AI tool at all.
+        ["python"],
+        # No audit tool, so the clobbered value is empty: the user's "claude" is dropped outright
+        # and the first-run-banner question is never even asked.
+        ["html"],
+    ],
+)
+def test_wizard_keeps_the_ai_tools_when_the_security_note_runs(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, languages: list[str]
+) -> None:
+    """The security note derives the per-language audit tools; that list must not overwrite the
+    AI assistants the user picked. Both feed `WizardConfig`, and only "quality"/"ci" runs reach
+    the note — which is the common path, so a clobber here mis-scaffolds every such project."""
+    cfg, _, _ = _run_wizard(monkeypatch, tmp_path, parts=["quality", "ci"], languages=languages)
+    assert cfg.ai_tools == ["claude"]
