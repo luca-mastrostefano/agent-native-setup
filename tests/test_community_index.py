@@ -12,6 +12,7 @@ from pathlib import Path
 import pytest
 
 from agent_native_setup import cli, profiles
+from agent_native_setup.profiles import _spliced_index
 
 _ENTRIES = [
     {
@@ -597,3 +598,116 @@ def test_search_survives_hostile_stats_types(
     c = _Console()
     assert profiles._search(argparse.Namespace(query="python"), c) == 0
     assert c.text.index("[bold]b[/]") < c.text.index("[bold]a[/]")  # the honest int ranks
+
+
+# --- the listing PR the publish flow authors (RFC 2026-07-07 §3) ------------------------------
+#
+# `_spliced_index` writes the file that becomes the PR, so what it emits must satisfy the same
+# rules `check_index` enforces online. Regression: it rendered no `content_hash` on a new
+# listing and left the stale one on a bump, so every auto-opened PR failed CI.
+
+_INDEX_TEXT = """{
+  "profiles": [
+    {
+      "name": "acme-backend",
+      "url": "git+https://github.com/acme/backend.git@v1",
+      "content_hash": "%s",
+      "description": "Acme Python backend house style",
+      "author": "Acme",
+      "tags": ["python", "backend"]
+    }
+  ]
+}
+""" % ("a" * 64)
+
+_LISTED = json.loads(_INDEX_TEXT)["profiles"]
+
+
+def _entry(name: str, url: str, content_hash: str) -> dict:
+    return {
+        "name": name,
+        "url": url,
+        "content_hash": content_hash,
+        "description": "d",
+        "author": "A",
+        "tags": ["python"],
+    }
+
+
+def _spliced_entry(text: str, name: str) -> dict:
+    return next(e for e in json.loads(text)["profiles"] if e["name"] == name)
+
+
+def test_a_new_listing_is_spliced_with_its_content_hash() -> None:
+    # check_index hard-fails an entry with no content_hash, so an auto-opened listing PR that
+    # omits it is dead on arrival.
+    entry = _entry("web-strict", "git+https://github.com/x/web.git@v2", "b" * 64)
+    text, title, _body = _spliced_index(_INDEX_TEXT, _LISTED, entry)
+    assert _spliced_entry(text, "web-strict")["content_hash"] == "b" * 64
+    assert title == "feat(index): list web-strict"
+    assert _spliced_entry(text, "acme-backend")["content_hash"] == "a" * 64  # untouched
+
+
+def test_a_bump_reppins_the_content_hash_with_the_url() -> None:
+    # The hash pins the tree the url resolves to. Bumping the tag alone lists a hash for a
+    # tree the url no longer points at -> `check_index` content_hash mismatch.
+    entry = _entry("acme-backend", "git+https://github.com/acme/backend.git@v2", "c" * 64)
+    text, title, _body = _spliced_index(_INDEX_TEXT, _LISTED, entry)
+    bumped = _spliced_entry(text, "acme-backend")
+    assert bumped["url"].endswith("@v2")
+    assert bumped["content_hash"] == "c" * 64
+    assert "a" * 64 not in text  # the stale hash is gone, not merely duplicated
+    assert title == "chore(index): bump acme-backend to v2"
+
+
+def test_a_bump_of_an_entry_with_no_content_hash_refuses_rather_than_lying() -> None:
+    # A legacy entry can't be spliced blind: inserting a hash next to a url we didn't verify
+    # is how a wrong pin gets committed. Refuse and say what to add.
+    text = _INDEX_TEXT.replace(f'      "content_hash": "{"a" * 64}",\n', "")
+    listed = json.loads(text)["profiles"]
+    entry = _entry("acme-backend", "git+https://github.com/acme/backend.git@v2", "c" * 64)
+    with pytest.raises(profiles.ProfileError, match="listed without a content_hash"):
+        _spliced_index(text, listed, entry)
+
+
+def test_the_spliced_index_stays_parseable_and_matches_house_style() -> None:
+    # The splice is textual; a broken comma/brace would only surface as red CI on the PR.
+    entry = _entry("web-strict", "git+https://github.com/x/web.git@v2", "b" * 64)
+    text, _t, _b = _spliced_index(_INDEX_TEXT, _LISTED, entry)
+    assert len(json.loads(text)["profiles"]) == 2
+    assert '      "tags": ["python"]\n' in text  # single-line tags, 6-space indent
+
+
+def test_a_bump_of_one_of_two_entries_sharing_a_content_hash_touches_only_its_own() -> None:
+    # A content_hash is not unique across the index — two names may list byte-identical trees
+    # (a fork, a mirror). A whole-file replace would refuse the bump ("couldn't locate") or
+    # rewrite the twin's hash; the swap is confined to the entry the *url* identifies.
+    twin = _INDEX_TEXT.replace(
+        '  "profiles": [\n',
+        '  "profiles": [\n'
+        "    {\n"
+        '      "name": "acme-mirror",\n'
+        '      "url": "git+https://github.com/mirror/backend.git@v1",\n'
+        f'      "content_hash": "{"a" * 64}",\n'
+        '      "description": "byte-identical fork",\n'
+        '      "author": "Mirror",\n'
+        '      "tags": ["python"]\n'
+        "    },\n",
+    )
+    listed = json.loads(twin)["profiles"]
+    entry = _entry("acme-backend", "git+https://github.com/acme/backend.git@v2", "c" * 64)
+    text, _t, _b = _spliced_index(twin, listed, entry)
+    assert _spliced_entry(text, "acme-backend")["content_hash"] == "c" * 64  # bumped
+    mirror = _spliced_entry(text, "acme-mirror")
+    assert mirror["content_hash"] == "a" * 64  # the twin is untouched
+    assert mirror["url"].endswith("@v1")
+
+
+def test_a_bump_refuses_when_the_listed_hash_is_not_in_the_entrys_own_block() -> None:
+    # Corrupted/hand-edited index: the parsed entry claims a hash its text block doesn't carry.
+    # Refuse rather than splice a hash into the wrong object.
+    text = _INDEX_TEXT.replace(f'"content_hash": "{"a" * 64}"', f'"content_hash": "{"f" * 64}"')
+    listed = json.loads(_INDEX_TEXT)["profiles"]  # stale parse: says "aaa…", text says "fff…"
+    entry = _entry("acme-backend", "git+https://github.com/acme/backend.git@v2", "c" * 64)
+    with pytest.raises(profiles.ProfileError, match="content_hash field inside its entry"):
+        _spliced_index(text, listed, entry)
