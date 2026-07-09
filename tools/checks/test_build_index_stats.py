@@ -80,7 +80,7 @@ class BuildIndexStatsTest(unittest.TestCase):
         urllib.request.urlopen = broken
         self.addCleanup(lambda: setattr(urllib.request, "urlopen", self._orig))
         rc = build_index_stats.main(["--index", str(self.index), "--out", str(self.out)])
-        self.assertEqual(rc, 1)  # red weekly run, not a silently empty stats file
+        self.assertEqual(rc, 1)  # red scheduled run, not a silently empty stats file
 
 
 if __name__ == "__main__":

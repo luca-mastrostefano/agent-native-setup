@@ -5,7 +5,7 @@ name: index-check
 # (RFC 2026-07-04-community-index, open question "CI check" — decided).
 on:
   schedule:
-    - cron: "0 6 * * 1" # weekly: listings rot on their own schedule, not ours
+    - cron: "0 6 * * *" # daily: listings rot on their own schedule, not ours
   pull_request:
     paths: ["contributions/**", "profiles/**", "tools/checks/check_index.py", "tools/checks/check_baseline_pin.py"]
   workflow_dispatch:

@@ -287,11 +287,11 @@ never automated), validate the spliced file locally, push a branch (fork on push
 `gh pr create`. Every failure degrades to the already-printed entry; non-interactive runs
 never attempt it. Freeform `tags` on the profile are the
 single source of truth, carried into the entry by `publish`. The `index-check` workflow
-(weekly, on `contributions/` PRs, on demand; `task check-index` locally) fetches and validates
+(daily, on `contributions/` PRs, on demand; `task check-index` locally) fetches and validates
 every listing so rot fails CI instead of the next adopter — and for entries with a release
 asset it fetches through **both transports** and fails on hash mismatch (the asset must be
 byte-equivalent to its tag: the poisoning tripwire). `profile publish --release` attaches
-the asset (packed from the tag's tree); the weekly `index-stats` workflow precomputes public
+the asset (packed from the tag's tree); the daily `index-stats` workflow precomputes public
 stars + asset-download counts to a data-only `stats` branch, which `search`/`list` fetch
 like the index (cached, silent-fail, display-only) — `search` ranks hits by downloads.
 The project website (`site/`, deployed by the `pages` workflow) is a second consumer of the
