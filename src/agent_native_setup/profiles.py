@@ -79,6 +79,33 @@ PROMPT_TYPES = ("text", "select", "confirm", "checkbox")
 # A public contract with `env`'s add-only discipline: adding a pointer is an engine release,
 # renaming or removing one is a breaking change.
 AGENT_POINTERS = ("AGENTS.md", "CLAUDE.md", "GEMINI.md")
+# Claude settings a profile may contribute (RFC 2026-07-09-profile-contributed-claude-settings):
+# the engine MERGES these into the `.claude/settings.json` it generates, beside its own hooks.
+# `hooks` is deliberately absent from the allowlist — the engine owns it, so a profile can never
+# drop the update-check nudge or its own guarded session_start commands.
+CLAUDE_SETTINGS_KEYS = ("permissions", "enabledMcpjsonServers")
+_PERMISSION_KEYS = ("allow", "deny")
+# Every key `load()` understands. Unknown top-level keys are *linted* (advisory), never rejected:
+# rejecting them would break a profile written against a newer engine (forward-compat), but a
+# silent typo (`claud_settings`) would grant nothing at all — exactly the invisible
+# under-delivery this feature exists to remove (RFC 2026-07-09 rule 8).
+_PROFILE_KEYS = frozenset(
+    {
+        "name",
+        "version",
+        "description",
+        "tags",
+        "seed",
+        "transient",
+        "empty_files",
+        "onboarding",
+        "session_start",
+        "prompts",
+        "links",
+        "agents_contract",
+        "claude_settings",
+    }
+)
 # Config surfaces per assistant, for DERIVED tool targeting on standalone-profile runs (RFC
 # 2026-07-07-agents-contract §5): a tool is targeted iff the profile ships anything under its
 # surface (plus: a declared contract targets all tools; session_start implies claude).
@@ -158,6 +185,15 @@ class Profile:
     # template path the engine points every assistant at via AGENT_POINTERS — declared
     # content stays the profile's; which filename each tool reads is engine knowledge.
     agents_contract: str | None = None
+    # Claude settings the profile contributes (RFC 2026-07-09): `permissions` and
+    # `enabledMcpjsonServers`, merged by the engine into the settings.json it generates. This is
+    # the supported way to make a shipped `.mcp.json` actually usable — a registration is not an
+    # authorization. Declaring it targets Claude and forces the settings write (see cli.build).
+    claude_settings: dict[str, Any] | None = None
+
+    def contributes_settings(self) -> bool:
+        """Does the profile actually contribute anything? An empty/`{}` declaration doesn't."""
+        return contributes_settings(self.claude_settings)
 
     def template_files(self) -> list[tuple[str, Path]]:
         """``(output_rel, source_path)`` for each file under ``templates/``, with a trailing
@@ -203,7 +239,21 @@ class Profile:
         # needs no recording.
         if self.session_start:
             block["session_start"] = list(self.session_start)
+        # Same reason as session_start (RFC 2026-07-09 rule 7): a degraded update (profile gone)
+        # must regenerate settings.json without silently dropping the contributed permissions.
+        if self.contributes_settings():
+            block["claude_settings"] = self.claude_settings
         return block
+
+
+def contributes_settings(claude_settings: dict[str, Any] | None) -> bool:
+    """Does this ``claude_settings`` value actually grant anything? A present-but-empty
+    declaration (``{}``, ``{"permissions": {}}``) contributes nothing. The single semantic every
+    call site shares — targeting, the settings write, the manifest record, and the safety
+    reasons — so a degenerate declaration can't be "written but never recorded" (review finding)."""
+    cs = claude_settings or {}
+    perms = cs.get("permissions") or {}
+    return bool(perms.get("allow") or perms.get("deny") or cs.get("enabledMcpjsonServers"))
 
 
 def _parse_prompts(data: dict, manifest_path: Path) -> tuple[Prompt, ...]:
@@ -248,6 +298,47 @@ def _parse_prompts(data: dict, manifest_path: Path) -> tuple[Prompt, ...]:
                 raise ProfileError(f"{at} 'when' is not a valid expression: {exc}") from None
         prompts.append(Prompt(name, ptype, p["message"], tuple(choices), default, when))
     return tuple(prompts)
+
+
+def _parse_claude_settings(data: dict, manifest_path: Path) -> dict[str, Any] | None:
+    """Validate the profile's ``claude_settings`` (RFC 2026-07-09). Strict by design: this
+    declares *authority* (pre-approved permissions, enabled MCP servers), so a malformed or
+    unknown key is a load error rather than something silently dropped. ``hooks`` is not
+    accepted — the engine owns it."""
+    raw = data.get("claude_settings")
+    if raw is None:
+        return None
+    at = f"{manifest_path}: 'claude_settings'"
+    if not isinstance(raw, dict):
+        raise ProfileError(f"{at} must be an object")
+    unknown = sorted(set(raw) - set(CLAUDE_SETTINGS_KEYS))
+    if unknown:
+        raise ProfileError(
+            f"{at}: unknown key(s) {', '.join(unknown)} — only "
+            f"{', '.join(CLAUDE_SETTINGS_KEYS)} are allowed (the engine owns 'hooks')"
+        )
+    perms = raw.get("permissions")
+    if perms is not None:
+        if not isinstance(perms, dict):
+            raise ProfileError(f"{at}.permissions must be an object")
+        bad = sorted(set(perms) - set(_PERMISSION_KEYS))
+        if bad:
+            raise ProfileError(
+                f"{at}.permissions: unknown key(s) {', '.join(bad)} — only "
+                f"{', '.join(_PERMISSION_KEYS)} are allowed"
+            )
+        for key in _PERMISSION_KEYS:
+            value = perms.get(key)
+            if value is not None and not (
+                isinstance(value, list) and all(isinstance(s, str) for s in value)
+            ):
+                raise ProfileError(f"{at}.permissions.{key} must be a list of strings")
+    servers = raw.get("enabledMcpjsonServers")
+    if servers is not None and not (
+        isinstance(servers, list) and all(isinstance(s, str) for s in servers)
+    ):
+        raise ProfileError(f"{at}.enabledMcpjsonServers must be a list of strings")
+    return raw
 
 
 def _default_ok(ptype: str, default: object, choices: list) -> bool:
@@ -377,6 +468,7 @@ def load(path: Path, *, source: str | None = None) -> Profile:
         links=tuple(sorted(links)),
         empty_files=tuple(sorted(empty_files)),
         agents_contract=contract,
+        claude_settings=_parse_claude_settings(data, manifest_path),
     )
     # A contract the profile doesn't ship has nothing to point at — reject at load, so a
     # dangling declaration fails the author, never an adopter mid-scaffold.
@@ -742,6 +834,11 @@ def derive_tools(profile: Profile) -> list[str]:
             targeted.add(tool)
     if profile.session_start:
         targeted.add("claude")
+    if profile.contributes_settings():
+        # RFC 2026-07-09 rule 2: contributing settings is a Claude-targeting act on its own —
+        # a profile whose point is "enable the MCP server I ship" has no hooks and no .claude/
+        # file, and would otherwise target nothing and have its contribution dropped.
+        targeted.add("claude")
     return [t for t in AI_TOOLS if t in targeted]
 
 
@@ -1012,6 +1109,14 @@ runs (`-y`) use each prompt's `default` unless overridden headlessly with
 - `session_start` — a list of shell commands appended to the `.claude` **SessionStart** hooks,
   run at the start of **every** session (e.g. `echo` a reminder into the agent's context). Each
   is wrapped so a failing command can't disrupt the session.
+- `claude_settings` — what your profile contributes to the generated `.claude/settings.json`:
+  `{{"permissions": {{"allow": ["mcp__x__*"]}}, "enabledMcpjsonServers": ["x"]}}`. Ship a
+  `.mcp.json` and this is what actually *enables* it — a registration is not an authorization.
+  The engine owns `hooks` and merges your keys beside them, so you can't drop the update nudge.
+  **Never** ship `.claude/settings.local.json` to do this: it's Claude Code's per-user,
+  git-ignored file, so shipping it tracked commits your adopters' own later approvals.
+  Contributing settings makes the profile `unsafe` and the grant is named at consent time —
+  pre-approval is authority, so keep the list tight.
 
 ## Updating
 
@@ -1337,10 +1442,45 @@ def _lint_unguarded(profile: Profile, ctx: dict[str, Any]) -> list[str]:
     # L1 — per-machine / secret files shipped as tracked scaffold content.
     for rel in sorted(shipped_paths):
         if _is_local_secret_file(rel.rsplit("/", 1)[-1]):
+            extra = (
+                " To pre-approve permissions or enable an MCP server, declare "
+                '"claude_settings" in profile.json — the engine merges it into the '
+                "settings.json it generates."
+                if rel.endswith(".claude/settings.local.json")
+                else ""
+            )
             warnings.append(
                 f"ships {rel!r} — a per-machine/secret file carrying the adopter's own state "
-                "(approvals, tokens). List it in .gitignore instead of shipping it tracked."
+                "(approvals, tokens). List it in .gitignore instead of shipping it tracked." + extra
             )
+
+    # L4 — a shipped settings.json is single-owner: it supersedes the engine's, silently dropping
+    # the SessionStart hooks (update-check + the profile's own guard) and any contribution.
+    if ".claude/settings.json" in shipped_paths:
+        lost = []
+        if profile.session_start:
+            lost.append("its session_start hooks")
+        if profile.contributes_settings():
+            lost.append("its claude_settings contribution")
+        if lost:
+            warnings.append(
+                "ships '.claude/settings.json', which supersedes the engine-generated one — "
+                f"{' and '.join(lost)} will not be applied. Drop the template and declare "
+                '"claude_settings" instead, or inline the hooks yourself.'
+            )
+
+    # L5 — an unrecognized top-level key is a silent no-op (load() reads only known keys), so a
+    # typo like "claud_settings" grants nothing with no error. Advisory, never a load error:
+    # rejecting unknown keys would break a profile written against a newer engine.
+    try:
+        raw = json.loads((profile.root / PROFILE_MANIFEST).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        raw = {}
+    for key in sorted(k for k in raw if k not in _PROFILE_KEYS):
+        warnings.append(
+            f"profile.json: unrecognized key {key!r} — the engine ignores it, so whatever it "
+            "was meant to configure is silently not applied. Check the spelling."
+        )
 
     # L2 — ships git hooks/CI gates or a dependency manifest but no .gitignore: a fresh `git add -A`
     # then stages deps (node_modules/) and any secrets the adopter creates during onboarding.
@@ -1507,6 +1647,20 @@ def classify_safety(profile: Profile) -> tuple[str, list[str]]:
         reasons.append(f"{len(profile.onboarding)} onboarding step(s) are agent-executed")
     if profile.links:  # a symlink redirects reads/writes — fail-closed (RFC 2026-07-05 open Q)
         reasons.append(f"declares {len(profile.links)} symlink(s)")
+    if profile.contributes_settings():
+        # Pre-approval is authority: it removes a guardrail the adopter would otherwise be asked
+        # for. Name what's granted so consent (fetched profiles) and validate can show it.
+        cs = profile.claude_settings or {}
+        perms = cs.get("permissions") or {}
+        verbs = {"allow": "pre-approves", "deny": "pre-denies"}
+        for key in _PERMISSION_KEYS:
+            entries = perms.get(key) or []
+            if entries:
+                shown = ", ".join(entries[:3]) + (" …" if len(entries) > 3 else "")
+                reasons.append(f"{verbs[key]} {len(entries)} permission(s): {shown}")
+        servers = cs.get("enabledMcpjsonServers") or []
+        if servers:
+            reasons.append(f"enables {len(servers)} MCP server(s): {', '.join(servers)}")
     outputs = [rel for rel, _ in profile.template_files()]
     outputs += [rel for rel, _ in profile.empty_files]  # an empty file still lands at a path
     for out_rel in outputs:

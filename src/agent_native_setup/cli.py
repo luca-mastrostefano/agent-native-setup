@@ -327,6 +327,7 @@ def build(
     profile: profiles.Profile | None = None,
     *,
     session_start: tuple[str, ...] | None = None,
+    claude_settings: dict[str, object] | None = None,
     answers: dict[str, object] | None = None,
     standalone: bool | None = None,
     profile_date: str | None = None,
@@ -345,6 +346,13 @@ def build(
     hooks = (
         session_start if session_start is not None else (profile.session_start if profile else ())
     )
+    # The profile's contributed Claude settings (RFC 2026-07-09). Like `session_start`, the
+    # explicit override lets a degraded update replay the recorded value when the profile is gone.
+    contributed = (
+        claude_settings
+        if claude_settings is not None
+        else (profile.claude_settings if profile else None)
+    )
     onboarding_steps = profile.onboarding if profile else ()
     if not is_standalone:
         ai_context.generate(config, sc)
@@ -361,8 +369,13 @@ def build(
         # Standalone: the default content generators are skipped, but the profile's *startup*
         # contributions still apply — its one-time onboarding stands alone (base=False), and its
         # every-session hooks get a minimal settings.json (Claude-only, where hooks live).
-        if hooks and "claude" in config.ai_tools:
-            agents.write_session_start_settings(sc, hooks)
+        # Triggered by hooks OR a settings contribution (RFC 2026-07-09 rule 2): a profile that
+        # only enables the MCP server it ships has no hooks, and gating on `hooks` alone would
+        # silently drop its contribution. Use the same *semantic* emptiness check as targeting,
+        # the manifest record and the safety reasons, so a degenerate `{"permissions": {}}` can't
+        # be written here yet never recorded (and so never replayed on a degraded update).
+        if (hooks or profiles.contributes_settings(contributed)) and "claude" in config.ai_tools:
+            agents.write_profile_settings(sc, hooks, contributed)
         if onboarding_steps:
             # A profile-owned path at a trigger location wins (RFC 2026-07-07 §5): the
             # engine must not shadow a managed profile file with an unrecorded transient —

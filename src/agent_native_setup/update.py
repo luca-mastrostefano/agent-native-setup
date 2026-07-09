@@ -294,6 +294,7 @@ def _regenerate(
     profile: profiles.Profile | None = None,
     *,
     session_start: tuple[str, ...] | None = None,
+    claude_settings: dict[str, object] | None = None,
     answers: dict[str, object] | None = None,
     standalone: bool | None = None,
     profile_date: str | None = None,
@@ -301,9 +302,10 @@ def _regenerate(
     """Render the current version's full scaffold (plus ``profile``'s overlay, if any) into
     ``into``. Returns ``(scaffolder, profile_block)`` — the block reflects what the profile
     *actually* applied (owned files + the answers it rendered against), which the caller persists
-    so a conditionally-skipped file isn't recorded as owned. ``session_start``/``answers``/
-    ``standalone`` let a degraded update keep the recorded hooks/answers and skip (or, for an
-    old composed manifest, run) the legacy generators even when the profile object is gone."""
+    so a conditionally-skipped file isn't recorded as owned. ``session_start``/``claude_settings``/
+    ``answers``/``standalone`` let a degraded update keep the recorded hooks/contributed
+    settings/answers and skip (or, for an old composed manifest, run) the legacy generators even
+    when the profile object is gone."""
     from agent_native_setup import cli  # lazy: cli imports this module
 
     sc = Scaffolder(into)
@@ -312,6 +314,7 @@ def _regenerate(
         sc,
         profile,
         session_start=session_start,
+        claude_settings=claude_settings,
         answers=answers,
         standalone=standalone,
         profile_date=profile_date,
@@ -497,9 +500,13 @@ def run(target: Path, *, dry_run: bool, console: Any, assume_yes: bool = False) 
     # legacy generators run beneath its frozen files — that read dies at stage C's migration.
     degraded_hooks = None
     degraded_standalone = None
+    degraded_settings = None
     if profile is None and isinstance(degraded_block, dict):
         degraded_hooks = tuple(degraded_block.get("session_start", []))
         degraded_standalone = degraded_block.get("extends") is None
+        # RFC 2026-07-09 rule 7: replay the recorded contribution too, or a hookless profile's
+        # permissions/MCP enablement vanish on the very update this path exists to protect.
+        degraded_settings = degraded_block.get("claude_settings")
     with tempfile.TemporaryDirectory() as tmp:
         old_profile_block = old.get("profile") or {}
         sc, built_block = _regenerate(
@@ -507,6 +514,7 @@ def run(target: Path, *, dry_run: bool, console: Any, assume_yes: bool = False) 
             Path(tmp),
             profile,
             session_start=degraded_hooks,
+            claude_settings=degraded_settings,
             answers=update_answers,
             standalone=degraded_standalone,
             # Replay the recorded @DATE@ stamp so a dated path never drifts on refresh.

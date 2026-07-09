@@ -45,15 +45,31 @@ def _guarded(command: str) -> str:
     return f"{{ {command.strip()} ; }} || true"
 
 
-def write_session_start_settings(sc: Scaffolder, session_start: tuple[str, ...]) -> None:
-    """Write a minimal ``.claude/settings.json`` for a profile-scaffolded project, which
+def write_profile_settings(
+    sc: Scaffolder,
+    session_start: tuple[str, ...],
+    claude_settings: dict[str, object] | None = None,
+) -> None:
+    """Write the engine-owned ``.claude/settings.json`` for a profile-scaffolded project, which
     skips the full `generate` above. Carries the version-check nudge — so a profile-scaffolded
     project still learns when its profile ships a newer version — followed by the profile's own
     guarded SessionStart hooks. If the profile also ships its own ``settings.json`` template, that
-    overlay supersedes this (single-owner)."""
+    overlay supersedes this (single-owner).
+
+    ``claude_settings`` (RFC 2026-07-09) is the profile's *contribution*, merged in beside the
+    hooks the engine owns — never over them, so a profile can't drop the update nudge or its own
+    guard. Keys are written only when non-empty, so a hooks-only profile still produces exactly
+    ``{"hooks": …}`` as before."""
     cmds = [{"type": "command", "command": UPDATE_CHECK_COMMAND}]
     cmds += [{"type": "command", "command": _guarded(c)} for c in session_start if c.strip()]
-    settings = {"hooks": {"SessionStart": [{"hooks": cmds}]}}
+    settings: dict[str, object] = {"hooks": {"SessionStart": [{"hooks": cmds}]}}
+    contributed = claude_settings or {}
+    permissions = {k: v for k, v in (contributed.get("permissions") or {}).items() if v}
+    if permissions:
+        settings["permissions"] = permissions
+    servers = contributed.get("enabledMcpjsonServers")
+    if servers:
+        settings["enabledMcpjsonServers"] = servers
     sc.write(".claude/settings.json", json.dumps(settings, indent=2) + "\n")
 
 
