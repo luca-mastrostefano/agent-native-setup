@@ -429,6 +429,11 @@ p code, li code {
 }
 @media (max-width: 640px) { .use-panel { right: auto; left: 0; } }
 .use-cmd { display: flex; align-items: center; gap: 0.7rem; }
+/* narrow screens: the copy button drops below the command instead of squeezing beside it */
+@media (max-width: 640px) {
+  .use-cmd { flex-direction: column; align-items: stretch; }
+  .copy-cmd { justify-content: center; }
+}
 .use-cmd code {
   flex: 1;
   min-width: 0;
@@ -451,13 +456,14 @@ p code, li code {
   font-family: "IBM Plex Mono", ui-monospace, monospace;
   font-size: 0.76rem;
   padding: 0.45rem 0.8rem;
-  background: var(--chip-bg);
+  /* same palette as .btn-ghost ("View on GitHub") */
+  background: none;
   border: 1px solid var(--pine);
   border-radius: 6px;
-  color: var(--ink-soft);
+  color: var(--ink);
   cursor: pointer;
 }
-.copy-cmd:hover { color: var(--ink); background: var(--card); }
+.copy-cmd:hover { background: var(--chip-bg); }
 /* the icon spans are flex items; block-level svg drops the inline baseline gap */
 .copy-cmd svg { display: block; }
 
@@ -513,10 +519,26 @@ p code, li code {
   cursor: pointer;
 }
 #pm-close:hover { color: var(--ink); }
+/* flex row so the github mark and badges centre on the name instead of sitting on its baseline */
 #pm h2 {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
   font-family: "IBM Plex Mono", ui-monospace, monospace;
   font-size: 1.3rem;
   margin: 0 0 0.25rem;
+}
+#pm h2 .gh { margin-left: 0; vertical-align: 0; }
+#pm h2 .badge { margin-left: 0; vertical-align: 0; }
+.ver {
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: 0.75rem;
+  font-weight: 400;
+  color: var(--ink-soft);
+  border: 1px solid var(--rule-strong);
+  border-radius: 999px;
+  padding: 0.05rem 0.5rem;
 }
 #pm .pm-by { margin: 0 0 0.9rem; font-size: 0.8rem; color: var(--ink-soft); }
 #pm .stats { gap: 1.8rem; align-items: baseline; padding: 0 0 0.4rem; flex-wrap: wrap; }
@@ -545,6 +567,12 @@ p code, li code {
   border-radius: 6px;
   max-height: 15rem;
   overflow-y: auto;
+}
+/* the setup questions are asked in order, so number them */
+.asks {
+  list-style: decimal;
+  padding-left: 2.2rem;
+  padding-right: 0.8rem;
 }
 .tree li {
   font-family: "IBM Plex Mono", ui-monospace, monospace;
