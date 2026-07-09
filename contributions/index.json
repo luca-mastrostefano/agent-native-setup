@@ -2,8 +2,8 @@
   "profiles": [
     {
       "name": "tolaria-setup",
-      "url": "git+https://github.com/luca-mastrostefano/tolaria-setup.git@v0.1.7",
-      "content_hash": "08778dc262e3287396f124f4d12af65b433ae3dac08425aa2e550e9208f04f42",
+      "url": "git+https://github.com/luca-mastrostefano/tolaria-setup.git@v0.1.8",
+      "content_hash": "3a24ca24b7016f0c693cba851e6df8de2b509174dc27881411fed5e2bcb6d285",
       "description": "Tolaria's agent-native engineering setup: direct-to-main TDD contract, CodeScene ratchet gates + MCP wiring, ADR system with /create-adr, two-tier husky gates (lint pre-commit; build/coverage/smoke/CodeScene pre-push), Codacy/Semgrep, optional Chunk sidecar lanes and Todoist task-loop commands. Extracted from github.com/refactoringhq/tolaria.",
       "author": "Luca Mastrostefano",
       "tags": ["tauri", "react", "rust", "typescript", "tdd", "codescene", "adr", "desktop"]
@@ -18,8 +18,8 @@
     },
     {
       "name": "agent-native-baseline",
-      "url": "git+https://github.com/luca-mastrostefano/agent-native-baseline.git@v0.2.0",
-      "content_hash": "c668be8ac35164d44d5cc61f690c9b3bd2f59bff9cfce184657defb6f89331dd",
+      "url": "git+https://github.com/luca-mastrostefano/agent-native-baseline.git@v0.2.1",
+      "content_hash": "888d545bdfaa36ab3d7a4ecd28eab13138fcf69e77327266d4517cf4e72e2730",
       "description": "The default profile — the complete agent-native setup the engine scaffolds when you don't pick one: AGENTS.md contract, docs + RFCs, quality gates, security scanning, CI, and a .claude library. Fork it to build your own.",
       "author": "Luca Mastrostefano",
       "tags": ["general", "baseline", "multi-language"]

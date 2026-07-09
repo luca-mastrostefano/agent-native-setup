@@ -1,6 +1,6 @@
 {
   "name": "agent-native-baseline",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "The agent-native project setup: an AGENTS.md contract, docs + RFCs, linters + pre-commit + security scanning, CI, and a .claude agents/commands library — the setup agent-native-setup scaffolds by default.",
   "tags": ["general", "baseline", "multi-language"],
   "seed": ["AGENTS.md", ".gitignore", "docs/architecture/overview.md", "docs/improvements.md", "docs/rfc/active/@DATE@-adopt-agent-native-setup.md", "README.md"],
@@ -16,18 +16,18 @@
     "GEMINI.md": {"target": "AGENTS.md", "when": "\"gemini\" in answers.tools"}
   },
   "prompts": [
-    {"name": "languages", "type": "checkbox", "message": "Languages (linters scaffolded only for these):", "choices": ["python", "node", "go", "rust", "html"]},
-    {"name": "tools", "type": "checkbox", "message": "AI assistants to target:", "choices": ["claude", "cursor", "copilot", "gemini"], "default": ["claude", "cursor", "copilot", "gemini"]},
-    {"name": "include_agents", "type": "confirm", "message": "Agents & commands?", "default": true},
-    {"name": "include_docs", "type": "confirm", "message": "Docs & RFCs?", "default": true},
-    {"name": "include_quality", "type": "confirm", "message": "Linters & quality?", "default": true},
-    {"name": "include_ci", "type": "confirm", "message": "CI (GitHub Actions)?", "default": true},
-    {"name": "include_security", "type": "confirm", "message": "Security scanning?", "default": true},
-    {"name": "github_actions", "type": "confirm", "message": "GitHub Actions workflows?", "default": true},
-    {"name": "hooks", "type": "confirm", "message": "Pre-commit hooks?", "default": true},
-    {"name": "runner", "type": "select", "message": "Task runner:", "choices": ["make", "task"], "default": "make"},
-    {"name": "adopt", "type": "select", "message": "Gate for an existing repo's code:", "choices": ["progressive", "full", "none"], "default": "progressive"},
-    {"name": "first_run_banner", "type": "confirm", "message": "Inject the self-removing first-run banner?", "default": true, "when": "(answers.include_quality or answers.include_ci) and answers.tools"}
+    {"name": "languages", "type": "checkbox", "message": "Languages — linters, formatters, type-checkers and test wiring ship only for these:", "choices": ["python", "node", "go", "rust", "html"]},
+    {"name": "tools", "type": "checkbox", "message": "AI assistants to target (each gets a config pointing at AGENTS.md):", "choices": ["claude", "cursor", "copilot", "gemini"], "default": ["claude", "cursor", "copilot", "gemini"]},
+    {"name": "include_agents", "type": "confirm", "message": "Agents & commands? (.claude/ subagents code-reviewer and planner, plus the /review and /rfc commands — Claude only)", "default": true},
+    {"name": "include_docs", "type": "confirm", "message": "Docs & RFCs? (docs/architecture, the docs/rfc lifecycle + template, CONTRIBUTING.md)", "default": true},
+    {"name": "include_quality", "type": "confirm", "message": "Linters & quality? (per-language linters/formatters/tests behind one `quality` command)", "default": true},
+    {"name": "include_ci", "type": "confirm", "message": "CI (GitHub Actions)? (a workflow running that same gate on every push and PR)", "default": true},
+    {"name": "include_security", "type": "confirm", "message": "Security scanning? (gitleaks secret scan - https://gitleaks.io - in the pre-commit hook and CI, plus a per-language dependency audit that runs in CI only)", "default": true},
+    {"name": "github_actions", "type": "confirm", "message": "GitHub Actions workflows? (writes .github/workflows/quality.yml — the only CI backend this profile ships)", "default": true},
+    {"name": "hooks", "type": "confirm", "message": "Pre-commit hooks? (lint, format and secret-scan each commit; tests before push. Needs pre-commit - https://pre-commit.com - armed once with `pre-commit install`)", "default": true},
+    {"name": "runner", "type": "select", "message": "Task runner hosting lint/format/typecheck/test/quality — 'make' needs nothing installed, 'task' needs go-task (https://taskfile.dev):", "choices": ["make", "task"], "default": "make"},
+    {"name": "adopt", "type": "select", "message": "Gate for an existing repo's code — 'progressive' checks only files changed in a PR (recommended for a mature repo), 'full' enforces on the whole repo now, 'none' writes the config but enforces nothing:", "choices": ["progressive", "full", "none"], "default": "progressive"},
+    {"name": "first_run_banner", "type": "confirm", "message": "Inject the first-run banner into AGENTS.md? (points the agent at ONBOARDING.md on its first session; finishing that runbook is what deletes the banner)", "default": true, "when": "(answers.include_quality or answers.include_ci) and answers.tools"}
   ],
   "onboarding": [],
   "session_start": []
