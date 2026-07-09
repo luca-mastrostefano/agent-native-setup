@@ -204,6 +204,9 @@ class Language:
     # CI `steps:` for the dependency/vuln scan, run in a separate `checks` job
     # (non-blocking on existing repos). Whole-project; no greenfield/ratchet split.
     ci_security_steps: str = ""
+    # The human name of the tool `ci_security_steps` runs, so the wizard can tell the user what
+    # it's signing them up for without restating the steps above. "" when there's no audit.
+    audit_tool: str = ""
     # Dependabot package-ecosystem for this language ("" if none / not applicable).
     dependabot_ecosystem: str = ""
     gitignore: list[str] = field(default_factory=list)
@@ -267,6 +270,7 @@ REGISTRY: dict[str, Language] = {
   with:
     inputs: .
 """),
+        audit_tool="pip-audit",
         gitignore=[
             "__pycache__/",
             "*.py[cod]",
@@ -342,6 +346,7 @@ REGISTRY: dict[str, Language] = {
 - run: npm ci || npm install
 - run: npm audit --audit-level=high
 """),
+        audit_tool="npm audit",
         gitignore=["node_modules/", "dist/", ".next/", "*.tsbuildinfo"],
         setup_command="npm install",  # installs the pinned toolchain + writes package-lock.json
         quality_commands=[
@@ -400,6 +405,7 @@ REGISTRY: dict[str, Language] = {
         ci_security_steps="""\
 - uses: golang/govulncheck-action@v1
 """,
+        audit_tool="govulncheck",
         gitignore=["bin/", "*.test", "vendor/"],
         quality_commands=[
             ("lint", "golangci-lint run"),
@@ -460,6 +466,7 @@ REGISTRY: dict[str, Language] = {
   with:
     token: ${{ secrets.GITHUB_TOKEN }}
 """,
+        audit_tool="cargo-audit",
         gitignore=["target/", "Cargo.lock"],
         quality_commands=[
             ("lint", "cargo clippy"),

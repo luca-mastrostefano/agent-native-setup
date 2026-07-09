@@ -9,6 +9,7 @@ import pytest
 
 from agent_native_setup import cli
 from agent_native_setup.config import WizardConfig
+from agent_native_setup.languages import REGISTRY
 from agent_native_setup.scaffold import Scaffolder
 
 
@@ -336,3 +337,129 @@ def test_git_init_fallback_lands_on_main_for_old_git(
         ["git", "-C", str(target), "symbolic-ref", "HEAD"], capture_output=True, text=True
     )
     assert head.stdout.strip() == "refs/heads/main"
+
+
+class _Ans:
+    def __init__(self, value: object) -> None:
+        self.value = value
+
+    def unsafe_ask(self) -> object:
+        return self.value
+
+
+def _run_wizard(
+    monkeypatch: pytest.MonkeyPatch,
+    out_dir: Path,
+    *,
+    parts: list[str],
+    languages: list[str],
+    hooks: bool = True,
+) -> tuple[WizardConfig, str, str]:
+    """Drive `_interactive` with scripted answers; return (config, console output, choice
+    labels). The output is whitespace-normalized: rich hard-wraps to the console width, so a
+    raw-substring assertion would break on where the line happens to fold."""
+    import io
+
+    import questionary
+    from rich.console import Console
+
+    buf = io.StringIO()
+    monkeypatch.setattr(cli, "console", Console(file=buf, no_color=True))
+    titles: list[str] = []
+
+    def _checkbox(message: str, choices: list, **_k: object) -> _Ans:
+        titles.extend(c.title for c in choices)
+        if "Languages" in message:
+            return _Ans(list(languages))
+        if "AI assistants" in message:
+            return _Ans(["claude"])
+        return _Ans(list(parts))
+
+    def _select(message: str, choices: list, **_k: object) -> _Ans:
+        titles.extend(c.title for c in choices)
+        return _Ans(choices[0].value)
+
+    def _confirm(message: str, **_k: object) -> _Ans:
+        return _Ans(hooks if "pre-commit hooks" in message else True)
+
+    monkeypatch.setattr(questionary, "text", lambda message, **_k: _Ans("demo"))
+    monkeypatch.setattr(questionary, "confirm", _confirm)
+    monkeypatch.setattr(questionary, "select", _select)
+    monkeypatch.setattr(questionary, "checkbox", _checkbox)
+
+    args = cli.parse_args(["demo", "-o", str(out_dir)])
+    cfg = cli._interactive(args, out_dir, list(languages), True, set(languages))
+    return cfg, " ".join(buf.getvalue().split()), " ".join(titles)
+
+
+def test_wizard_names_and_links_the_tools_it_signs_you_up_for(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A question the user can't answer informed is one they answer by mashing enter: every
+    external tool the wizard pulls in is named *and* linked, and the part labels say what lands."""
+    cfg, out, shown = _run_wizard(
+        monkeypatch, tmp_path, parts=["quality", "ci"], languages=["python"]
+    )
+
+    assert "https://pre-commit.com" in out  # they must install it before the hooks run
+    assert "https://gitleaks.io" in out  # nobody knows what "secret scanning" means concretely
+    assert "https://taskfile.dev" in shown  # the runner choice that costs an install says so
+    assert "code-reviewer" in shown and "docs/architecture" in shown
+    assert cfg.include_ci and cfg.include_quality
+
+
+@pytest.mark.parametrize(
+    ("parts", "hooks", "languages", "expected"),
+    [
+        # Both halves land: say where each one runs, and name only the picked language's audit.
+        (
+            ["quality", "ci"],
+            True,
+            ["python"],
+            "in the pre-commit hook and CI. Dependency audit: pip-audit, in CI.",
+        ),
+        # Multi-language: every selected audit is named.
+        (
+            ["quality", "ci"],
+            True,
+            ["python", "go"],
+            "Dependency audit: pip-audit, govulncheck, in CI.",
+        ),
+        # No CI → the audit half of "security scanning" silently does nothing. Admit it.
+        (
+            ["quality"],
+            True,
+            ["python"],
+            "in the pre-commit hook. Dependency audit (pip-audit) is CI-only, which you declined.",
+        ),
+        # No quality → no pre-commit config exists, so don't claim gitleaks runs in a hook.
+        (["ci"], True, ["python"], "gitleaks (https://gitleaks.io), in CI."),
+        # Hooks declined and no CI → gitleaks has nowhere to run at all.
+        (["quality"], False, ["python"], "neither of which you're scaffolding."),
+        # A language with no audit tool (or none picked) must not name one.
+        (
+            ["quality", "ci"],
+            True,
+            ["html"],
+            "Dependency audit: none — no selected language has one.",
+        ),
+    ],
+)
+def test_wizard_security_note_tracks_what_was_actually_selected(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    parts: list[str],
+    hooks: bool,
+    languages: list[str],
+    expected: str,
+) -> None:
+    """The security question spans two gates (hook + CI) and every language's audit tool. Its
+    explainer must describe the run the user is actually configuring — a static sentence would
+    claim gitleaks runs in CI while the same note says CI was declined."""
+    _, out, _ = _run_wizard(monkeypatch, tmp_path, parts=parts, languages=languages, hooks=hooks)
+    assert expected in out
+    # Never name an audit tool for a language they didn't choose.
+    for absent in {"pip-audit", "npm audit", "govulncheck", "cargo-audit"} - {
+        REGISTRY[k].audit_tool for k in languages
+    }:
+        assert absent not in out

@@ -164,6 +164,15 @@ per-type) default; the repeatable **`--answer NAME=VALUE`** flag answers any pro
 (type-validated; an overridden prompt is never asked and feeds later `when`s; a duplicate
 `--answer` for one prompt is an error).
 
+The `message` is the profile's whole user interface: `choices` render as their bare values and
+the schema has no help-text field, so anything the adopter needs in order to decide — what the
+answer ships, what it costs, a link to an external tool they may not know, where to find an
+instance-bound ID — has to live in the message. The authoring guides (`profile init`'s
+`AGENTS.md`/`README.md` skeletons and the `extract-profile` skill) say so explicitly; the
+engine's own wizard (`cli.py::_interactive`) is the worked example, printing a dim `_note()`
+above questions whose answer pulls in a tool (pre-commit, gitleaks, go-task). Adding a
+per-choice description field would relax this and is unproposed — see `docs/improvements.md`.
+
 ## Startup contributions
 
 - `onboarding` — markdown steps folded into the project's one-time, self-deleting
