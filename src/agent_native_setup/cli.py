@@ -233,17 +233,17 @@ def _interactive(
             "pre-commit hook and CI, neither of which you're scaffolding."
         )
         # `--languages` can still carry an unknown key here — it's rejected after the wizard.
-        tools = [
+        audit_tools = [
             REGISTRY[k].audit_tool
             for k in languages or []
             if k in REGISTRY and REGISTRY[k].audit_tool
         ]
-        if not tools:
+        if not audit_tools:
             audit = "Dependency audit: none — no selected language has one."
         elif use_ga:
-            audit = f"Dependency audit: {', '.join(tools)}, in CI."
+            audit = f"Dependency audit: {', '.join(audit_tools)}, in CI."
         else:
-            audit = f"Dependency audit ({', '.join(tools)}) is CI-only, which you declined."
+            audit = f"Dependency audit ({', '.join(audit_tools)}) is CI-only, which you declined."
         _note(f"{secret} {audit}")
         security = questionary.confirm(
             "Add security scanning (secret scan + dependency audit)?", default=True
