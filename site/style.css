@@ -346,13 +346,28 @@ p code, li code {
   margin: 0 0 0.3rem;
 }
 /* profile names read as links at rest; hover answers with a heavier underline */
-.row h3 a {
+.row h3 .name {
+  font: inherit;
+  padding: 0;
+  background: none;
+  border: none;
+  cursor: pointer;
   color: var(--accent);
   text-decoration: underline;
   text-underline-offset: 3px;
   text-decoration-thickness: 1px;
 }
-.row h3 a:hover { text-decoration-thickness: 2px; }
+.row h3 .name:hover { text-decoration-thickness: 2px; }
+
+/* github mark beside the profile name — the only way out to the repo now */
+.gh {
+  display: inline-block;
+  margin-left: 0.5rem;
+  color: var(--ink-soft);
+  line-height: 0;
+  vertical-align: -0.2em;
+}
+.gh:hover { color: var(--accent); }
 .copy-cmd .ic-check { display: none; color: var(--accent); }
 .copy-cmd.copied .ic-copy { display: none; }
 .copy-cmd.copied .ic-check { display: inline; }
@@ -472,6 +487,75 @@ p code, li code {
 @media (max-width: 640px) { .stat { text-align: left; } }
 .stat b { display: block; font-size: 1rem; font-weight: 600; color: var(--ink); }
 .stat span { font-size: 0.7rem; color: var(--ink-soft); }
+
+/* profile detail modal */
+#pm {
+  width: min(46rem, calc(100vw - 2rem));
+  max-height: min(85vh, 46rem);
+  padding: 1.6rem 1.8rem 1.8rem;
+  border: 1px solid var(--rule-strong);
+  border-radius: 10px;
+  background: var(--card);
+  color: var(--ink);
+  overflow: auto;
+}
+#pm::backdrop { background: rgb(0 0 0 / 0.55); }
+#pm-close {
+  position: sticky;
+  top: -0.4rem;
+  float: right;
+  font-size: 1.5rem;
+  line-height: 1;
+  padding: 0 0.3rem;
+  background: none;
+  border: none;
+  color: var(--ink-soft);
+  cursor: pointer;
+}
+#pm-close:hover { color: var(--ink); }
+#pm h2 {
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: 1.3rem;
+  margin: 0 0 0.25rem;
+}
+#pm .pm-by { margin: 0 0 0.9rem; font-size: 0.8rem; color: var(--ink-soft); }
+#pm .stats { gap: 1.8rem; align-items: baseline; padding: 0 0 0.4rem; flex-wrap: wrap; }
+#pm .stat { text-align: left; }
+.pm-repo { font-size: 0.78rem; font-family: "IBM Plex Mono", ui-monospace, monospace; }
+.pm-h {
+  font-size: 0.75rem;
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--ink-soft);
+  margin: 1.6rem 0 0.6rem;
+  padding-top: 0.9rem;
+  border-top: 1px solid var(--rule);
+}
+#pm .pm-desc { font-size: 0.92rem; color: var(--ink-soft); margin: 0 0 0.7rem; }
+#pm .tags { display: flex; flex-wrap: wrap; gap: 0.35rem; }
+.pm-sub { font-size: 0.8rem; color: var(--ink-soft); margin: 0 0 0.5rem; }
+.pm-sub + .pm-sub, .tree + .pm-sub { margin-top: 1rem; }
+.tree, .asks {
+  margin: 0;
+  padding: 0.6rem 0.8rem;
+  list-style: none;
+  background: var(--chip-bg);
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+  max-height: 15rem;
+  overflow-y: auto;
+}
+.tree li {
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: 0.74rem;
+  line-height: 1.7;
+  color: var(--ink-soft);
+  white-space: pre;
+}
+.asks li { font-size: 0.8rem; line-height: 1.6; color: var(--ink-soft); }
+.asks li + li { border-top: 1px solid var(--rule); padding-top: 0.35rem; margin-top: 0.35rem; }
 
 /* segmented control: the two ways to contribute a profile */
 .seg {
