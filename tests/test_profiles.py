@@ -1646,12 +1646,41 @@ def test_profile_init_scaffolds_a_skeleton(tmp_path: Path) -> None:
         # poisons the published content_hash — guidance that prevents both real failure modes.
         "Only git-tracked files ship",
         "git status --porcelain templates/",
+        # The README's adopter header is the registry landing page — a maintaining agent must
+        # keep it rather than fold it into its own notes.
+        "Keep the README's adopter header",
+        # The republish invariants. A release is its tag + content_hash (the index stores no
+        # version), a pinned tag is never re-fetched, and nothing enforces the bump — so an
+        # author who re-uses a version ships to nobody and breaks new installs.
+        "Never re-use a version; never move a tag",
+        "`publish` never checks that you bumped",
+        # And `update` alone can't see a new version: it re-resolves the recorded source.
+        "How adopters actually pick it up",
     ):
         assert hook in agents, f"authoring contract lost its guidance hook: {hook!r}"
     # It's immediately loadable as a (empty) profile.
     assert profiles.load(root).name == "myteam"
     # Re-running onto an existing dir refuses rather than clobbering.
     assert cli.main(["profile", "init", "myteam", "-o", str(tmp_path)]) == 2
+
+
+def test_init_readme_opens_as_an_adopter_landing_page(tmp_path: Path) -> None:
+    # The profile repo's README is what someone browsing the registry lands on, so it leads with
+    # attribution, a description, and a runnable install — the author's field reference follows.
+    assert cli.main(["profile", "init", "myteam", "-o", str(tmp_path)]) == 0
+    readme = (tmp_path / "myteam" / "README.md").read_text(encoding="utf-8")
+    head, sep, tail = readme.partition("\n---\n")
+    assert sep, "README lost the adopter/maintainer divider"
+    assert "https://lucamastrostefano.com/agent-native-setup/" in head
+    assert "## Description" in head and "## How to use it" in head
+    # Only `profile add` consults the community index; a scaffold with a bare `--profile myteam`
+    # that was never added resolves against CWD/~/.config and fails. So the headline command is
+    # the add-then-scaffold pair, with the local path as the pre-publish fallback.
+    assert "agent-native-setup profile add myteam" in head
+    assert "agent-native-setup -o ./my-app --profile myteam" in head
+    assert "--profile ./myteam" in head and "profile publish . --release" in head
+    # The author-facing field reference survives, below the divider.
+    assert "## Layout" in tail and "## Updating" in tail
 
 
 def test_init_harness_files_are_meta_never_scaffolded(tmp_path: Path) -> None:

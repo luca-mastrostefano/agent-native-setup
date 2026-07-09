@@ -1048,16 +1048,43 @@ def apply(
 
 # --- authoring CLI: `agent-native-setup profile <init|list>` ----------------------------
 
-_SKELETON_README = """\
-# {name} — agent-native-setup profile
+# The manager's website, whose profile registry is what an adopter browses. The generated
+# README's attribution points here (not at _MANAGER_URL): a reader landing on a profile repo
+# wants the other profiles, not the engine's source.
+_SITE_URL = "https://lucamastrostefano.com/agent-native-setup/"
 
-{intro} When someone runs
+_SKELETON_README = """\
+# {name}
+
+🌐 *Part of the **agent-native-setup** registry — [browse all community profiles]({site}).*
+
+## Description
+
+{intro}
+
+<!-- TODO: expand — what this profile sets up, and who it's for. Keep the one-liner in sync
+     with `description` in `profile.json`: that is the line adopters read in the scaffold
+     intro panel and on the registry. -->
+
+## How to use it
 
 ```bash
-agent-native-setup my-app -o ./my-app --profile {source_hint}
+uvx --from git+{manager} agent-native-setup profile add {name} \\
+  && uvx --from git+{manager} agent-native-setup -o ./my-app --profile {name}
 ```
 
-{result}
+`profile add` fetches this profile from the community index — verifying it against the
+`content_hash` the index vouches for — into `~/.config/agent-native-setup/profiles/{name}`;
+the scaffold then runs from that copy. When someone runs that, {result}
+
+Only `profile add` consults the index, and only for a bare name, so the pair above works once
+you've published (`agent-native-setup profile publish . --release`). Before that, scaffold
+straight from this directory — a path needs no index: `--profile {source_hint}`. Adopters who
+install the wizard once (`uv tool install git+{manager}`) drop the `uvx --from …` prefix.
+
+---
+
+*Everything below is for building and maintaining this profile — not for adopters.*
 
 ## Layout
 
@@ -1212,6 +1239,12 @@ reference.
   A `.gitignore` at the profile root can keep junk (`__pycache__/`, `.DS_Store`) out of your tree,
   but scope it **narrowly**: `templates/` is content to ship, so a pattern that reaches into it is
   exactly how a must-ship file gets silently dropped — `git ls-files templates/` stays the truth.
+- **Keep the README's adopter header.** [`README.md`](./README.md) is this repo's landing page
+  on the registry, so it opens with three things an adopter needs: the attribution line, a
+  **Description** of what the profile sets up and for whom, and a **How to use it** block with
+  the `uvx … --profile <name>` command. Fill the description in (matching `description` in
+  `profile.json`) and keep those three intact when you edit — the maintainer notes live below
+  the `---`.
 - **Keep `agents_contract` set** (this skeleton pre-fills it to `"AGENTS.md"`, with a stub at
   `templates/AGENTS.md`). It makes the engine point every assistant at your contract, so your
   profile works with Claude, Cursor, Copilot, and Gemini from one file — and stays `safe`.
@@ -1248,9 +1281,29 @@ reference.
    adopters' `update` pause; see [`README.md`](./README.md) for the versioning rules) → commit →
    `git tag v<version>` → `git push --follow-tags` → `agent-native-setup profile publish .
    --release` again — it refreshes your community-index entry in place, re-pinning both the
-   tag and the `content_hash` of the new bytes (so a template change that isn't re-published
-   would fail adopters' install-time verification against the stale hash). Adopters pull the
-   new version by running `agent-native-setup update` in their own projects.
+   tag and the `content_hash` of the new bytes.
+5. **Never re-use a version; never move a tag.** A release *is* its `url` (`…@v<version>`) plus
+   the `content_hash` of `profile.json` + `templates/` — the index carries **no `version`
+   field**, so the tag in the URL is the only version an adopter can see. A pinned tag is cached
+   forever and never re-fetched, so re-tagging the same version reaches nobody who already has
+   it, while the moved bytes stop matching the listed hash and every *new* install by name is
+   refused (*"no longer matches the hash vetted in the community index"*). Nothing enforces this
+   for you: `publish` never checks that you bumped. The bump rewrites the hash by itself (the
+   hash covers `profile.json`), so the tag and the listing must always move together — publish
+   every change you ship, and ship every change you publish.
+6. **How adopters actually pick it up.** `update` re-resolves the `source` recorded in their
+   project — for a name-installed profile that's their own copy under
+   `~/.config/agent-native-setup/profiles/`, which never re-consults the index — so `update`
+   alone will *not* find your new version. They refresh that copy first, and `profile add`
+   refuses to overwrite an existing one:
+
+   ```bash
+   rm -rf ~/.config/agent-native-setup/profiles/<name> \\
+     && agent-native-setup profile add <name> && agent-native-setup update
+   ```
+
+   (A project whose recorded `source` is a `git+…@v<tag>` URL is pinned the same way — that tag
+   has to change.) Say this in your release notes: an adopter who only runs `update` sees nothing.
 """
 
 # The contract stub `profile init` ships under templates/, declared as `agents_contract` so
@@ -1314,6 +1367,8 @@ def _init(args: argparse.Namespace, console: Any) -> int:
     (root / "README.md").write_text(
         _SKELETON_README.format(
             name=args.name,
+            site=_SITE_URL,
+            manager=_MANAGER_URL,
             source_hint=f"./{args.name}",
             intro="A complete project setup, shipped as a profile.",
             result=(
@@ -2589,6 +2644,8 @@ def _save(args: argparse.Namespace, console: Any) -> int:
     (out / "README.md").write_text(
         _SKELETON_README.format(
             name=args.name,
+            site=_SITE_URL,
+            manager=_MANAGER_URL,
             source_hint=f"./{args.name}",
             intro=(
                 f"A **standalone snapshot** of `{project.name}`'s agent-native setup "
