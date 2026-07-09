@@ -1494,7 +1494,9 @@ def _lint_unguarded(profile: Profile, ctx: dict[str, Any]) -> list[str]:
         )
 
     # L3 — a gate's command runs a tool whose manifest the profile never ships (one warning per
-    # missing manifest, naming the first gate that triggers it).
+    # missing manifest, naming the first gate that triggers it). A gate that *names* the manifest
+    # is guarding on it (`[ -f package.json ]`, `hashFiles('src-tauri/Cargo.toml')`) and self-skips
+    # until the app exists — which is the very fix this warning recommends, so don't warn on it.
     missing: dict[str, str] = {}
     for rel, content in shipped_content.items():
         if not _is_gate_file(rel):
@@ -1503,7 +1505,8 @@ def _lint_unguarded(profile: Profile, ctx: dict[str, Any]) -> list[str]:
         for tools, manifests, label in _RUNNER_MANIFESTS:
             if label in missing or not (tools & commands):
                 continue
-            if not set(manifests) & basenames:
+            shipped_or_guarded = set(manifests) & basenames or any(m in content for m in manifests)
+            if not shipped_or_guarded:
                 missing[label] = rel
     for label, rel in sorted(missing.items()):
         warnings.append(
