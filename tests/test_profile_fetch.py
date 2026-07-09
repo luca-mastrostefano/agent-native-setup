@@ -510,6 +510,10 @@ def test_publish_degrades_gracefully_without_gh(
 # --- publish tail: the index PR (RFC 2026-07-07-publish-opens-the-index-pr) -------------------
 
 
+_LISTED_HASH = "1" * 64  # the listed entry's pinned tree
+_NEW_HASH = "2" * 64  # what a publish of a new version computes
+
+
 def _index_bare(tmp_path: Path) -> Path:
     """A bare 'canonical index repo' with a house-style index.json on main."""
     content = (
@@ -518,6 +522,7 @@ def _index_bare(tmp_path: Path) -> Path:
         "    {\n"
         '      "name": "existing",\n'
         '      "url": "git+https://github.com/o/existing.git@v1.0.0",\n'
+        f'      "content_hash": "{_LISTED_HASH}",\n'
         '      "description": "d",\n'
         '      "author": "a",\n'
         '      "tags": ["x"]\n'
@@ -564,7 +569,14 @@ def _fake_gh(monkeypatch: pytest.MonkeyPatch, bare: Path, pr_calls: list) -> Non
 
 
 def _entry(name: str, url: str) -> dict:
-    return {"name": name, "url": url, "description": "d2", "author": "me", "tags": ["a", "b"]}
+    return {
+        "name": name,
+        "url": url,
+        "content_hash": _NEW_HASH,
+        "description": "d2",
+        "author": "me",
+        "tags": ["a", "b"],
+    }
 
 
 def test_index_pr_inserts_the_entry_and_touches_nothing_else(
@@ -594,6 +606,9 @@ def test_index_pr_inserts_the_entry_and_touches_nothing_else(
     ).stdout
     data = json.loads(shown)["profiles"]
     assert [e["name"] for e in data] == ["newprof", "existing"]
+    # An entry with no content_hash is one `check_index` rejects — the auto-opened PR must
+    # carry it, not leave the publisher to discover it from red CI.
+    assert data[0]["content_hash"] == _NEW_HASH
     # House style: the new entry is a compact block; every pre-existing line is untouched.
     assert '      "tags": ["a", "b"]\n' in shown
     original = (tmp_path / "index-work" / "contributions" / "index.json").read_text(
@@ -602,7 +617,9 @@ def test_index_pr_inserts_the_entry_and_touches_nothing_else(
     assert set(original.splitlines()) <= set(shown.splitlines())
 
 
-def test_index_pr_bump_swaps_only_the_url(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_index_pr_bump_swaps_the_url_and_its_content_hash(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     bare = _index_bare(tmp_path)
     pr_calls: list = []
     _fake_gh(monkeypatch, bare, pr_calls)
@@ -622,6 +639,9 @@ def test_index_pr_bump_swaps_only_the_url(tmp_path: Path, monkeypatch: pytest.Mo
         check=True,
     ).stdout
     assert "@v2.0.0" in shown and "@v1.0.0" not in shown
+    # The hash pins the tree the url resolves to: bumping one without the other lists a hash
+    # for a tag it no longer describes, and `check_index` fails the PR on the mismatch.
+    assert _NEW_HASH in shown and _LISTED_HASH not in shown
     assert '"description": "d"' in shown  # prose left to the human, not regenerated
     subject = subprocess.run(
         ["git", "-C", str(bare), "log", "-1", "--format=%s", "index-existing-v2.0.0"],
@@ -873,6 +893,7 @@ def test_index_pr_bump_does_not_touch_a_prefix_sibling(
         "    {\n"
         '      "name": "existing-beta",\n'
         '      "url": "git+https://github.com/o/existing.git@v1.0.0-beta",\n'
+        f'      "content_hash": "{"b" * 64}",\n'
         '      "description": "listed before its prefix sibling",\n'
         '      "author": "a",\n'
         '      "tags": ["x"]\n'

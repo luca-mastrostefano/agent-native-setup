@@ -2164,6 +2164,11 @@ def _open_index_pr(
         mine = next((e for e in spliced if e.get("name") == entry["name"]), None)
         if mine is None or mine.get("url") != entry["url"]:
             raise ProfileError("splice didn't land the entry where expected")
+        # url *and* hash — a splice that lands one but not the other opens a PR that
+        # `check_index` rejects (missing/mismatched content_hash), which is a broken listing
+        # the publisher only learns about from red CI.
+        if mine.get("content_hash") != entry["content_hash"]:
+            raise ProfileError("splice didn't land the entry's content_hash")
         target.write_text(new_text, encoding="utf-8")
         safe = re.sub(r"[^A-Za-z0-9._-]", "-", f"{entry['name']}-{entry['url'].rsplit('@', 1)[-1]}")
         pr_branch = f"index-{safe}"
@@ -2268,17 +2273,40 @@ def _spliced_index(text: str, listed: list, entry: dict) -> tuple[str, str, str]
         tag = entry["url"].rsplit("@", 1)[-1]
         title = f"chore(index): bump {entry['name']} to {tag}"
         body = (
-            f"Re-publish of `{entry['name']}` — url bumped to `{tag}` by "
+            f"Re-publish of `{entry['name']}` — url + content_hash bumped to `{tag}` by "
             "`agent-native-setup profile publish`. Description/tags are left as listed and "
             "may have drifted from the profile; review against the tag."
         )
         # Swap the *quoted field*, not the bare string — a bare replace(old_url, …, 1) can hit
         # an earlier entry whose url has this one as a prefix, or the url quoted in a
         # description, and rewrite the wrong line (review finding).
-        old_field = f'"url": {json.dumps(old_url)}'
-        if text.count(old_field) != 1:
+        url_field = f'"url": {json.dumps(old_url)}'
+        if text.count(url_field) != 1:
             raise ProfileError(f"couldn't locate the listed url field for {entry['name']!r}")
-        return text.replace(old_field, f'"url": {json.dumps(entry["url"])}', 1), title, body
+        # The hash pins the *tree the url resolves to*, so bumping one without the other lists a
+        # tag whose bytes it doesn't describe — `check_index` fails the PR on a mismatch, and an
+        # adopter's `add <name>` refuses the fetch (RFC 2026-07-08 §5). Unlike the url, a
+        # content_hash is **not unique across the index**: two names may list byte-identical
+        # trees (a fork, a mirror), and nothing forbids it. So confine both swaps to this
+        # entry's own `{…}` block — located by the url, which *is* unique — instead of replacing
+        # over the whole file, which would refuse a legitimate bump or rewrite a twin's hash.
+        old_hash = str(existing.get("content_hash", ""))
+        if not old_hash:
+            raise ProfileError(
+                f"{entry['name']!r} is listed without a content_hash — add "
+                f'"content_hash": "{entry["content_hash"]}" to its entry by hand first'
+            )
+        at = text.index(url_field)
+        start, end = text.rindex("{", 0, at), text.index("}", at)  # index entries are flat
+        block = text[start:end]
+        hash_field = f'"content_hash": {json.dumps(old_hash)}'
+        if block.count(hash_field) != 1:
+            raise ProfileError(
+                f"couldn't locate {entry['name']!r}'s content_hash field inside its entry"
+            )
+        block = block.replace(url_field, f'"url": {json.dumps(entry["url"])}', 1)
+        block = block.replace(hash_field, f'"content_hash": {json.dumps(entry["content_hash"])}', 1)
+        return text[:start] + block + text[end:], title, body
     anchor = '"profiles": ['
     i = text.find(anchor)
     nl = text.find("\n", i) if i != -1 else -1
@@ -2296,12 +2324,16 @@ def _spliced_index(text: str, listed: list, entry: dict) -> tuple[str, str, str]
 
 def _render_index_entry(entry: dict) -> str:
     """The committed index's house style — 2-space steps, single-line tags — so a listing PR
-    stays a compact reviewable block and the rest of the file is untouched."""
+    stays a compact reviewable block and the rest of the file is untouched.
+
+    Every field `check_index` requires must be rendered here: an entry this function omits is
+    an entry the listing PR fails CI on (RFC 2026-07-08 §5)."""
     tags = ", ".join(json.dumps(t) for t in entry["tags"])
     return (
         "    {\n"
         f'      "name": {json.dumps(entry["name"])},\n'
         f'      "url": {json.dumps(entry["url"])},\n'
+        f'      "content_hash": {json.dumps(entry["content_hash"])},\n'
         f'      "description": {json.dumps(entry["description"])},\n'
         f'      "author": {json.dumps(entry["author"])},\n'
         f'      "tags": [{tags}]\n'
