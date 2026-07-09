@@ -22,7 +22,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400..700;1,6..72,400..700&family=IBM+Plex+Sans:wght@400;600&family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="style.css?v=15" />
+  <link rel="stylesheet" href="style.css?v=16" />
 </head>
 <body>
 
@@ -460,23 +460,25 @@ agent-native-setup profile init my-team</code></pre>
   }
 
   function inspectHtml(d) {
+    // the wizard asks its questions first, then writes the files — read the panel the same way
+    const asks = d.prompts.length
+      ? `<p class="pm-sub">Asks ${d.prompts.length} setup question${d.prompts.length === 1 ? "" : "s"}:</p>
+         <ol class="asks">${d.prompts.map(q => `<li>${esc(q.message || q.name)}</li>`).join("")}</ol>`
+      : "";
     const files = d.files.length
       ? `<p class="pm-sub">Scaffolds ${d.files.length} file${d.files.length === 1 ? "" : "s"}:</p>
          <ul class="tree">${d.files.map(f => `<li>${esc(f)}</li>`).join("")}</ul>`
       : `<p class="pm-sub">No file list available for this profile.</p>`;
-    const asks = d.prompts.length
-      ? `<p class="pm-sub">Asks ${d.prompts.length} setup question${d.prompts.length === 1 ? "" : "s"}:</p>
-         <ul class="asks">${d.prompts.map(q => `<li>${esc(q.message || q.name)}</li>`).join("")}</ul>`
-      : "";
-    return files + asks;
+    return asks + files;
   }
 
   function openModal(p) {
     const cmd = esc(installCmd(p.name));
     const stat = (n, label) => `<div class="stat"><b>${fmt(n)}</b><span>${label}</span></div>`;
     $pmBody.innerHTML = `
-      <h2 id="pm-name">${esc(p.name)}
+      <h2 id="pm-name"><span>${esc(p.name)}</span>
         <a class="gh" href="${esc(p.repo)}" aria-label="Open ${esc(p.name)} on GitHub">${IC_GH}</a>
+        <span class="ver" id="pm-ver" hidden></span>
         ${p.isDefault ? '<span class="badge">default</span>' : ""}
       </h2>
       ${p.author ? `<p class="pm-by">by ${esc(p.author)}</p>` : ""}
@@ -506,7 +508,9 @@ agent-native-setup profile init my-team</code></pre>
     const stale = () => !$pm.open || $pm.dataset.profile !== p.name;
     inspect(p).then(d => {
       if (stale()) return;
-      $i.innerHTML = (d.version ? `<p class="pm-sub">Version <code>${esc(d.version)}</code></p>` : "") + inspectHtml(d);
+      const $v = document.getElementById("pm-ver");
+      if (d.version) { $v.textContent = "v. " + d.version; $v.hidden = false; }
+      $i.innerHTML = inspectHtml(d);
     }).catch(() => {
       if (stale()) return;
       $i.innerHTML = `<p class="pm-sub">Couldn't load the profile contents — see <a href="${esc(p.repo)}">the repo</a>.</p>`;
