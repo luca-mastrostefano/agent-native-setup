@@ -521,7 +521,6 @@ p code, li code {
 #pm .pm-by { margin: 0 0 0.9rem; font-size: 0.8rem; color: var(--ink-soft); }
 #pm .stats { gap: 1.8rem; align-items: baseline; padding: 0 0 0.4rem; flex-wrap: wrap; }
 #pm .stat { text-align: left; }
-.pm-repo { font-size: 0.78rem; font-family: "IBM Plex Mono", ui-monospace, monospace; }
 .pm-h {
   font-size: 0.75rem;
   font-family: "IBM Plex Mono", ui-monospace, monospace;

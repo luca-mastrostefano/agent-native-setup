@@ -22,7 +22,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400..700;1,6..72,400..700&family=IBM+Plex+Sans:wght@400;600&family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="style.css?v=14" />
+  <link rel="stylesheet" href="style.css?v=15" />
 </head>
 <body>
 
@@ -480,9 +480,7 @@ agent-native-setup profile init my-team</code></pre>
         ${p.isDefault ? '<span class="badge">default</span>' : ""}
       </h2>
       ${p.author ? `<p class="pm-by">by ${esc(p.author)}</p>` : ""}
-      <div class="stats">${stat(p.downloads, "downloads")}${stat(p.stars, "stars")}${stat(p.forks, "forks")}
-        <a class="pm-repo" href="${esc(p.repo)}">${esc(p.repo.replace("https://", ""))}</a>
-      </div>
+      <div class="stats">${stat(p.downloads, "downloads")}${stat(p.stars, "stars")}${stat(p.forks, "forks")}</div>
 
       <h3 class="pm-h">How to use it</h3>
       <div class="use-cmd">
