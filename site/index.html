@@ -22,7 +22,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400..700;1,6..72,400..700&family=IBM+Plex+Sans:wght@400;600&family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="style.css?v=18" />
+  <link rel="stylesheet" href="style.css?v=19" />
 </head>
 <body>
 
@@ -459,6 +459,43 @@ agent-native-setup profile init my-team</code></pre>
     return data;
   }
 
+  // Below this a directory tree is chrome: a handful of paths read fine as they are.
+  const FLAT_MAX = 8;
+
+  // "a/b.md" + "a/c.md" -> Map{a: Map{b.md: Map{}, c.md: Map{}}}. A leaf is an empty Map,
+  // so a name can be a file or a directory but never both — stripping `.j2` could in
+  // principle collide `foo.j2` with `foo/bar.j2`, but such a profile can't be scaffolded
+  // onto a real filesystem either, so we let the directory win rather than guard for it.
+  function buildTree(paths) {
+    const root = new Map();
+    for (const path of paths) {
+      let node = root;
+      for (const part of path.split("/")) {
+        if (!node.has(part)) node.set(part, new Map());
+        node = node.get(part);
+      }
+    }
+    return root;
+  }
+
+  function countFiles(node) {
+    let n = 0;
+    for (const kid of node.values()) n += kid.size ? countFiles(kid) : 1;
+    return n;
+  }
+
+  // Directories collapse by default. Expanded, the tree is *longer* than the flat list it
+  // replaces (every directory costs a row) — it's the collapsing that buys back the height.
+  function treeHtml(node) {
+    const entries = [...node].sort(([an, ak], [bn, bk]) =>
+      (bk.size > 0) - (ak.size > 0) || an.localeCompare(bn)); // directories first, then files
+    return `<ul>${entries.map(([name, kid]) => {
+      if (!kid.size) return `<li>${esc(name)}</li>`;
+      const n = countFiles(kid);
+      return `<li><details><summary>${esc(name)}/<span class="n">${n} file${n === 1 ? "" : "s"}</span></summary>${treeHtml(kid)}</details></li>`;
+    }).join("")}</ul>`;
+  }
+
   function inspectHtml(d) {
     // the wizard asks its questions first, then writes the files — read the panel the same way
     const asks = d.prompts.length
@@ -467,7 +504,9 @@ agent-native-setup profile init my-team</code></pre>
       : "";
     const files = d.files.length
       ? `<p class="pm-sub">Scaffolds ${d.files.length} file${d.files.length === 1 ? "" : "s"}:</p>
-         <ul class="tree">${d.files.map(f => `<li>${esc(f)}</li>`).join("")}</ul>`
+         ${d.files.length > FLAT_MAX
+           ? `<div class="tree">${treeHtml(buildTree(d.files))}</div>`
+           : `<ul class="tree flat">${d.files.map(f => `<li>${esc(f)}</li>`).join("")}</ul>`}`
       : `<p class="pm-sub">No file list available for this profile.</p>`;
     return asks + files;
   }

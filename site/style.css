@@ -588,12 +588,44 @@ html.modal-open, html.modal-open body { overflow: hidden; }
   padding-left: 2.2rem;
   padding-right: 0.8rem;
 }
+.tree ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+/* a guide rail from the directory row down through the files it holds */
+.tree details > ul {
+  margin-left: 0.32rem;
+  padding-left: 0.85rem;
+  border-left: 1px solid var(--rule-strong);
+}
 .tree li {
   font-family: "IBM Plex Mono", ui-monospace, monospace;
   font-size: 0.74rem;
   line-height: 1.7;
   color: var(--ink-soft);
   white-space: pre;
+}
+.tree summary {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  cursor: pointer;
+  color: var(--ink);
+  list-style: none; /* the default triangle sits too low against a monospace row */
+}
+.tree summary::-webkit-details-marker { display: none; }
+.tree summary::before {
+  content: "▸";
+  color: var(--ink-soft);
+  font-size: 0.65rem;
+}
+.tree details[open] > summary::before { content: "▾"; }
+.tree summary:hover { color: var(--accent); }
+.tree .n {
+  font-size: 0.66rem;
+  color: var(--ink-soft);
+  opacity: 0.75;
 }
 .asks li { font-size: 0.8rem; line-height: 1.6; color: var(--ink-soft); }
 .asks li + li { border-top: 1px solid var(--rule); padding-top: 0.35rem; margin-top: 0.35rem; }
