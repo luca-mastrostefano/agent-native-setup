@@ -119,7 +119,7 @@ profile that ships `AGENTS.md` but declares neither the field nor a link to it.
    is an attack and errors loudly, never a silent fallback;
 3. a path containing `profile.json`;
 4. a bare name under `~/.config/agent-native-setup/profiles/`;
-5. (`add`/`show` only) a bare name that matches nothing local → exact-name lookup in the
+5. a bare name that matches nothing local → exact-name lookup in the
    community index; the `name → community index → <url>` redirection is printed, and only
    `git+` entries are accepted (a path-shaped entry would masquerade as trusted-local). A
    broken local profile reports its own error — it is never shadowed by an index listing.
@@ -132,7 +132,8 @@ profile that ships `AGENTS.md` but declares neither the field nor a link to it.
    raw-URL adopt bypasses only the integrity vetting, not consent.
 
 The reference is recorded verbatim as the manifest `source`, so `update` re-resolves (and
-re-fetches) the same way later.
+re-fetches) the same way later — except for the step-5 fallback, which records the *resolved*
+`git+` URL, so `update` re-fetches the pinned tag instead of re-consulting a moving index.
 
 ## Rendering context
 

@@ -51,8 +51,8 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         "--profile",
         default=None,
         help="scaffold from a profile instead of the built-in baseline: a path, a name in "
-        "~/.config/agent-native-setup/profiles, or a git+https://… URL "
-        "(see `agent-native-setup profile --help`)",
+        "~/.config/agent-native-setup/profiles (else looked up in the community index), or a "
+        "git+https://… URL (see `agent-native-setup profile --help`)",
     )
     p.add_argument(
         "--allow-code",
@@ -688,10 +688,16 @@ def main(argv: list[str] | None = None) -> int:
     # reference fails here instead of after the questions.
     baseline_run = not args.profile
     try:
-        profile = profiles.resolve(
-            args.profile if args.profile else f"{profiles.BUILTIN_SCHEME}{profiles.BASELINE_NAME}",
-            console=console,
-        )
+        if args.profile:
+            # resolve_ref, not resolve: a bare `--profile <name>` matching nothing on disk falls
+            # back to the community index (RFC 2026-07-04 §6), so a `search` hit scaffolds by
+            # name. Locals still win, and the fetched URL faces the same consent gate below.
+            profile = profiles.resolve_ref(args.profile, console)
+        else:
+            # The default run never consults the index — the consent-free path stays sealed.
+            profile = profiles.resolve(
+                f"{profiles.BUILTIN_SCHEME}{profiles.BASELINE_NAME}", console=console
+            )
     except profiles.ProfileError as exc:
         console.print(f"[red]{exc}[/]")
         return 2

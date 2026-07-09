@@ -1751,12 +1751,17 @@ def consent(profile: Profile, *, allow_code: bool, interactive: bool, console: A
     h = content_hash(profile)
     if h in _load_trust():
         return True  # this exact artifact was consented before
+    # The name and the reasons are remote data (the reasons quote permission entries, MCP server
+    # names and template paths verbatim) — escaped, or a hostile profile could forge markup into
+    # the very prompt that asks whether to trust it (e.g. a name spelling "[green]verified[/]").
+    from rich.markup import escape
+
     console.print(
-        f":warning:  [yellow]{profile.name!r} is a fetched, code-carrying (unsafe) profile[/] — "
-        "it will run code on your machine:"
+        f":warning:  [yellow]{escape(repr(profile.name))} is a fetched, code-carrying (unsafe) "
+        "profile[/] — it will run code on your machine:"
     )
     for r in reasons:
-        console.print(f"  [yellow]•[/] {r}")
+        console.print(f"  [yellow]•[/] {escape(r)}")
     if allow_code or (interactive and _confirm_trust(profile.name)):
         store = _load_trust()
         store[h] = profile.name
@@ -1906,12 +1911,12 @@ def _index_entry_for(name: str) -> dict | None:
     return None
 
 
-def _resolve_ref(ref: str, console: Any) -> Profile | None:
+def resolve_ref(ref: str, console: Any) -> Profile | None:
     """``resolve``, falling back to an exact-name community-index lookup for a bare name
-    (RFC 2026-07-04-community-index §6) — so ``add``/``show`` work straight off a ``search`` hit
-    without copy-pasting the URL. Locals always win (a broken local profile reports its own
-    error — it is never shadowed by an index listing); an index URL must itself be ``git+`` so
-    it goes through the identical transport allowlist and consent gate as a hand-typed one (a
+    (RFC 2026-07-04-community-index §6) — so ``add``/``show``/``--profile`` work straight off a
+    ``search`` hit without copy-pasting the URL. Locals always win (a broken local profile reports
+    its own error — it is never shadowed by an index listing); an index URL must itself be ``git+``
+    so it goes through the identical transport allowlist and consent gate as a hand-typed one (a
     path-shaped entry would resolve as trusted-local and skip the gate); and the printed line
     keeps the redirection visible."""
     try:
@@ -2681,7 +2686,7 @@ def _show(args: argparse.Namespace, console: Any) -> int:
     from rich.markup import escape
 
     try:
-        prof = _resolve_ref(args.ref, console)
+        prof = resolve_ref(args.ref, console)
     except ProfileError as exc:
         console.print(f"[red]{exc}[/]")
         return 2
@@ -2730,7 +2735,7 @@ def _add(args: argparse.Namespace, console: Any) -> int:
     import sys
 
     try:
-        prof = _resolve_ref(args.url, console)
+        prof = resolve_ref(args.url, console)
     except ProfileError as exc:
         console.print(f"[red]{exc}[/]")
         return 2

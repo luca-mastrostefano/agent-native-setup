@@ -11,11 +11,22 @@ faithful. Tests marked `real_baseline_fetch` opt out to exercise the true fetch+
 
 from __future__ import annotations
 
+import json
+import os
+import time
 from pathlib import Path
 
 import pytest
 
-from agent_native_setup import profiles
+# Rich decides whether to emit ANSI at Console construction, which happens at import time
+# (`cli.console = Console()`). A shell exporting FORCE_COLOR/CLICOLOR_FORCE therefore makes the
+# engine colorize into `capsys`, and every test asserting on plain console text fails — locally
+# only, since CI leaves them unset. Strip them before the package is imported so the suite reads
+# the same output everywhere.
+for _forced_color in ("FORCE_COLOR", "CLICOLOR_FORCE"):
+    os.environ.pop(_forced_color, None)
+
+from agent_native_setup import profiles  # noqa: E402
 
 BASELINE_FIXTURE = Path(__file__).resolve().parent / "fixtures" / "agent-native-baseline"
 
@@ -25,3 +36,19 @@ def _stub_builtin_baseline(request: pytest.FixtureRequest, monkeypatch: pytest.M
     if request.node.get_closest_marker("real_baseline_fetch"):
         return
     monkeypatch.setattr(profiles, "builtin_baseline_root", lambda console=None: BASELINE_FIXTURE)
+
+
+@pytest.fixture(autouse=True)
+def _offline_community_index(
+    tmp_path_factory: pytest.TempPathFactory, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Now that a bare `--profile <name>` falls back to the index, any test resolving an unknown
+    name would reach the real one over the network. Point the cache at a throwaway dir holding a
+    fresh empty record, so `_fetch_index` serves `[]` from cache and never opens a socket.
+    Index-aware tests re-point `_index_cache_path` themselves and seed their own entries."""
+    cache = tmp_path_factory.mktemp("index-cache") / "community-index.json"
+    cache.write_text(
+        json.dumps({"checked_at": time.time(), "url": profiles.INDEX_URL, "entries": []}),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(profiles, "_index_cache_path", lambda: cache)
