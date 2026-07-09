@@ -365,11 +365,11 @@ p code, li code {
   line-height: 0;
 }
 .copy:hover { color: var(--accent); }
-.copy .ic-check { display: none; color: var(--accent); }
-.copy.copied .ic-copy { display: none; }
-.copy.copied .ic-check { display: inline; }
+.copy .ic-check, .copy-cmd .ic-check { display: none; color: var(--accent); }
+.copy.copied .ic-copy, .copy-cmd.copied .ic-copy { display: none; }
+.copy.copied .ic-check, .copy-cmd.copied .ic-check { display: inline; }
 @media (prefers-reduced-motion: no-preference) {
-  .copy.copied .ic-check svg { animation: pop 0.25s ease-out; }
+  .copy.copied .ic-check svg, .copy-cmd.copied .ic-check svg { animation: pop 0.25s ease-out; }
 }
 @keyframes pop {
   from { transform: scale(0.4); opacity: 0; }
@@ -390,6 +390,72 @@ p code, li code {
 .row p { margin: 0 0 0.55rem; font-size: 0.92rem; color: var(--ink-soft); max-width: 60em; }
 .row .tags { display: flex; flex-wrap: wrap; gap: 0.35rem; }
 .row .tags .chip { padding: 0.05rem 0.6rem; }
+
+/* right column of a row: the "Use" button sits above the stats */
+.use-col { display: flex; flex-direction: column; align-items: flex-end; gap: 0.6rem; }
+@media (max-width: 640px) { .use-col { align-items: flex-start; } }
+
+.use { position: relative; }
+.use-btn {
+  font: inherit;
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: 0.8rem;
+  padding: 0.25rem 1.1rem;
+  background: var(--pine);
+  border: 1px solid var(--pine);
+  border-radius: 999px;
+  color: #f4f6f0;
+  cursor: pointer;
+}
+.use-btn:hover { filter: brightness(1.08); }
+
+/* the panel the button opens: install command, copy button, hint */
+.use-panel {
+  position: absolute;
+  top: calc(100% + 0.5rem);
+  right: 0;
+  z-index: 5;
+  width: min(38rem, calc(100vw - 3rem));
+  background: var(--card);
+  border: 1px solid var(--rule-strong);
+  border-radius: 8px;
+  padding: 0.8rem;
+  box-shadow: 0 8px 24px rgb(0 0 0 / 0.12);
+  white-space: normal;
+  text-align: left;
+}
+@media (max-width: 640px) { .use-panel { right: auto; left: 0; } }
+.use-cmd { display: flex; align-items: center; gap: 0.7rem; }
+.use-cmd code {
+  flex: 1;
+  min-width: 0;
+  font-size: 0.78rem;
+  line-height: 1.5;
+  color: var(--ink);
+  background: var(--chip-bg);
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+  padding: 0.45rem 0.6rem;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.copy-cmd {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font: inherit;
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: 0.76rem;
+  padding: 0.45rem 0.8rem;
+  background: var(--chip-bg);
+  border: 1px solid var(--rule-strong);
+  border-radius: 6px;
+  color: var(--ink-soft);
+  cursor: pointer;
+}
+.copy-cmd:hover { color: var(--ink); border-color: var(--ink-soft); }
+.use-hint { margin: 0.55rem 0 0; font-size: 0.74rem; color: var(--ink-soft); }
 
 .stats {
   display: flex;
