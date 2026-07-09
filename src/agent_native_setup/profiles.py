@@ -1069,16 +1069,18 @@ _SKELETON_README = """\
 ## How to use it
 
 ```bash
-uvx --from git+{manager} agent-native-setup -o ./my-app --profile {name}
+uvx --from git+{manager} agent-native-setup profile add {name} \\
+  && uvx --from git+{manager} agent-native-setup -o ./my-app --profile {name}
 ```
 
-When someone runs that, {result}
+`profile add` fetches this profile from the community index — verifying it against the
+`content_hash` the index vouches for — into `~/.config/agent-native-setup/profiles/{name}`;
+the scaffold then runs from that copy. When someone runs that, {result}
 
-`--profile {name}` resolves through the community index, so it works once you've published
-(`agent-native-setup profile publish . --release`). Until then, point `--profile` at this
-directory: `--profile {source_hint}`. Adopters who'd rather install the wizard once
-(`uv tool install git+{manager}`) can drop the `uvx --from …` prefix and call
-`agent-native-setup` directly.
+Only `profile add` consults the index, and only for a bare name, so the pair above works once
+you've published (`agent-native-setup profile publish . --release`). Before that, scaffold
+straight from this directory — a path needs no index: `--profile {source_hint}`. Adopters who
+install the wizard once (`uv tool install git+{manager}`) drop the `uvx --from …` prefix.
 
 ---
 
@@ -1279,9 +1281,29 @@ reference.
    adopters' `update` pause; see [`README.md`](./README.md) for the versioning rules) → commit →
    `git tag v<version>` → `git push --follow-tags` → `agent-native-setup profile publish .
    --release` again — it refreshes your community-index entry in place, re-pinning both the
-   tag and the `content_hash` of the new bytes (so a template change that isn't re-published
-   would fail adopters' install-time verification against the stale hash). Adopters pull the
-   new version by running `agent-native-setup update` in their own projects.
+   tag and the `content_hash` of the new bytes.
+5. **Never re-use a version; never move a tag.** A release *is* its `url` (`…@v<version>`) plus
+   the `content_hash` of `profile.json` + `templates/` — the index carries **no `version`
+   field**, so the tag in the URL is the only version an adopter can see. A pinned tag is cached
+   forever and never re-fetched, so re-tagging the same version reaches nobody who already has
+   it, while the moved bytes stop matching the listed hash and every *new* install by name is
+   refused (*"no longer matches the hash vetted in the community index"*). Nothing enforces this
+   for you: `publish` never checks that you bumped. The bump rewrites the hash by itself (the
+   hash covers `profile.json`), so the tag and the listing must always move together — publish
+   every change you ship, and ship every change you publish.
+6. **How adopters actually pick it up.** `update` re-resolves the `source` recorded in their
+   project — for a name-installed profile that's their own copy under
+   `~/.config/agent-native-setup/profiles/`, which never re-consults the index — so `update`
+   alone will *not* find your new version. They refresh that copy first, and `profile add`
+   refuses to overwrite an existing one:
+
+   ```bash
+   rm -rf ~/.config/agent-native-setup/profiles/<name> \\
+     && agent-native-setup profile add <name> && agent-native-setup update
+   ```
+
+   (A project whose recorded `source` is a `git+…@v<tag>` URL is pinned the same way — that tag
+   has to change.) Say this in your release notes: an adopter who only runs `update` sees nothing.
 """
 
 # The contract stub `profile init` ships under templates/, declared as `agents_contract` so

@@ -103,9 +103,11 @@ adopters' repos before proceeding.
   init` writes one — the attribution line (`🌐 *Part of the **agent-native-setup** registry —
   [browse all community profiles](https://lucamastrostefano.com/agent-native-setup/).*`), a
   **Description** of what the profile sets up and for whom
-  (matching `description` in `profile.json`), and a **How to use it** block with `uvx --from
-  git+<manager> agent-native-setup -o ./my-app --profile <name>` — that's the repo's landing
-  page on the registry. Below a `---`, the maintainer half: what's reusable vs adapted and
+  (matching `description` in `profile.json`), and a **How to use it** block with `profile add
+  <name>` followed by `-o ./my-app --profile <name>` (only `profile add` reads the community
+  index, and only for a bare name — a scaffold with a bare `--profile <name>` that was never
+  `add`ed fails) — that's the repo's landing page on the registry. Below a `---`, the
+  maintainer half: what's reusable vs adapted and
   why, an adopter checklist (external services, secrets to map); a
   root **AGENTS.md** that names the repo as an agent-native-setup profile, links back to the
   manager (`https://github.com/luca-mastrostefano/agent-native-setup`), and carries the notes
