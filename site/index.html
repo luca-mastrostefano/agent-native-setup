@@ -22,7 +22,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400..700;1,6..72,400..700&family=IBM+Plex+Sans:wght@400;600&family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="style.css?v=11" />
+  <link rel="stylesheet" href="style.css?v=15" />
 </head>
 <body>
 
@@ -254,6 +254,12 @@ agent-native-setup profile init my-team</code></pre>
 
 </main>
 
+<!-- Profile detail, opened by clicking a profile name. Filled in by the script below. -->
+<dialog id="pm" aria-labelledby="pm-name">
+  <button id="pm-close" aria-label="Close">&times;</button>
+  <div id="pm-body"></div>
+</dialog>
+
 <footer>
   <div class="wrap">
     <span>MIT — the engine, the profiles, and everything they scaffold are yours.</span>
@@ -319,6 +325,14 @@ agent-native-setup profile init my-team</code></pre>
     return /^https:\/\//.test(repo) ? repo : "#";
   }
 
+  // "git+https://github.com/owner/repo.git@v1.2.3" -> {owner, repo, ref} — the coordinates
+  // the inspection panel needs to fetch profile.json and the templates/ tree. null if not GitHub.
+  function ghCoords(url) {
+    const m = url.replace(/^git\+/, "").split("#")[0]
+      .match(/^https:\/\/github\.com\/([\w.-]+)\/([\w.-]+?)(?:\.git)?(?:@(.+))?$/);
+    return m ? { owner: m[1], repo: m[2], ref: m[3] || "HEAD" } : null;
+  }
+
   function fmt(n) {
     return n >= 1000 ? (Math.round(n / 100) / 10) + "k" : String(n);
   }
@@ -330,7 +344,8 @@ agent-native-setup profile init my-team</code></pre>
       return {
         name: p.name, description: p.description || "", tags,
         hay: (p.name + " " + (p.description || "") + " " + tags.join(" ")).toLowerCase(),
-        repo: repoLink(p.url), isDefault: p.name === DEFAULT_PROFILE,
+        repo: repoLink(p.url), gh: ghCoords(p.url), author: p.author || "",
+        isDefault: p.name === DEFAULT_PROFILE,
         stars: s.stars || 0, forks: s.forks || 0, downloads: s.downloads || 0,
       };
     });
@@ -355,26 +370,47 @@ agent-native-setup profile init my-team</code></pre>
 
   const IC_COPY = '<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><rect x="5.5" y="5.5" width="8" height="8" rx="1.5"/><path d="M10.5 5.5v-2a1.5 1.5 0 0 0-1.5-1.5H4A1.5 1.5 0 0 0 2.5 3.5v5A1.5 1.5 0 0 0 4 10h1.5"/></svg>';
   const IC_CHECK = '<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 8.5l3.5 3.5L13 4.5"/></svg>';
+  const IC_GH = '<svg viewBox="0 0 16 16" width="15" height="15" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg>';
 
   function installCmd(name) {
     return `uvx --from git+https://github.com/luca-mastrostefano/agent-native-setup agent-native-setup -o ./my-app --profile ${name}`;
+  }
+
+  // "Use" button + the panel it toggles: the install command, a copy button, and a hint
+  function useHtml(name) {
+    const cmd = esc(installCmd(name));
+    return `<div class="use">
+      <button class="use-btn" aria-expanded="false" aria-label="Show install command for ${esc(name)}">Use</button>
+      <div class="use-panel" hidden>
+        <div class="use-cmd">
+          <code>${cmd}</code>
+          <button class="copy-cmd" data-cmd="${cmd}"><span class="ic-copy">${IC_COPY}</span><span class="ic-check">${IC_CHECK}</span>Copy install command</button>
+        </div>
+        <p class="use-hint">
+          Copy and paste this into your terminal.<br />
+          <code class="uv">brew install uv</code> # if you don't have uv yet — <a href="https://docs.astral.sh/uv">docs.astral.sh/uv</a>
+        </p>
+      </div>
+    </div>`;
   }
 
   function rowHtml(p) {
     const badge = p.isDefault ? '<span class="badge">default</span>' : "";
     const tags = p.tags.map(t =>
       `<button class="chip" data-tag="${esc(t)}" aria-pressed="${state.tags.has(t)}">${esc(t)}</button>`).join("");
-    const copy = `<button class="copy" data-cmd="${esc(installCmd(p.name))}" title="Copy install command" aria-label="Copy install command for ${esc(p.name)}"><span class="ic-copy">${IC_COPY}</span><span class="ic-check">${IC_CHECK}</span></button>`;
     return `<article class="row">
       <div>
-        <h3><a href="${esc(p.repo)}">${esc(p.name)}</a>${copy}${badge}</h3>
+        <h3><button class="name" data-profile="${esc(p.name)}">${esc(p.name)}</button><a class="gh" href="${esc(p.repo)}" title="Open ${esc(p.name)} on GitHub" aria-label="Open ${esc(p.name)} on GitHub">${IC_GH}</a>${badge}</h3>
         <p>${esc(p.description)}</p>
         <div class="tags">${tags}</div>
       </div>
-      <div class="stats">
-        <div class="stat"><b>${fmt(p.downloads)}</b><span>downloads</span></div>
-        <div class="stat"><b>${fmt(p.stars)}</b><span>stars</span></div>
-        <div class="stat"><b>${fmt(p.forks)}</b><span>forks</span></div>
+      <div class="use-col">
+        ${useHtml(p.name)}
+        <div class="stats">
+          <div class="stat"><b>${fmt(p.downloads)}</b><span>downloads</span></div>
+          <div class="stat"><b>${fmt(p.stars)}</b><span>stars</span></div>
+          <div class="stat"><b>${fmt(p.forks)}</b><span>forks</span></div>
+        </div>
       </div>
     </article>`;
   }
@@ -397,6 +433,95 @@ agent-native-setup profile init my-team</code></pre>
     if (!$more.hidden) $more.textContent = `Show more (${hits.length - state.shown} remaining)`;
   }
 
+  // ---- profile modal -------------------------------------------------------
+  const $pm = document.getElementById("pm");
+  const $pmBody = document.getElementById("pm-body");
+  const inspected = new Map(); // profile name -> {version, prompts, files} | {error}
+
+  // The scaffolded file list isn't in profile.json — it's the templates/ tree in the
+  // profile repo, so we ask the trees API for it. Both fetches are best-effort: the
+  // modal renders everything else whether or not they land.
+  async function inspect(p) {
+    if (inspected.has(p.name)) return inspected.get(p.name);
+    const g = p.gh;
+    if (!g) throw new Error("not a GitHub profile");
+    const base = `https://api.github.com/repos/${g.owner}/${g.repo}`;
+    const [manifest, tree] = await Promise.all([
+      fetch(`https://raw.githubusercontent.com/${g.owner}/${g.repo}/${g.ref}/profile.json`).then(r => r.ok ? r.json() : {}),
+      fetch(`${base}/git/trees/${g.ref}?recursive=1`).then(r => r.ok ? r.json() : { tree: [] }),
+    ]);
+    const files = (tree.tree || [])
+      .filter(n => n.type === "blob" && n.path.startsWith("templates/"))
+      .map(n => n.path.slice("templates/".length).replace(/\.j2$/, ""))
+      .sort();
+    const data = { version: manifest.version || "", prompts: manifest.prompts || [], files };
+    inspected.set(p.name, data);
+    return data;
+  }
+
+  function inspectHtml(d) {
+    const files = d.files.length
+      ? `<p class="pm-sub">Scaffolds ${d.files.length} file${d.files.length === 1 ? "" : "s"}:</p>
+         <ul class="tree">${d.files.map(f => `<li>${esc(f)}</li>`).join("")}</ul>`
+      : `<p class="pm-sub">No file list available for this profile.</p>`;
+    const asks = d.prompts.length
+      ? `<p class="pm-sub">Asks ${d.prompts.length} setup question${d.prompts.length === 1 ? "" : "s"}:</p>
+         <ul class="asks">${d.prompts.map(q => `<li>${esc(q.message || q.name)}</li>`).join("")}</ul>`
+      : "";
+    return files + asks;
+  }
+
+  function openModal(p) {
+    const cmd = esc(installCmd(p.name));
+    const stat = (n, label) => `<div class="stat"><b>${fmt(n)}</b><span>${label}</span></div>`;
+    $pmBody.innerHTML = `
+      <h2 id="pm-name">${esc(p.name)}
+        <a class="gh" href="${esc(p.repo)}" aria-label="Open ${esc(p.name)} on GitHub">${IC_GH}</a>
+        ${p.isDefault ? '<span class="badge">default</span>' : ""}
+      </h2>
+      ${p.author ? `<p class="pm-by">by ${esc(p.author)}</p>` : ""}
+      <div class="stats">${stat(p.downloads, "downloads")}${stat(p.stars, "stars")}${stat(p.forks, "forks")}</div>
+
+      <h3 class="pm-h">How to use it</h3>
+      <div class="use-cmd">
+        <code>${cmd}</code>
+        <button class="copy-cmd" data-cmd="${cmd}"><span class="ic-copy">${IC_COPY}</span><span class="ic-check">${IC_CHECK}</span>Copy install command</button>
+      </div>
+      <p class="use-hint">
+        Copy and paste this into your terminal.<br />
+        <code class="uv">brew install uv</code> # if you don't have uv yet — <a href="https://docs.astral.sh/uv">docs.astral.sh/uv</a>
+      </p>
+
+      <h3 class="pm-h">About</h3>
+      <p class="pm-desc">${esc(p.description)}</p>
+      <div class="tags">${p.tags.map(t => `<span class="chip">${esc(t)}</span>`).join("")}</div>
+
+      <h3 class="pm-h">What it scaffolds</h3>
+      <div id="pm-inspect" class="pm-inspect"><p class="pm-sub">Loading…</p></div>`;
+    $pm.dataset.profile = p.name;
+    $pm.showModal();
+
+    const $i = document.getElementById("pm-inspect");
+    // a slow fetch must not paint into a modal the reader has since closed or reopened elsewhere
+    const stale = () => !$pm.open || $pm.dataset.profile !== p.name;
+    inspect(p).then(d => {
+      if (stale()) return;
+      $i.innerHTML = (d.version ? `<p class="pm-sub">Version <code>${esc(d.version)}</code></p>` : "") + inspectHtml(d);
+    }).catch(() => {
+      if (stale()) return;
+      $i.innerHTML = `<p class="pm-sub">Couldn't load the profile contents — see <a href="${esc(p.repo)}">the repo</a>.</p>`;
+    });
+  }
+
+  document.getElementById("pm-close").addEventListener("click", () => $pm.close());
+  // click on the backdrop (i.e. outside the dialog's own box) closes it
+  $pm.addEventListener("click", e => {
+    if (e.target !== $pm) return;
+    const r = $pm.getBoundingClientRect();
+    const inside = e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom;
+    if (!inside) $pm.close();
+  });
+
   let debounce;
   $q.addEventListener("input", () => {
     clearTimeout(debounce);
@@ -404,8 +529,37 @@ agent-native-setup profile init my-team</code></pre>
   });
   $sort.addEventListener("change", () => { state.sort = $sort.value; state.shown = PAGE; render(); });
   $more.addEventListener("click", () => { state.shown += PAGE; render(); });
+  function closeUsePanels(except) {
+    for (const btn of document.querySelectorAll(".use-btn[aria-expanded='true']")) {
+      if (btn === except) continue;
+      btn.setAttribute("aria-expanded", "false");
+      btn.nextElementSibling.hidden = true;
+    }
+  }
+
+  document.addEventListener("keydown", e => { if (e.key === "Escape") closeUsePanels(); });
+
   document.addEventListener("click", e => {
-    const copy = e.target.closest("button.copy");
+    // a click anywhere outside an open "Use" panel dismisses it
+    if (!e.target.closest(".use")) closeUsePanels();
+
+    const name = e.target.closest("button.name");
+    if (name) {
+      const p = all.find(x => x.name === name.dataset.profile);
+      if (p) openModal(p);
+      return;
+    }
+
+    const use = e.target.closest("button.use-btn");
+    if (use) {
+      const open = use.getAttribute("aria-expanded") === "true";
+      closeUsePanels(use);
+      use.setAttribute("aria-expanded", String(!open));
+      use.nextElementSibling.hidden = open;
+      return;
+    }
+
+    const copy = e.target.closest("button.copy-cmd");
     if (copy) {
       navigator.clipboard.writeText(copy.dataset.cmd).then(() => {
         copy.classList.add("copied");
