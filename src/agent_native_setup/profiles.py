@@ -1100,6 +1100,22 @@ answers) so it's only asked when relevant — e.g. `"when": "answers.use_db"`. N
 runs (`-y`) use each prompt's `default` unless overridden headlessly with
 `--answer name=value`; the answers are recorded and replayed on `update` (never re-asked).
 
+**Write the `message` so the adopter can decide.** It's the only text they see — `choices`
+render as their bare values and there is no separate help field — so the message has to carry
+the whole decision: what the answer *changes* (files, gates, commands), what it *costs* (an
+install, an account, a slower commit), and what breaks if they decline. Link any external tool
+that isn't universally known, so they can go read about it:
+
+```json
+{{"name": "use_codescene", "type": "confirm", "default": false,
+ "message": "Add CodeScene gates? (code-health ratchet, fails CI on regression - https://codescene.com)"}}
+```
+
+For an instance-bound value, say **where to find it** rather than only naming it — `"Todoist
+section ID for the backlog (open the section in Todoist; it's the last part of the URL)"` beats
+`"Todoist section ID: Open"` with a `YOUR_OPEN_SECTION_ID` default. The test: could someone who
+has never read this README answer every question correctly?
+
 ## Startup instructions
 
 - `onboarding` — a list of markdown steps folded into the project's `ONBOARDING.md`, which an
@@ -1166,6 +1182,20 @@ reference.
   dependent prompts `"when": "answers.use_x"`. A `.j2` that renders **empty is skipped** —
   wrap a whole file in `{{% if answers.use_x %}}…{{% endif %}}` and it doesn't ship when
   declined. Keep every `default` sensible: `-y`/CI runs take defaults unasked.
+- **A prompt must be answerable by someone who's never seen your profile.** The `message` is
+  the *only* thing they get — `choices` render as their bare values, and there's no help text
+  field — so the message carries the decision. Say what the answer *does* (which files appear,
+  which gate starts blocking, what stops working if declined), not just what it's called:
+  "Wire the Todoist task-loop commands?" tells them nothing they didn't already know from the
+  word "Todoist". **Name and link every external tool** the answer pulls in, unless it's
+  universally known (git, make): `"Add CodeScene quality gates? (a code-health ratchet that
+  fails CI on regression — https://codescene.com)"`. **Tell them where to find an
+  instance-bound value**, don't just name it: a bare `"Todoist section ID: Open"` with a
+  `YOUR_OPEN_SECTION_ID` default leaves them hunting; say where the ID is (open the section in
+  the Todoist web app; it's the last path segment of the URL). And when an answer costs
+  something — an install, a paid account, a slower commit, a consent prompt — say so *in the
+  question*, while they can still say no. The test: could an adopter choose correctly without
+  opening your README?
 - **Mark write-once files as `seed`** in `profile.json` (a starter README, say): seed files are
   shipped once and never overwritten by an update. Everything else under `templates/` is
   *managed* — refreshed when the profile ships a new `version`.

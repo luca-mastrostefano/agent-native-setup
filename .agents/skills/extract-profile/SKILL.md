@@ -59,6 +59,16 @@ adopters' repos before proceeding.
   the author's accounts becomes a `text` prompt with a placeholder default, gated by a
   `confirm` prompt (`when:`) so the whole feature is opt-in and the files render empty —
   and don't ship — when declined.
+- **Write each prompt `message` so an outsider can answer it.** The adopter never saw the
+  source repo, and the message is all they get (`choices` render as bare values; there is no
+  help field). State what the answer *does* — which files ship, which gate starts blocking,
+  what breaks if declined — and what it *costs* (an install, an account, a slower commit).
+  **Name and link every external tool** the source takes for granted but an adopter may not
+  know (CodeScene, Codacy, Semgrep, Todoist, husky): `"Add CodeScene gates? (code-health
+  ratchet, fails CI on regression - https://codescene.com)"`. For an instance-bound value,
+  say **where to find it** ("open the section in Todoist; the ID is the last part of the
+  URL"), not just its name. A profile whose wizard reads as a list of the author's internal
+  jargon is one an adopter answers by mashing enter.
 - **Parameterize identity only**: source project name → `{{ project_name }}` in `.j2`
   files. Before renaming any file to `.j2`, grep it for literal `{{`/`{%`/`${{` — GitHub
   workflows and anything Jinja-hazardous ship **verbatim** (never `.j2`).

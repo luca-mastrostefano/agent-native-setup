@@ -24,6 +24,14 @@ LANG_KEYS = list(REGISTRY)
 _MULTISELECT_HINT = "(↑/↓ move · space to select · enter to confirm)"
 
 
+def _note(text: str) -> None:
+    """A dim explainer printed above a question: what the answer actually changes, and where to
+    read up on any external tool it pulls in. A wizard the user can't answer informed is a
+    wizard they answer by mashing enter. Printed unhighlighted — rich's repr highlighter
+    otherwise recolors the `/` in tool lists and eats the punctuation after a bare URL."""
+    console.print(text, style="dim", highlight=False)
+
+
 def _csv(value: str) -> list[str]:
     return [v.strip() for v in value.split(",") if v.strip()]
 
@@ -136,7 +144,7 @@ def _interactive(
         args.languages
         if args.languages is not None
         else questionary.checkbox(
-            "Languages (linters scaffolded only for these):",
+            "Languages (linters, formatters, type-checkers and test wiring ship only for these):",
             instruction=_MULTISELECT_HINT,
             choices=[
                 questionary.Choice(REGISTRY[k].label, value=k, checked=k in (detected or []))
@@ -164,43 +172,92 @@ def _interactive(
     if args.tools is None:
         console.print(f"[cyan]AI assistants:[/] {', '.join(tools) if tools else 'none'}")
     parts = questionary.checkbox(
-        "Scaffold which parts?",
+        "Scaffold which parts? (each stands alone — an unchecked part is simply not written)",
         instruction=_MULTISELECT_HINT,
         choices=[
-            questionary.Choice("Agents & commands", value="agents", checked=args.agents),
-            questionary.Choice("Docs & RFCs", value="docs", checked=args.docs),
-            questionary.Choice("Linters & quality", value="quality", checked=args.quality),
-            questionary.Choice("CI (GitHub Actions)", value="ci", checked=args.ci),
+            questionary.Choice(
+                "Agents & commands    [.claude/ subagents (code-reviewer, planner) and the "
+                "/review, /rfc commands]",
+                value="agents",
+                checked=args.agents,
+            ),
+            questionary.Choice(
+                "Docs & RFCs          [docs/architecture, the docs/rfc lifecycle + template, "
+                "CONTRIBUTING.md]",
+                value="docs",
+                checked=args.docs,
+            ),
+            questionary.Choice(
+                "Linters & quality    [per-language linters/formatters/tests behind one "
+                "`quality` command]",
+                value="quality",
+                checked=args.quality,
+            ),
+            questionary.Choice(
+                "CI (GitHub Actions)  [a workflow running that same gate on every push and PR]",
+                value="ci",
+                checked=args.ci,
+            ),
         ],
     ).unsafe_ask()
     console.print(
         f"[cyan]Scaffolding:[/] {', '.join(parts) if parts else 'nothing beyond the contract'}"
     )
-    use_ga = (
-        "ci" in parts
-        and questionary.confirm(
-            "Add GitHub Actions workflows? (CI quality + security gate on push/PR)",
+    use_ga = False
+    if "ci" in parts:
+        _note("Writes .github/workflows/quality.yml — the only CI backend the setup ships.")
+        use_ga = questionary.confirm(
+            "Add GitHub Actions workflows? (quality gate, plus the security scans below, "
+            "on push/PR)",
             default=True,
         ).unsafe_ask()
-    )
-    hooks = (
-        "quality" in parts
-        and questionary.confirm(
-            "Install pre-commit hooks? (run linters/format/secret-scan before each commit)",
+    hooks = False
+    if "quality" in parts:
+        _note(
+            "Hooks run through pre-commit (https://pre-commit.com). The config is written now; "
+            "you arm it once with `pre-commit install`."
+        )
+        hooks = questionary.confirm(
+            "Add pre-commit hooks? (lint, format and secret-scan each commit; tests before push)",
             default=True,
         ).unsafe_ask()
-    )
-    security = ("quality" in parts or "ci" in parts) and questionary.confirm(
-        "Add security scanning (secrets + dependency audit)?", default=True
-    ).unsafe_ask()
+    security = False
+    if "quality" in parts or "ci" in parts:
+        # Say where each half actually lands, given what they've already declined — gitleaks runs
+        # in whichever of the hook/CI got scaffolded, and the audit is a CI-only job.
+        runs_in = [w for w, on in (("the pre-commit hook", hooks), ("CI", use_ga)) if on]
+        secret = (
+            f"Secret scan: gitleaks (https://gitleaks.io), in {' and '.join(runs_in)}."
+            if runs_in
+            else "Secret scan: gitleaks (https://gitleaks.io) — but it only runs in the "
+            "pre-commit hook and CI, neither of which you're scaffolding."
+        )
+        # `--languages` can still carry an unknown key here — it's rejected after the wizard.
+        tools = [
+            REGISTRY[k].audit_tool
+            for k in languages or []
+            if k in REGISTRY and REGISTRY[k].audit_tool
+        ]
+        if not tools:
+            audit = "Dependency audit: none — no selected language has one."
+        elif use_ga:
+            audit = f"Dependency audit: {', '.join(tools)}, in CI."
+        else:
+            audit = f"Dependency audit ({', '.join(tools)}) is CI-only, which you declined."
+        _note(f"{secret} {audit}")
+        security = questionary.confirm(
+            "Add security scanning (secret scan + dependency audit)?", default=True
+        ).unsafe_ask()
     runner = args.runner
     if prompt_runner and "quality" in parts:
         runner = questionary.select(
-            "Task runner for the command surface (none detected):",
+            "Task runner to host the command surface (lint/format/typecheck/test/quality):",
             choices=[
-                questionary.Choice("Make  [no extra dependencies]", value="make"),
                 questionary.Choice(
-                    "Task  [not detected - needs install: taskfile.dev]", value="task"
+                    "Make  [no extra dependencies — already on your PATH]", value="make"
+                ),
+                questionary.Choice(
+                    "Task  [not detected — needs go-task: https://taskfile.dev]", value="task"
                 ),
             ],
         ).unsafe_ask()
@@ -225,9 +282,12 @@ def _interactive(
         ).unsafe_ask()
     first_run_banner = False
     if ("quality" in parts or "ci" in parts) and tools:
+        _note(
+            "The banner points the agent at ONBOARDING.md on its first session; finishing that "
+            "runbook is what deletes the banner."
+        )
         first_run_banner = questionary.confirm(
-            "Add a first-run banner to AGENTS.md so the agent self-onboards? "
-            "(auto-removed once onboarding is done)",
+            "Add a first-run banner to AGENTS.md so the agent self-onboards?",
             default=True,
         ).unsafe_ask()
     if (out / ".git").exists():
