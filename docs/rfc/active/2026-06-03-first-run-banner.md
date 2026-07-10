@@ -24,6 +24,8 @@ first. The **last onboarding step removes the banner** (and deletes
 
 - Gated by a wizard prompt / `--no-first-run-banner` flag, default **on**, offered
   only when onboarding will exist and at least one AI tool is targeted.
+  *(Amended by RFC 2026-07-09 `first-run-banner-not-optional`: the wizard prompt is
+  gone — the banner ships whenever those two conditions hold. The flag remains.)*
 - The HTML-comment delimiters make removal mechanical and unambiguous.
 - `ONBOARDING.md`'s header now states it was scaffolded by `agent-native-setup` and speaks to
   an agent on its first session.
