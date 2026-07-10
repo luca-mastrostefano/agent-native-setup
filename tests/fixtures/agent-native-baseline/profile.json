@@ -1,6 +1,6 @@
 {
   "name": "agent-native-baseline",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "The agent-native project setup: an AGENTS.md contract, docs + RFCs, linters + pre-commit + security scanning, CI, and a .claude agents/commands library — the setup agent-native-setup scaffolds by default.",
   "tags": ["general", "baseline", "multi-language"],
   "seed": ["AGENTS.md", ".gitignore", "docs/architecture/overview.md", "docs/improvements.md", "docs/rfc/active/@DATE@-adopt-agent-native-setup.md", "README.md"],
@@ -26,8 +26,7 @@
     {"name": "github_actions", "type": "confirm", "message": "GitHub Actions workflows? (writes .github/workflows/quality.yml — the only CI backend this profile ships)", "default": true},
     {"name": "hooks", "type": "confirm", "message": "Pre-commit hooks? (lint, format and secret-scan each commit; tests before push. Needs pre-commit - https://pre-commit.com - armed once with `pre-commit install`)", "default": true},
     {"name": "runner", "type": "select", "message": "Task runner hosting lint/format/typecheck/test/quality — 'make' needs nothing installed, 'task' needs go-task (https://taskfile.dev):", "choices": ["make", "task"], "default": "make"},
-    {"name": "adopt", "type": "select", "message": "Gate for an existing repo's code — 'progressive' checks only files changed in a PR (recommended for a mature repo), 'full' enforces on the whole repo now, 'none' writes the config but enforces nothing:", "choices": ["progressive", "full", "none"], "default": "progressive"},
-    {"name": "first_run_banner", "type": "confirm", "message": "Inject the first-run banner into AGENTS.md? (points the agent at ONBOARDING.md on its first session; finishing that runbook is what deletes the banner)", "default": true, "when": "(answers.include_quality or answers.include_ci) and answers.tools"}
+    {"name": "adopt", "type": "select", "message": "Gate for an existing repo's code — 'progressive' checks only files changed in a PR (recommended for a mature repo), 'full' enforces on the whole repo now, 'none' writes the config but enforces nothing:", "choices": ["progressive", "full", "none"], "default": "progressive"}
   ],
   "onboarding": [],
   "session_start": []

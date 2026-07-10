@@ -18,8 +18,8 @@
     },
     {
       "name": "agent-native-baseline",
-      "url": "git+https://github.com/luca-mastrostefano/agent-native-baseline.git@v0.2.1",
-      "content_hash": "888d545bdfaa36ab3d7a4ecd28eab13138fcf69e77327266d4517cf4e72e2730",
+      "url": "git+https://github.com/luca-mastrostefano/agent-native-baseline.git@v0.2.2",
+      "content_hash": "6a01f4f9b3bfa8edd0e4f05292b24e10a02ba3970896840b160e7b222f503cfc",
       "description": "The default profile — the complete agent-native setup the engine scaffolds when you don't pick one: AGENTS.md contract, docs + RFCs, quality gates, security scanning, CI, and a .claude library. Fork it to build your own.",
       "author": "Luca Mastrostefano",
       "tags": ["general", "baseline", "multi-language"]
