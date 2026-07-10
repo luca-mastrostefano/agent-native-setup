@@ -2,7 +2,7 @@
 {% set docs = answers.include_docs %}
 {% set claude = "claude" in answers.tools %}
 {% set security = answers.include_security %}
-{% set first_run_banner = answers.first_run_banner and answers.tools and (answers.include_quality or answers.include_ci) %}
+{% set first_run_banner = answers.get("first_run_banner", True) and answers.tools and (answers.include_quality or answers.include_ci) %}
 {% set _verb = answers.runner %}
 {% set ns = namespace(qc=[], seen=[]) %}
 {% if answers.include_quality and env.existing_runner %}

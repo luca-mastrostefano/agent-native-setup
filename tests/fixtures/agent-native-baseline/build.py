@@ -281,7 +281,7 @@ def _onboarding_prelude() -> list[str]:
     A(
         "{% set r_banner = "
         + _jexpr(ob.R_BANNER, symlink_note="_note")
-        + ' if (answers.first_run_banner and answers.tools) else "" %}'
+        + ' if (answers.get("first_run_banner", True) and answers.tools) else "" %}'
     )
     A(
         '{% set _trigs = ([".claude/commands/onboard.md"] if "claude" in answers.tools '
@@ -351,8 +351,11 @@ def _agents_prelude() -> list[str]:
     A("{% set docs = answers.include_docs %}")
     A('{% set claude = "claude" in answers.tools %}')
     A("{% set security = answers.include_security %}")
+    # No longer a prompt (RFC 2026-07-09) — the profile asks nothing here, so a `--profile`
+    # run defaults it on. The engine still passes the answer through `config_to_answers`, so
+    # `--no-first-run-banner` keeps suppressing it on the default (baseline) path.
     A(
-        "{% set first_run_banner = answers.first_run_banner and answers.tools "
+        '{% set first_run_banner = answers.get("first_run_banner", True) and answers.tools '
         "and (answers.include_quality or answers.include_ci) %}"
     )
     A("{% set _verb = answers.runner %}")
