@@ -1,0 +1,19 @@
+{
+  "profiles": {
+    "tolaria-setup": {
+      "stars": 0,
+      "forks": 0,
+      "downloads": 48
+    },
+    "andrej-karpathy-skills-setup": {
+      "stars": 0,
+      "forks": 0,
+      "downloads": 45
+    },
+    "agent-native-baseline": {
+      "stars": 1,
+      "forks": 0,
+      "downloads": 51
+    }
+  }
+}
